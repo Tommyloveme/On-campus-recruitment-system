@@ -44,9 +44,11 @@ app.secret_key = _ensure_secret()
 
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(DB_PATH)
+        # 多线程并发：每个请求独立连接 + WAL 模式 + 写锁等待，支撑数百人同时使用
+        g.db = sqlite3.connect(DB_PATH, timeout=15)
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA foreign_keys = ON")
+        g.db.execute("PRAGMA busy_timeout = 10000")
     return g.db
 
 
@@ -57,9 +59,23 @@ def close_db(_exc):
         db.close()
 
 
-def load_fields():
+def load_fields(group_id=None):
+    """主配置定义全部字段；每个分组可有独立的显示配置文件覆盖 visible 开关。"""
     with open(CONFIG_PATH, encoding="utf-8") as f:
-        return json.load(f)["fields"]
+        fields = json.load(f)["fields"]
+    if group_id:
+        path = group_config_path(group_id)
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                visible_map = json.load(f).get("visible", {})
+            for field in fields:
+                if field["key"] in visible_map:
+                    field["visible"] = bool(visible_map[field["key"]])
+    return fields
+
+
+def group_config_path(group_id):
+    return os.path.join(BASE_DIR, "config", f"fields_group_{group_id}.json")
 
 
 def save_fields(fields):
@@ -68,6 +84,14 @@ def save_fields(fields):
     cfg["fields"] = fields
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
+
+
+def save_group_visible(group_id, visible_map):
+    path = group_config_path(group_id)
+    data = {"comment": "该分组的网页字段显示配置，覆盖主配置 fields.json 中的 visible 开关",
+            "visible": visible_map}
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 def now_str():
@@ -126,6 +150,7 @@ def init_db(demo=False):
     os.makedirs(RESUME_DIR, exist_ok=True)
     db = sqlite3.connect(DB_PATH)
     db.row_factory = sqlite3.Row
+    db.execute("PRAGMA journal_mode = WAL")   # 读写不互斥，大幅提升并发能力
     db.executescript(SCHEMA)
     _migrate(db)
     cur = db.execute("SELECT COUNT(*) AS c FROM users")
@@ -286,26 +311,55 @@ def user_dict(u):
 @app.get("/api/config")
 @login_required
 def api_config():
-    return jsonify({"fields": load_fields()})
+    """非管理员自动取本组配置；管理员可用 ?group_id= 查看某组配置，默认全局主配置。"""
+    if g.user["role"] == "admin":
+        group_id = request.args.get("group_id", type=int)
+    else:
+        group_id = g.user["group_id"]
+    return jsonify({"fields": load_fields(group_id), "group_id": group_id})
 
 
 @app.put("/api/config")
-@admin_required
+@login_required
 def api_config_update():
-    """管理员可在线调整字段的显示/编辑/导入开关，写回 fields.json。"""
+    """管理员：可改全局主配置或任意分组配置；组管理员：只能改本组的显示配置。"""
     body = request.get_json(force=True)
     updates = {f["key"]: f for f in body.get("fields", [])}
-    fields = load_fields()
-    for f in fields:
-        if f["key"] in updates:
-            u = updates[f["key"]]
-            for attr in ("visible", "editable", "importable", "label", "excel_column"):
-                if attr in u:
-                    f[attr] = u[attr]
-    save_fields(fields)
-    add_log(g.user, "config", f"{g.user['display_name']} 调整了字段显示配置")
+
+    if g.user["role"] == "admin":
+        group_id = body.get("group_id")
+    elif g.user["role"] == "group_admin":
+        group_id = g.user["group_id"]
+        if not group_id:
+            return jsonify({"error": "您未归属任何分组"}), 400
+    else:
+        return jsonify({"error": "无配置权限"}), 403
+
+    if group_id:
+        # 分组级配置：仅覆盖 visible 开关，独立文件存储
+        path = group_config_path(group_id)
+        visible_map = {}
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                visible_map = json.load(f).get("visible", {})
+        for key, u in updates.items():
+            if "visible" in u:
+                visible_map[key] = bool(u["visible"])
+        save_group_visible(group_id, visible_map)
+        gname = group_name_map().get(group_id, "")
+        add_log(g.user, "config", f"{g.user['display_name']} 调整了「{gname}」的字段显示配置", group_id=group_id)
+    else:
+        fields = load_fields()
+        for f in fields:
+            if f["key"] in updates:
+                u = updates[f["key"]]
+                for attr in ("visible", "editable", "importable", "label", "excel_column"):
+                    if attr in u:
+                        f[attr] = u[attr]
+        save_fields(fields)
+        add_log(g.user, "config", f"{g.user['display_name']} 调整了全局字段显示配置")
     get_db().commit()
-    return jsonify({"fields": fields})
+    return jsonify({"fields": load_fields(group_id), "group_id": group_id})
 
 
 # ---------------------------------------------------------------- 分组
@@ -346,6 +400,8 @@ def api_group_delete(gid):
         return jsonify({"error": "该分组下仍有候选人，无法删除"}), 400
     db.execute("UPDATE users SET group_id=NULL WHERE group_id=?", (gid,))
     db.execute("DELETE FROM groups WHERE id=?", (gid,))
+    if os.path.exists(group_config_path(gid)):
+        os.remove(group_config_path(gid))
     add_log(g.user, "group", f"{g.user['display_name']} 删除了分组「{row['name']}」")
     db.commit()
     return jsonify({"ok": True})
@@ -374,8 +430,9 @@ def api_users():
 def api_user_create():
     b = request.get_json(force=True)
     username = (b.get("username") or "").strip()
-    if not username or not b.get("password"):
-        return jsonify({"error": "用户名和密码不能为空"}), 400
+    if not username:
+        return jsonify({"error": "用户名不能为空"}), 400
+    password = b.get("password") or "123456"   # 未填写时使用默认密码
     role = b.get("role", "editor")
     group_id = b.get("group_id")
 
@@ -394,7 +451,7 @@ def api_user_create():
     try:
         db.execute(
             "INSERT INTO users (username, display_name, password_hash, role, group_id, created_at) VALUES (?,?,?,?,?,?)",
-            (username, b.get("display_name") or username, generate_password_hash(b["password"]),
+            (username, b.get("display_name") or username, generate_password_hash(password),
              role, group_id, now_str()),
         )
     except sqlite3.IntegrityError:
@@ -626,6 +683,50 @@ def api_resume_download(cid):
     return send_file(path, as_attachment=True, download_name=f"{name}_{os.path.splitext(row['resume_name'])[0]}{ext}")
 
 
+PREVIEW_PAGE = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
+<title>{title} - 简历预览</title>
+<style>
+body {{ font-family:"Segoe UI","Microsoft YaHei",sans-serif; background:#f1f5f9; margin:0; }}
+.page {{ max-width:860px; margin:24px auto; background:#fff; border-radius:12px;
+        padding:40px 48px; box-shadow:0 4px 24px rgba(0,0,0,.08); line-height:1.8; color:#0f172a; }}
+.page img {{ max-width:100%; }}
+h1,h2,h3 {{ color:#1d4ed8; }}
+table {{ border-collapse:collapse; }} td,th {{ border:1px solid #e2e8f0; padding:4px 10px; }}
+.tip {{ text-align:center; color:#64748b; font-size:12px; margin:12px 0 24px; }}
+</style></head><body>
+<div class="tip">简历预览：{title}（如格式有出入，请下载原文件查看）</div>
+<div class="page">{content}</div>
+</body></html>"""
+
+
+@app.get("/api/candidates/<int:cid>/resume/preview")
+@login_required
+def api_resume_preview(cid):
+    row, err = _get_candidate_or_403(cid, need="view")
+    if err:
+        return err
+    if not row["resume_file"]:
+        return jsonify({"error": "该候选人尚未上传简历"}), 404
+    path = os.path.join(RESUME_DIR, row["resume_file"])
+    if not os.path.exists(path):
+        return jsonify({"error": "简历文件丢失，请重新上传"}), 404
+
+    ext = os.path.splitext(row["resume_file"])[1].lower()
+    if ext == ".pdf":
+        # 浏览器内置 PDF 阅读器在线查看
+        return send_file(path, mimetype="application/pdf", as_attachment=False,
+                         download_name=row["resume_name"])
+    # docx -> HTML
+    try:
+        import mammoth
+        with open(path, "rb") as f:
+            html = mammoth.convert_to_html(f).value
+    except Exception:
+        return jsonify({"error": "简历解析失败，请下载原文件查看"}), 500
+    name = json.loads(row["data"]).get("name", "")
+    return PREVIEW_PAGE.format(title=f"{name} - {row['resume_name']}", content=html)
+
+
 @app.delete("/api/candidates/<int:cid>/resume")
 @login_required
 def api_resume_delete(cid):
@@ -845,5 +946,8 @@ def index():
 if __name__ == "__main__":
     init_db(demo="--demo" in sys.argv)
     port = int(os.environ.get("PORT", 8000))
-    print(f"校招候选人管理系统已启动: http://127.0.0.1:{port}")
-    app.run(host="0.0.0.0", port=port, debug=False)
+    threads = int(os.environ.get("THREADS", 32))
+    print(f"校招候选人管理系统已启动: http://127.0.0.1:{port} （waitress，{threads} 工作线程）")
+    from waitress import serve
+    serve(app, host="0.0.0.0", port=port, threads=threads,
+          connection_limit=1024, channel_timeout=120)

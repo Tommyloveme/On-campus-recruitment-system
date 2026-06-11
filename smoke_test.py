@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
-"""一次性冒烟测试脚本：覆盖登录/权限/CRUD/Excel导入/日志/总览。"""
+"""一次性冒烟测试脚本：覆盖登录/权限/CRUD/Excel导入/简历/分组配置/并发/日志/总览。"""
 import io
 import json
+import threading
 import urllib.request
 from urllib.parse import quote
 import http.cookiejar
 import uuid
+import zipfile
 
 from openpyxl import Workbook
 
@@ -43,7 +45,7 @@ call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 
 # 2. 配置与分组
 s, cfg = call("GET", "/api/config")
-check("读取字段配置(17个字段)", len(cfg["fields"]) == 17)
+check("读取字段配置(20个字段)", len(cfg["fields"]) == 20)
 s, groups = call("GET", "/api/groups")
 check("读取分组(demo含2组)", len(groups) >= 2)
 g1 = groups[0]["id"]
@@ -89,6 +91,35 @@ body.write(f"--{boundary}--\r\n".encode())
 s, r = call("POST", "/api/import", raw=body.getvalue(), ctype=f"multipart/form-data; boundary={boundary}")
 check("Excel导入(新增2 更新1)", r["created"] == 2 and r["updated"] == 1)
 
+# 5b. 批量导入 120 名候选人
+wb = Workbook()
+ws = wb.active
+ws.append(["候选人", "电话", "学历", "毕业院校", "专业", "Offer状态", "毕业时间"])
+for i in range(1, 121):
+    ws.append([f"压测{i:03d}", f"139{i:08d}", ["本科", "硕士", "博士"][i % 3],
+               f"测试大学{i % 10}", "计算机科学", ["未发放", "已发放", "已接受"][i % 3],
+               f"2026-{(i % 12) + 1:02d}-15"])
+buf2 = io.BytesIO()
+wb.save(buf2)
+boundary2 = uuid.uuid4().hex
+body2 = io.BytesIO()
+def part2(name, value=None, filename=None, content=None):
+    body2.write(f"--{boundary2}\r\n".encode())
+    if filename:
+        body2.write(f'Content-Disposition: form-data; name="{name}"; filename="{filename}"\r\n'.encode())
+        body2.write(b"Content-Type: application/octet-stream\r\n\r\n")
+        body2.write(content)
+        body2.write(b"\r\n")
+    else:
+        body2.write(f'Content-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
+part2("group_id", str(g1))
+part2("file", filename="bulk.xlsx", content=buf2.getvalue())
+body2.write(f"--{boundary2}--\r\n".encode())
+s, r = call("POST", "/api/import", raw=body2.getvalue(), ctype=f"multipart/form-data; boundary={boundary2}")
+check("批量导入120名候选人", r["created"] == 120)
+s, cands = call("GET", "/api/candidates?q=" + quote("压测"))
+check("批量导入数据可查询(含新字段)", len(cands) == 120 and cands[0]["data"].get("education") in ("本科", "硕士", "博士"))
+
 # 6. 总览
 s, ov = call("GET", "/api/overview")
 check("管理员总览含最新进展", any(c.get("latest_log") for grp in ov for c in grp["candidates"]))
@@ -117,10 +148,33 @@ def multipart(parts):
     body.write(f"--{boundary}--\r\n".encode())
     return body.getvalue(), f"multipart/form-data; boundary={boundary}"
 
-# 7. 简历上传 / 更换 / 下载 / 删除 / 批量导出
-raw, ct = multipart([("file", b"fake docx content", "resume.docx")])
+def make_docx(text):
+    """构造最小可解析的 docx 文件。"""
+    b = io.BytesIO()
+    ns = "http://schemas.openxmlformats.org/"
+    with zipfile.ZipFile(b, "w") as z:
+        z.writestr("[Content_Types].xml",
+                   f'<?xml version="1.0"?><Types xmlns="{ns}package/2006/content-types">'
+                   '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+                   '<Default Extension="xml" ContentType="application/xml"/>'
+                   '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
+        z.writestr("_rels/.rels",
+                   f'<?xml version="1.0"?><Relationships xmlns="{ns}package/2006/relationships">'
+                   f'<Relationship Id="rId1" Type="{ns}officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
+        z.writestr("word/document.xml",
+                   f'<?xml version="1.0"?><w:document xmlns:w="{ns}wordprocessingml/2006/main">'
+                   f'<w:body><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:body></w:document>')
+    return b.getvalue()
+
+
+# 7. 简历上传 / 在线预览 / 更换 / 下载 / 删除 / 批量导出
+raw, ct = multipart([("file", make_docx("简历正文ABC"), "resume.docx")])
 s, r = call("POST", f"/api/candidates/{cid}/resume", raw=raw, ctype=ct)
 check("上传docx简历", s == 200 and r["resume_name"] == "resume.docx")
+
+s, content, headers = call_raw("GET", f"/api/candidates/{cid}/resume/preview")
+check("docx在线预览(转HTML)", s == 200 and "简历正文ABC".encode() in content
+      and "text/html" in headers.get("Content-Type", ""))
 
 raw, ct = multipart([("file", b"fake txt", "resume.txt")])
 s, r = call("POST", f"/api/candidates/{cid}/resume", raw=raw, ctype=ct, expect_error=True)
@@ -129,6 +183,10 @@ check("非法格式被拒绝", s == 400)
 raw, ct = multipart([("file", b"%PDF-fake", "new_resume.pdf")])
 s, r = call("POST", f"/api/candidates/{cid}/resume", raw=raw, ctype=ct)
 check("更换为pdf简历", s == 200 and r["resume_name"] == "new_resume.pdf")
+
+s, content, headers = call_raw("GET", f"/api/candidates/{cid}/resume/preview")
+check("pdf在线预览(浏览器内嵌)", s == 200 and content.startswith(b"%PDF")
+      and "application/pdf" in headers.get("Content-Type", ""))
 
 s, content, _ = call_raw("GET", f"/api/candidates/{cid}/resume")
 check("下载简历内容一致", s == 200 and content == b"%PDF-fake")
@@ -171,15 +229,26 @@ s, r = call("POST", "/api/candidates", {"data": {"name": "组管新增"}})
 check("组管理员新增本组候选人", s == 200)
 lead_cid = r["id"]
 s, _ = call("POST", "/api/users", {"username": "t_member", "display_name": "测试组员",
-                                   "password": "pw123", "role": "editor"})
+                                   "role": "editor"})  # 不传密码 -> 默认123456
 check("组管理员添加本组成员", s == 200)
+
+# 组管理员配置本组字段显示（独立配置文件）
+s, _ = call("PUT", "/api/config", {"fields": [{"key": "phone", "visible": False}]})
+check("组管理员配置本组字段", s == 200)
+s, cfg2 = call("GET", "/api/config")
+phone2 = next(f for f in cfg2["fields"] if f["key"] == "phone")
+check("本组配置生效(电话列隐藏)", phone2["visible"] is False)
 s, _ = call("POST", "/api/users", {"username": "t_admin2", "password": "pw123", "role": "admin"},
             expect_error=True)
 check("组管理员不能创建管理员", s == 403)
 s, members = call("GET", "/api/users")
 check("组管理员仅见本组成员", all(u["group_id"] == g2 for u in members))
 
-call("POST", "/api/login", {"username": "t_member", "password": "pw123"})
+call("POST", "/api/login", {"username": "t_member", "password": "123456"})
+s, me2 = call("GET", "/api/me")
+check("默认密码123456登录成功", s == 200 and me2["username"] == "t_member")
+s, cfg3 = call("GET", "/api/config")
+check("组成员看到的也是本组配置", next(f for f in cfg3["fields"] if f["key"] == "phone")["visible"] is False)
 s, _ = call("PUT", f"/api/candidates/{lead_cid}", {"data": {"phone": "13099998888"}})
 check("组成员可编辑本组候选人", s == 200)
 s, _ = call("DELETE", f"/api/candidates/{lead_cid}", expect_error=True)
@@ -190,6 +259,37 @@ check("组成员无用户管理权限", s == 403)
 call("POST", "/api/login", {"username": "t_lead", "password": "pw123"})
 s, _ = call("DELETE", f"/api/candidates/{lead_cid}")
 check("组管理员可删除本组候选人", s == 200)
+# 恢复本组字段配置，避免影响后续使用
+call("PUT", "/api/config", {"fields": [{"key": "phone", "visible": True}]})
+
+# 10. 并发场景：60个并发会话同时登录+查询
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+conc_results = []
+def one_session():
+    try:
+        cj2 = http.cookiejar.CookieJar()
+        op2 = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj2))
+        req = urllib.request.Request(BASE + "/api/login",
+                                     data=json.dumps({"username": "admin", "password": "admin123"}).encode(),
+                                     method="POST")
+        req.add_header("Content-Type", "application/json")
+        with op2.open(req, timeout=30) as r1:
+            ok1 = r1.status == 200
+        with op2.open(BASE + "/api/candidates", timeout=30) as r2:
+            ok2 = r2.status == 200 and len(json.loads(r2.read().decode())) > 0
+        conc_results.append(ok1 and ok2)
+    except Exception:
+        conc_results.append(False)
+
+threads = [threading.Thread(target=one_session) for _ in range(60)]
+import time
+t0 = time.time()
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+elapsed = time.time() - t0
+check(f"并发60会话全部成功(耗时{elapsed:.1f}s)", len(conc_results) == 60 and all(conc_results))
 
 # 清理测试数据
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
@@ -197,6 +297,9 @@ s, users = call("GET", "/api/users")
 for u in users:
     if u["username"] in ("t_lead", "t_member"):
         call("DELETE", f"/api/users/{u['id']}")
+s, cands = call("GET", "/api/candidates?q=" + quote("压测"))
+for c in cands:
+    call("DELETE", f"/api/candidates/{c['id']}")
 for n in ("测试员", "导入甲", "导入乙"):
     s, cands = call("GET", f"/api/candidates?q={quote(n)}")
     for c in cands:

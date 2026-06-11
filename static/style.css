@@ -104,6 +104,21 @@ th.sortable:hover { color: var(--primary); }
 .col-check input { width: auto; cursor: pointer; }
 .resume-actions { display: inline-flex; gap: 4px; }
 
+/* 过长内容截断：悬浮可见完整内容 */
+.clip {
+  display: inline-block; max-width: 150px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  vertical-align: bottom; cursor: default;
+}
+
+/* 分页条 */
+.pager-bar {
+  display: flex; align-items: center; justify-content: flex-end; gap: 12px;
+  margin-top: 12px; color: var(--muted); font-size: 13px; flex-wrap: wrap;
+}
+.pager-bar select { width: auto; padding: 4px 8px; }
+.pager-bar label { display: flex; align-items: center; gap: 6px; }
+
 /* ---------- 徽章 ---------- */
 .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 500; }
 .badge-gray   { background: #f1f5f9; color: #475569; }

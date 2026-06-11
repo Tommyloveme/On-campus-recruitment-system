@@ -100,7 +100,8 @@ async function boot() {
   state.groups = groups;
 
   const tabs = [["candidates", "候选人"]];
-  if (isAdmin()) tabs.push(["overview", "全局总览"], ["charts", "数据图表"]);
+  if (isAdmin()) tabs.push(["overview", "全局总览"]);
+  if (isAdmin() || isGroupAdmin()) tabs.push(["charts", "数据图表"]);
   tabs.push(["logs", "操作日志"]);
   if (isAdmin()) tabs.push(["admin", "系统管理"]);
   else if (isGroupAdmin()) tabs.push(["admin", "成员管理"]);
@@ -134,7 +135,8 @@ function cellHtml(field, value) {
   if (v === "") return `<span style="color:#cbd5e1">—</span>`;
   const rule = BADGE_RULES[field.key];
   if (rule) return `<span class="badge badge-${rule[v] || "gray"}">${esc(v)}</span>`;
-  return esc(v);
+  // 过长内容：单元格内省略号截断，悬浮显示完整内容
+  return `<span class="clip" title="${esc(v)}">${esc(v)}</span>`;
 }
 
 const cand = {
@@ -142,6 +144,8 @@ const cand = {
   sort: null,         // {key, dir: 1|-1}
   selected: new Set(),// 勾选的候选人 id
   uploadTarget: null, // 待上传简历的候选人 id
+  page: 1,
+  pageSize: 30,       // 默认每页30人，可手动调整
 };
 
 async function renderCandidates() {
@@ -188,21 +192,23 @@ async function renderCandidates() {
         <tbody id="cand-tbody"></tbody>
       </table>
     </div>
+    <div id="cand-pager" class="pager-bar"></div>
     <input type="file" id="resume-input" accept=".pdf,.docx" style="display:none">`;
 
   $("#btn-template").addEventListener("click", () => { location.href = "/api/import/template"; });
   $("#btn-import").addEventListener("click", openImportModal);
   $("#btn-add").addEventListener("click", () => openCandidateModal(null));
   $("#btn-export-resume").addEventListener("click", exportSelectedResumes);
-  $("#cand-search").addEventListener("input", debounce(renderCandidateRows, 250));
+  const onFilterChange = () => { cand.page = 1; renderCandidateRows(); };
+  $("#cand-search").addEventListener("input", debounce(onFilterChange, 250));
   $("#btn-clear-filter").addEventListener("click", () => {
     $("#cand-search").value = "";
     document.querySelectorAll("[data-filter]").forEach(el => { el.value = ""; });
     cand.sort = null;
-    renderCandidateRows();
+    onFilterChange();
   });
   document.querySelectorAll("[data-filter]").forEach(el =>
-    el.addEventListener(el.tagName === "SELECT" ? "change" : "input", debounce(renderCandidateRows, 250)));
+    el.addEventListener(el.tagName === "SELECT" ? "change" : "input", debounce(onFilterChange, 250)));
   document.querySelectorAll(".sortable").forEach(th =>
     th.addEventListener("click", () => toggleSort(th.dataset.sortkey)));
   $("#sel-all").addEventListener("change", e => {
@@ -279,6 +285,7 @@ function resumeCellHtml(c) {
   if (c.resume_name) {
     return `
       <span class="resume-actions" title="${esc(c.resume_name)}">
+        <button class="btn btn-sm" data-resprev="${c.id}">预览</button>
         <button class="btn btn-sm" data-resdl="${c.id}">下载</button>
         ${editable ? `<button class="btn btn-sm" data-resup="${c.id}">更换</button>` : ""}
         ${canDelete(c.group_id) ? `<button class="btn btn-sm btn-danger" data-resdel="${c.id}">删除</button>` : ""}
@@ -297,10 +304,18 @@ function renderCandidateRows() {
   const list = filteredCandidates();
   const colCount = 3 + fields.length + (showGroupCol ? 1 : 0);
 
-  if (!list.length) {
+  // 分页
+  const total = list.length;
+  const pages = cand.pageSize > 0 ? Math.max(1, Math.ceil(total / cand.pageSize)) : 1;
+  cand.page = Math.min(Math.max(1, cand.page), pages);
+  const pageList = cand.pageSize > 0
+    ? list.slice((cand.page - 1) * cand.pageSize, cand.page * cand.pageSize)
+    : list;
+
+  if (!pageList.length) {
     tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty">没有符合条件的候选人</td></tr>`;
   } else {
-    tbody.innerHTML = list.map(c => `
+    tbody.innerHTML = pageList.map(c => `
       <tr>
         <td class="col-check"><input type="checkbox" data-sel="${c.id}" ${cand.selected.has(c.id) ? "checked" : ""}></td>
         ${showGroupCol ? `<td><span class="badge badge-gray">${esc(c.group_name)}</span></td>` : ""}
@@ -335,8 +350,32 @@ function renderCandidateRows() {
     }));
   tbody.querySelectorAll("[data-resdel]").forEach(b =>
     b.addEventListener("click", () => deleteResume(cand.list.find(c => c.id === +b.dataset.resdel))));
+  tbody.querySelectorAll("[data-resprev]").forEach(b =>
+    b.addEventListener("click", () => window.open(`/api/candidates/${b.dataset.resprev}/resume/preview`, "_blank")));
 
+  renderPager(total, pages);
   updateSelectionUI(list);
+}
+
+function renderPager(total, pages) {
+  const sizes = [10, 30, 50, 100, 0];
+  $("#cand-pager").innerHTML = `
+    <span>共 ${total} 人</span>
+    <label>每页
+      <select id="page-size">
+        ${sizes.map(s => `<option value="${s}" ${s === cand.pageSize ? "selected" : ""}>${s === 0 ? "全部" : s}</option>`).join("")}
+      </select>
+    </label>
+    <button class="btn btn-sm" id="page-prev" ${cand.page <= 1 ? "disabled" : ""}>上一页</button>
+    <span>第 ${cand.page} / ${pages} 页</span>
+    <button class="btn btn-sm" id="page-next" ${cand.page >= pages ? "disabled" : ""}>下一页</button>`;
+  $("#page-size").addEventListener("change", e => {
+    cand.pageSize = +e.target.value;
+    cand.page = 1;
+    renderCandidateRows();
+  });
+  $("#page-prev").addEventListener("click", () => { cand.page--; renderCandidateRows(); });
+  $("#page-next").addEventListener("click", () => { cand.page++; renderCandidateRows(); });
 }
 
 function updateSelectionUI(list) {
@@ -582,16 +621,25 @@ async function renderCharts() {
     ...fields.filter(f => f.type === "select").map(f =>
       `<option value="${f.key}">${esc(f.label)}</option>`),
   ].join("");
-  const groupOpts = [
-    `<option value="">全部分组</option>`,
-    ...state.groups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`),
-  ].join("");
+  // 组管理员只能看本组数据，分组范围固定为本组
+  const groupCtrl = isGroupAdmin()
+    ? `<div class="chart-ctrl"><label>分组范围</label>
+        <select id="ch-group" disabled><option value="${state.me.group_id}">${esc(state.me.group_name || "")}</option></select></div>`
+    : `<div class="chart-ctrl"><label>分组范围</label>
+        <select id="ch-group"><option value="">全部分组</option>
+          ${state.groups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join("")}</select></div>`;
 
   $("#main").innerHTML = `
     <div class="card">
       <div class="toolbar" style="margin-bottom:0">
-        <div class="chart-ctrl"><label>分组范围</label><select id="ch-group">${groupOpts}</select></div>
+        ${groupCtrl}
         <div class="chart-ctrl"><label>维度（横轴）</label><select id="ch-dim">${dimOpts}</select></div>
+        <div class="chart-ctrl hidden" id="ch-gran-wrap"><label>日期粒度</label>
+          <select id="ch-gran">
+            <option value="ym" selected>按年月</option>
+            <option value="ymd">按年月日</option>
+            <option value="m">按月份</option>
+          </select></div>
         <div class="chart-ctrl"><label>系列（图例）</label><select id="ch-ser">${serOpts}</select></div>
         <div class="chart-ctrl"><label>图表类型</label>
           <select id="ch-type">
@@ -617,14 +665,25 @@ async function renderCharts() {
     </div>`;
 
   charts.list = await api("/api/candidates");
-  ["ch-group", "ch-dim", "ch-ser", "ch-type"].forEach(id =>
+  ["ch-group", "ch-dim", "ch-ser", "ch-type", "ch-gran"].forEach(id =>
     $("#" + id).addEventListener("change", drawChart));
   drawChart();
 }
 
-function chartValue(c, key) {
+function isDateField(key) {
+  const f = state.fields.find(f => f.key === key);
+  return !!f && f.type === "date";
+}
+
+/* gran: ymd=按年月日, ym=按年月, m=按月份（跨年聚合） */
+function chartValue(c, key, gran) {
   if (key === "__group") return c.group_name || "（无分组）";
-  return c.data[key] || "（空）";
+  let v = c.data[key] || "（空）";
+  if (gran && v !== "（空）" && isDateField(key)) {
+    if (gran === "ym" && v.length >= 7) v = v.slice(0, 7);
+    else if (gran === "m" && v.length >= 7) v = v.slice(5, 7) + "月";
+  }
+  return v;
 }
 
 function chartLabelOf(key) {
@@ -633,11 +692,11 @@ function chartLabelOf(key) {
   return f ? f.label : key;
 }
 
-/* 维度取值的展示顺序：select字段按配置选项顺序，其余按数量降序（最多30项） */
-function orderedValues(list, key) {
+/* 维度取值的展示顺序：select字段按配置选项顺序，日期按时间升序，其余按数量降序（最多30项） */
+function orderedValues(list, key, gran) {
   const counts = new Map();
   list.forEach(c => {
-    const v = chartValue(c, key);
+    const v = chartValue(c, key, gran);
     counts.set(v, (counts.get(v) || 0) + 1);
   });
   const f = state.fields.find(f => f.key === key);
@@ -645,6 +704,9 @@ function orderedValues(list, key) {
   if (key === "__group") {
     values = state.groups.map(g => g.name).filter(n => counts.has(n));
     if (counts.has("（无分组）")) values.push("（无分组）");
+  } else if (f && f.type === "date") {
+    values = [...counts.keys()].filter(v => v !== "（空）").sort();
+    if (counts.has("（空）")) values.push("（空）");
   } else if (f && f.type === "select") {
     values = (f.options || []).filter(o => counts.has(o));
     if (counts.has("（空）")) values.push("（空）");
@@ -661,26 +723,33 @@ function drawChart() {
   const type = $("#ch-type").value;
   if (["pie", "doughnut"].includes(type)) serKey = "";  // 饼图只看单一维度
 
+  // 维度为日期列时显示粒度选择
+  const dimIsDate = isDateField(dimKey);
+  $("#ch-gran-wrap").classList.toggle("hidden", !dimIsDate);
+  const gran = dimIsDate ? $("#ch-gran").value : null;
+
   let list = charts.list;
   if (gid) list = list.filter(c => String(c.group_id) === gid);
   $("#ch-count").textContent = `共 ${list.length} 名候选人`;
 
-  const dims = orderedValues(list, dimKey);
+  const dims = orderedValues(list, dimKey, gran);
   const sers = serKey ? orderedValues(list, serKey) : null;
 
   // 透视计数：matrix[系列][维度]
   const matrix = (sers || ["数量"]).map(() => dims.map(() => 0));
   list.forEach(c => {
-    const di = dims.indexOf(chartValue(c, dimKey));
+    const di = dims.indexOf(chartValue(c, dimKey, gran));
     if (di < 0) return;
     const si = sers ? sers.indexOf(chartValue(c, serKey)) : 0;
     if (si < 0) return;
     matrix[si][di] += 1;
   });
 
-  const groupName = gid ? (state.groups.find(g => String(g.id) === gid)?.name || "") : "全部分组";
+  const granName = { ymd: "按年月日", ym: "按年月", m: "按月份" }[gran] || "";
+  const groupName = gid ? (state.groups.find(g => String(g.id) === gid)?.name || state.me.group_name || "") : "全部分组";
   $("#ch-title").textContent =
-    `${chartLabelOf(dimKey)} 分布` + (serKey ? ` × ${chartLabelOf(serKey)}` : "") + `（${groupName}）`;
+    `${chartLabelOf(dimKey)}${granName ? "·" + granName : ""} 分布` +
+    (serKey ? ` × ${chartLabelOf(serKey)}` : "") + `（${groupName}）`;
 
   if (charts.instance) { charts.instance.destroy(); charts.instance = null; }
   const ctx = $("#ch-canvas").getContext("2d");
@@ -804,16 +873,28 @@ async function renderLogs(page = 1) {
 /* ---------------- 系统管理（管理员） ---------------- */
 async function renderAdmin() {
   if (isGroupAdmin()) {
-    // 组管理员：只能管理本组成员（添加组成员/只读账号）
+    // 组管理员：管理本组成员 + 本组的字段显示配置
     $("#main").innerHTML = `
-      <div class="card">
-        <div class="section-title">成员管理 - ${esc(state.me.group_name || "")}</div>
-        <p style="font-size:12px;color:#64748b;margin-bottom:10px">您可以向本组添加「组成员」或「只读」账号；修改与删除用户需联系系统管理员。</p>
-        <div id="user-list"></div>
-        <button class="btn btn-primary" id="btn-add-user" style="margin-top:12px">+ 添加本组成员</button>
+      <div class="admin-grid">
+        <div class="card">
+          <div class="section-title">成员管理 - ${esc(state.me.group_name || "")}</div>
+          <p style="font-size:12px;color:#64748b;margin-bottom:10px">您可以向本组添加「组成员」或「只读」账号（默认密码 123456）；修改与删除用户需联系系统管理员。</p>
+          <div id="user-list"></div>
+          <button class="btn btn-primary" id="btn-add-user" style="margin-top:12px">+ 添加本组成员</button>
+        </div>
+        <div class="card">
+          <div class="section-title">本组字段显示配置</div>
+          <p style="font-size:12px;color:#64748b;margin-bottom:10px">勾选 = 本组成员的候选人列表中显示该列（仅影响本组，保存为本组独立配置文件）</p>
+          <div class="check-grid" id="field-config"></div>
+          <button class="btn btn-primary btn-sm" id="btn-save-fields" style="margin-top:12px">保存本组配置</button>
+        </div>
       </div>`;
     await loadUserList();
     $("#btn-add-user").addEventListener("click", () => openUserModal(null));
+    fieldCfg.scope = "self";
+    fieldCfg.fields = state.fields;
+    renderFieldConfig();
+    $("#btn-save-fields").addEventListener("click", saveFieldConfig);
     return;
   }
 
@@ -830,7 +911,14 @@ async function renderAdmin() {
         </div>
         <div class="card">
           <div class="section-title">网页字段显示配置</div>
-          <p style="font-size:12px;color:#64748b;margin-bottom:10px">勾选 = 在候选人列表/总览中显示该列（同步写入 config/fields.json）</p>
+          <p style="font-size:12px;color:#64748b;margin-bottom:10px">全局配置写入 config/fields.json；分组配置各自独立成文件（fields_group_*.json），仅覆盖显示开关</p>
+          <div class="form-item" style="max-width:260px">
+            <label>配置范围</label>
+            <select id="field-scope">
+              <option value="">全局默认配置</option>
+              ${state.groups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join("")}
+            </select>
+          </div>
           <div class="check-grid" id="field-config"></div>
           <button class="btn btn-primary btn-sm" id="btn-save-fields" style="margin-top:12px">保存配置</button>
         </div>
@@ -842,7 +930,15 @@ async function renderAdmin() {
       </div>
     </div>`;
   await Promise.all([loadGroupList(), loadUserList()]);
+  fieldCfg.scope = "";
+  fieldCfg.fields = state.fields;
   renderFieldConfig();
+  $("#field-scope").addEventListener("change", async e => {
+    fieldCfg.scope = e.target.value;
+    const r = await api("/api/config" + (fieldCfg.scope ? "?group_id=" + fieldCfg.scope : ""));
+    fieldCfg.fields = r.fields;
+    renderFieldConfig();
+  });
 
   $("#btn-add-group").addEventListener("click", async () => {
     const name = $("#new-group-name").value.trim();
@@ -932,8 +1028,9 @@ function openUserModal(user) {
         <input id="u-username" value="${user ? esc(user.username) : ""}" ${isNew ? "" : "disabled"}></div>
       <div class="form-item"><label>显示姓名</label>
         <input id="u-display" value="${user ? esc(user.display_name) : ""}"></div>
-      <div class="form-item"><label>密码 ${isNew ? "*" : "（留空则不修改）"}</label>
-        <input id="u-password" type="password" autocomplete="new-password"></div>
+      <div class="form-item"><label>密码 ${isNew ? "（默认 123456）" : "（留空则不修改）"}</label>
+        <input id="u-password" type="${isNew ? "text" : "password"}" autocomplete="new-password"
+               ${isNew ? `value="123456"` : ""}></div>
       <div class="form-item"><label>角色</label>
         <select id="u-role">${roleOptions}</select></div>
       <div class="form-item"><label>所属权限分组</label>${groupField}</div>
@@ -960,17 +1057,23 @@ function openUserModal(user) {
   });
 }
 
+const fieldCfg = { scope: "", fields: [] };  // scope: ""=全局, 数字=分组id, "self"=组管理员本组
+
 function renderFieldConfig() {
-  $("#field-config").innerHTML = state.fields.map(f => `
+  $("#field-config").innerHTML = fieldCfg.fields.map(f => `
     <label><input type="checkbox" data-fkey="${f.key}" ${f.visible ? "checked" : ""}> ${esc(f.label)}</label>`).join("");
 }
 
 async function saveFieldConfig() {
   const updates = [...$("#field-config").querySelectorAll("[data-fkey]")].map(el =>
     ({ key: el.dataset.fkey, visible: el.checked }));
+  const payload = { fields: updates };
+  if (fieldCfg.scope && fieldCfg.scope !== "self") payload.group_id = +fieldCfg.scope;
   try {
-    const r = await api("/api/config", { method: "PUT", json: { fields: updates } });
-    state.fields = r.fields;
+    const r = await api("/api/config", { method: "PUT", json: payload });
+    fieldCfg.fields = r.fields;
+    // 影响当前用户自己列表视图时同步刷新
+    if (fieldCfg.scope === "self" || (isAdmin() && !fieldCfg.scope)) state.fields = r.fields;
     toast("字段显示配置已保存");
   } catch (e) { toast(e.message, true); }
 }

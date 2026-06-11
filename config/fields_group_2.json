@@ -1,0 +1,6 @@
+{
+  "comment": "该分组的网页字段显示配置，覆盖主配置 fields.json 中的 visible 开关",
+  "visible": {
+    "phone": true
+  }
+}
