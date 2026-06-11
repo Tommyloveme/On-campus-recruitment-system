@@ -93,7 +93,60 @@ check("Excel导入(新增2 更新1)", r["created"] == 2 and r["updated"] == 1)
 s, ov = call("GET", "/api/overview")
 check("管理员总览含最新进展", any(c.get("latest_log") for grp in ov for c in grp["candidates"]))
 
-# 7. 普通用户权限
+
+def call_raw(method, path, raw=None, ctype=None):
+    req = urllib.request.Request(BASE + path, data=raw, method=method)
+    if ctype:
+        req.add_header("Content-Type", ctype)
+    with opener.open(req) as r:
+        return r.status, r.read(), dict(r.headers)
+
+
+def multipart(parts):
+    boundary = uuid.uuid4().hex
+    body = io.BytesIO()
+    for name, value, filename in parts:
+        body.write(f"--{boundary}\r\n".encode())
+        if filename:
+            body.write(f'Content-Disposition: form-data; name="{name}"; filename="{filename}"\r\n'.encode())
+            body.write(b"Content-Type: application/octet-stream\r\n\r\n")
+            body.write(value)
+            body.write(b"\r\n")
+        else:
+            body.write(f'Content-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
+    body.write(f"--{boundary}--\r\n".encode())
+    return body.getvalue(), f"multipart/form-data; boundary={boundary}"
+
+# 7. 简历上传 / 更换 / 下载 / 删除 / 批量导出
+raw, ct = multipart([("file", b"fake docx content", "resume.docx")])
+s, r = call("POST", f"/api/candidates/{cid}/resume", raw=raw, ctype=ct)
+check("上传docx简历", s == 200 and r["resume_name"] == "resume.docx")
+
+raw, ct = multipart([("file", b"fake txt", "resume.txt")])
+s, r = call("POST", f"/api/candidates/{cid}/resume", raw=raw, ctype=ct, expect_error=True)
+check("非法格式被拒绝", s == 400)
+
+raw, ct = multipart([("file", b"%PDF-fake", "new_resume.pdf")])
+s, r = call("POST", f"/api/candidates/{cid}/resume", raw=raw, ctype=ct)
+check("更换为pdf简历", s == 200 and r["resume_name"] == "new_resume.pdf")
+
+s, content, _ = call_raw("GET", f"/api/candidates/{cid}/resume")
+check("下载简历内容一致", s == 200 and content == b"%PDF-fake")
+
+s, content, headers = call_raw("POST", "/api/resumes/export",
+                               raw=json.dumps({"ids": [cid]}).encode(), ctype="application/json")
+check("批量导出zip(含1份)", s == 200 and content[:2] == b"PK" and headers.get("X-Export-Count") == "1")
+
+s, _ = call("DELETE", f"/api/candidates/{cid}/resume")
+check("删除简历", s == 200)
+s, _ = call("POST", "/api/resumes/export", {"ids": [cid]}, expect_error=True)
+check("无简历时导出报错", s == 400)
+
+s, logs = call("GET", "/api/logs")
+resume_logs = [l["message"] for l in logs["items"][:6]]
+check("简历操作已记录日志", any("简历" in m for m in resume_logs))
+
+# 8. 普通用户权限
 call("POST", "/api/login", {"username": "hr02", "password": "123456"})
 s, cands = call("GET", "/api/candidates")
 check("hr02只能看到本组数据", all(c["group_name"] == "研发二组" for c in cands) and len(cands) >= 1)

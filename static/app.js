@@ -131,26 +131,82 @@ function cellHtml(field, value) {
   return esc(v);
 }
 
+const cand = {
+  list: [],           // 服务端返回的完整列表
+  sort: null,         // {key, dir: 1|-1}
+  selected: new Set(),// 勾选的候选人 id
+  uploadTarget: null, // 待上传简历的候选人 id
+};
+
 async function renderCandidates() {
-  const groupOpts = state.groups.map(g =>
-    `<option value="${g.id}">${esc(g.name)}（${g.candidate_count}）</option>`).join("");
+  const fields = visibleFields();
+  const showGroupCol = isAdmin();
+
+  // 表头第一行：列名（日期列可点击排序）；第二行：每列筛选条件（可多列组合）
+  const headCells = fields.map(f => f.type === "date"
+    ? `<th class="sortable" data-sortkey="${f.key}" title="点击排序">${esc(f.label)}<span class="sort-arrow" data-arrow="${f.key}"></span></th>`
+    : `<th>${esc(f.label)}</th>`).join("");
+  const filterCells = fields.map(f => {
+    if (f.type === "select") {
+      const opts = (f.options || []).map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join("");
+      return `<th><select data-filter="${f.key}"><option value="">全部</option>${opts}</select></th>`;
+    }
+    return `<th><input type="text" data-filter="${f.key}" placeholder="筛选"></th>`;
+  }).join("");
+  const groupFilter = showGroupCol
+    ? `<th><select data-filter="__group"><option value="">全部</option>
+        ${state.groups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join("")}</select></th>`
+    : "";
+
   $("#main").innerHTML = `
     <div class="toolbar">
-      <input type="text" id="cand-search" placeholder="搜索姓名 / 电话 / 部门 / 任意字段…">
-      ${isAdmin() ? `<select id="cand-group"><option value="">全部分组</option>${groupOpts}</select>` : ""}
+      <input type="text" id="cand-search" placeholder="全局搜索：姓名 / 电话 / 部门 / 任意字段…">
+      <button class="btn btn-sm" id="btn-clear-filter">清空筛选</button>
       <div class="spacer"></div>
+      <button class="btn" id="btn-export-resume" disabled>导出选中简历 (0)</button>
       <button class="btn" id="btn-template">下载导入模板</button>
       <button class="btn" id="btn-import">Excel 导入</button>
       <button class="btn btn-primary" id="btn-add">+ 新增候选人</button>
     </div>
-    <div id="cand-table" class="table-wrap"><div class="empty">加载中…</div></div>`;
+    <div id="cand-table" class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="col-check"><input type="checkbox" id="sel-all" title="全选当前筛选结果"></th>
+            ${showGroupCol ? "<th>分组</th>" : ""}${headCells}<th>简历</th><th>操作</th>
+          </tr>
+          <tr class="filter-row">
+            <th></th>${groupFilter}${filterCells}<th></th><th></th>
+          </tr>
+        </thead>
+        <tbody id="cand-tbody"></tbody>
+      </table>
+    </div>
+    <input type="file" id="resume-input" accept=".pdf,.docx" style="display:none">`;
 
   $("#btn-template").addEventListener("click", () => { location.href = "/api/import/template"; });
   $("#btn-import").addEventListener("click", openImportModal);
   $("#btn-add").addEventListener("click", () => openCandidateModal(null));
-  $("#cand-search").addEventListener("input", debounce(loadCandidateTable, 300));
-  const sel = $("#cand-group");
-  if (sel) sel.addEventListener("change", loadCandidateTable);
+  $("#btn-export-resume").addEventListener("click", exportSelectedResumes);
+  $("#cand-search").addEventListener("input", debounce(renderCandidateRows, 250));
+  $("#btn-clear-filter").addEventListener("click", () => {
+    $("#cand-search").value = "";
+    document.querySelectorAll("[data-filter]").forEach(el => { el.value = ""; });
+    cand.sort = null;
+    renderCandidateRows();
+  });
+  document.querySelectorAll("[data-filter]").forEach(el =>
+    el.addEventListener(el.tagName === "SELECT" ? "change" : "input", debounce(renderCandidateRows, 250)));
+  document.querySelectorAll(".sortable").forEach(th =>
+    th.addEventListener("click", () => toggleSort(th.dataset.sortkey)));
+  $("#sel-all").addEventListener("change", e => {
+    const ids = filteredCandidates().map(c => c.id);
+    if (e.target.checked) ids.forEach(id => cand.selected.add(id));
+    else ids.forEach(id => cand.selected.delete(id));
+    renderCandidateRows();
+  });
+  $("#resume-input").addEventListener("change", onResumeFilePicked);
+
   await loadCandidateTable();
 }
 
@@ -158,36 +214,186 @@ function debounce(fn, ms) {
   let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 }
 
+/* 重新从服务端拉取数据（新增/导入/删除后调用） */
 async function loadCandidateTable() {
-  const q = $("#cand-search")?.value.trim() || "";
-  const gid = $("#cand-group")?.value || "";
-  const params = new URLSearchParams();
-  if (q) params.set("q", q);
-  if (gid) params.set("group_id", gid);
-  const list = await api("/api/candidates?" + params);
+  cand.list = await api("/api/candidates");
+  const ids = new Set(cand.list.map(c => c.id));
+  cand.selected.forEach(id => { if (!ids.has(id)) cand.selected.delete(id); });
+  renderCandidateRows();
+}
+
+/* 组合筛选：全局搜索 + 各列条件（AND 关系），支持单列或多列同时生效 */
+function filteredCandidates() {
+  let list = cand.list;
+  const q = ($("#cand-search")?.value || "").trim().toLowerCase();
+  if (q) {
+    list = list.filter(c =>
+      Object.values(c.data).some(v => String(v).toLowerCase().includes(q)) ||
+      c.group_name.toLowerCase().includes(q));
+  }
+  document.querySelectorAll("[data-filter]").forEach(el => {
+    const val = el.value.trim();
+    if (!val) return;
+    const key = el.dataset.filter;
+    if (key === "__group") {
+      list = list.filter(c => String(c.group_id) === val);
+    } else if (el.tagName === "SELECT") {
+      list = list.filter(c => (c.data[key] || "") === val);
+    } else {
+      const lv = val.toLowerCase();
+      list = list.filter(c => String(c.data[key] || "").toLowerCase().includes(lv));
+    }
+  });
+  if (cand.sort) {
+    const { key, dir } = cand.sort;
+    list = [...list].sort((a, b) => {
+      const av = a.data[key] || "", bv = b.data[key] || "";
+      if (!av && !bv) return 0;
+      if (!av) return 1;          // 空值始终排最后
+      if (!bv) return -1;
+      return av.localeCompare(bv) * dir;
+    });
+  }
+  return list;
+}
+
+function toggleSort(key) {
+  if (!cand.sort || cand.sort.key !== key) cand.sort = { key, dir: 1 };
+  else if (cand.sort.dir === 1) cand.sort = { key, dir: -1 };
+  else cand.sort = null;
+  document.querySelectorAll("[data-arrow]").forEach(el => {
+    el.textContent = (cand.sort && cand.sort.key === el.dataset.arrow)
+      ? (cand.sort.dir === 1 ? " ↑" : " ↓") : "";
+  });
+  renderCandidateRows();
+}
+
+function resumeCellHtml(c) {
+  const editable = canEdit(c.group_id);
+  if (c.resume_name) {
+    return `
+      <span class="resume-actions" title="${esc(c.resume_name)}">
+        <button class="btn btn-sm" data-resdl="${c.id}">下载</button>
+        ${editable ? `<button class="btn btn-sm" data-resup="${c.id}">更换</button>
+                      <button class="btn btn-sm btn-danger" data-resdel="${c.id}">删除</button>` : ""}
+      </span>`;
+  }
+  return editable
+    ? `<button class="btn btn-sm" data-resup="${c.id}">上传</button>`
+    : `<span style="color:#cbd5e1">—</span>`;
+}
+
+function renderCandidateRows() {
+  const tbody = $("#cand-tbody");
+  if (!tbody) return;
   const fields = visibleFields();
   const showGroupCol = isAdmin();
+  const list = filteredCandidates();
+  const colCount = 3 + fields.length + (showGroupCol ? 1 : 0);
+
   if (!list.length) {
-    $("#cand-table").innerHTML = `<div class="empty">暂无候选人数据，可通过「Excel 导入」或「新增候选人」添加</div>`;
-    return;
+    tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty">没有符合条件的候选人</td></tr>`;
+  } else {
+    tbody.innerHTML = list.map(c => `
+      <tr>
+        <td class="col-check"><input type="checkbox" data-sel="${c.id}" ${cand.selected.has(c.id) ? "checked" : ""}></td>
+        ${showGroupCol ? `<td><span class="badge badge-gray">${esc(c.group_name)}</span></td>` : ""}
+        ${fields.map(f => `<td>${cellHtml(f, c.data[f.key])}</td>`).join("")}
+        <td>${resumeCellHtml(c)}</td>
+        <td>
+          ${canEdit(c.group_id)
+            ? `<button class="btn btn-sm" data-edit="${c.id}">编辑</button>
+               <button class="btn btn-sm btn-danger" data-del="${c.id}">删除</button>`
+            : `<span style="color:#94a3b8;font-size:12px">只读</span>`}
+        </td>
+      </tr>`).join("");
   }
-  const head = `<tr>${showGroupCol ? "<th>分组</th>" : ""}${fields.map(f => `<th>${esc(f.label)}</th>`).join("")}<th>操作</th></tr>`;
-  const rows = list.map(c => `
-    <tr>
-      ${showGroupCol ? `<td><span class="badge badge-gray">${esc(c.group_name)}</span></td>` : ""}
-      ${fields.map(f => `<td>${cellHtml(f, c.data[f.key])}</td>`).join("")}
-      <td>
-        ${canEdit(c.group_id)
-          ? `<button class="btn btn-sm" data-edit="${c.id}">编辑</button>
-             <button class="btn btn-sm btn-danger" data-del="${c.id}">删除</button>`
-          : `<span style="color:#94a3b8;font-size:12px">只读</span>`}
-      </td>
-    </tr>`).join("");
-  $("#cand-table").innerHTML = `<table><thead>${head}</thead><tbody>${rows}</tbody></table>`;
-  $("#cand-table").querySelectorAll("[data-edit]").forEach(b =>
-    b.addEventListener("click", () => openCandidateModal(list.find(c => c.id === +b.dataset.edit))));
-  $("#cand-table").querySelectorAll("[data-del]").forEach(b =>
-    b.addEventListener("click", () => deleteCandidate(list.find(c => c.id === +b.dataset.del))));
+
+  tbody.querySelectorAll("[data-sel]").forEach(cb =>
+    cb.addEventListener("change", () => {
+      const id = +cb.dataset.sel;
+      cb.checked ? cand.selected.add(id) : cand.selected.delete(id);
+      updateSelectionUI(list);
+    }));
+  tbody.querySelectorAll("[data-edit]").forEach(b =>
+    b.addEventListener("click", () => openCandidateModal(cand.list.find(c => c.id === +b.dataset.edit))));
+  tbody.querySelectorAll("[data-del]").forEach(b =>
+    b.addEventListener("click", () => deleteCandidate(cand.list.find(c => c.id === +b.dataset.del))));
+  tbody.querySelectorAll("[data-resdl]").forEach(b =>
+    b.addEventListener("click", () => { location.href = `/api/candidates/${b.dataset.resdl}/resume`; }));
+  tbody.querySelectorAll("[data-resup]").forEach(b =>
+    b.addEventListener("click", () => {
+      cand.uploadTarget = +b.dataset.resup;
+      $("#resume-input").value = "";
+      $("#resume-input").click();
+    }));
+  tbody.querySelectorAll("[data-resdel]").forEach(b =>
+    b.addEventListener("click", () => deleteResume(cand.list.find(c => c.id === +b.dataset.resdel))));
+
+  updateSelectionUI(list);
+}
+
+function updateSelectionUI(list) {
+  const btn = $("#btn-export-resume");
+  btn.textContent = `导出选中简历 (${cand.selected.size})`;
+  btn.disabled = cand.selected.size === 0;
+  const all = $("#sel-all");
+  all.checked = list.length > 0 && list.every(c => cand.selected.has(c.id));
+}
+
+/* ---------------- 简历操作 ---------------- */
+async function onResumeFilePicked() {
+  const file = $("#resume-input").files[0];
+  if (!file || !cand.uploadTarget) return;
+  const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+  if (![".pdf", ".docx"].includes(ext)) { toast("仅支持 .pdf 和 .docx 格式", true); return; }
+  const fd = new FormData();
+  fd.append("file", file);
+  try {
+    await api(`/api/candidates/${cand.uploadTarget}/resume`, { method: "POST", body: fd });
+    toast("简历已保存");
+    await loadCandidateTable();
+  } catch (e) { toast(e.message, true); }
+  cand.uploadTarget = null;
+}
+
+function deleteResume(c) {
+  openModal("删除简历",
+    `<p>确定删除候选人「<b>${esc(c.data.name || "")}</b>」的简历（${esc(c.resume_name)}）吗？</p>`,
+    `<button class="btn" onclick="closeModal()">取消</button>
+     <button class="btn btn-danger" id="resdel-confirm">确认删除</button>`);
+  $("#resdel-confirm").addEventListener("click", async () => {
+    try {
+      await api(`/api/candidates/${c.id}/resume`, { method: "DELETE" });
+      toast("简历已删除");
+      closeModal();
+      await loadCandidateTable();
+    } catch (e) { toast(e.message, true); }
+  });
+}
+
+async function exportSelectedResumes() {
+  if (!cand.selected.size) return;
+  try {
+    const res = await fetch("/api/resumes/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [...cand.selected] }),
+    });
+    if (!res.ok) {
+      const j = await res.json();
+      toast(j.error || "导出失败", true);
+      return;
+    }
+    const count = res.headers.get("X-Export-Count") || cand.selected.size;
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `简历导出_${new Date().toISOString().slice(0, 10)}.zip`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast(`已导出 ${count} 份简历`);
+  } catch (e) { toast(e.message, true); }
 }
 
 function fieldInput(f, value) {
@@ -353,7 +559,8 @@ async function renderOverview() {
 /* ---------------- 操作日志 ---------------- */
 const ACTION_BADGE = {
   create: ["新增", "green"], update: ["修改", "blue"], delete: ["删除", "red"],
-  import: ["导入", "yellow"], user: ["用户", "gray"], group: ["分组", "gray"], config: ["配置", "gray"],
+  import: ["导入", "yellow"], export: ["导出", "yellow"],
+  user: ["用户", "gray"], group: ["分组", "gray"], config: ["配置", "gray"],
 };
 
 async function renderLogs(page = 1) {

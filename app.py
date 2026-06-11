@@ -10,6 +10,7 @@ import os
 import sqlite3
 import sys
 import secrets
+import zipfile
 from datetime import datetime
 from functools import wraps
 
@@ -21,6 +22,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "candidates.db")
 CONFIG_PATH = os.path.join(BASE_DIR, "config", "fields.json")
 SECRET_PATH = os.path.join(BASE_DIR, "data", ".secret_key")
+RESUME_DIR = os.path.join(BASE_DIR, "data", "resumes")
+ALLOWED_RESUME_EXT = {".pdf", ".docx"}
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
@@ -91,6 +94,8 @@ CREATE TABLE IF NOT EXISTS candidates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     group_id INTEGER NOT NULL REFERENCES groups(id),
     data TEXT NOT NULL,                    -- JSON: {field_key: value}
+    resume_file TEXT,                      -- 简历在磁盘上的存储文件名
+    resume_name TEXT,                      -- 简历原始文件名
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -107,11 +112,22 @@ CREATE TABLE IF NOT EXISTS logs (
 """
 
 
+def _migrate(db):
+    """为老数据库补充新列。"""
+    cols = {r["name"] for r in db.execute("PRAGMA table_info(candidates)").fetchall()}
+    if "resume_file" not in cols:
+        db.execute("ALTER TABLE candidates ADD COLUMN resume_file TEXT")
+        db.execute("ALTER TABLE candidates ADD COLUMN resume_name TEXT")
+        db.commit()
+
+
 def init_db(demo=False):
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    os.makedirs(RESUME_DIR, exist_ok=True)
     db = sqlite3.connect(DB_PATH)
     db.row_factory = sqlite3.Row
     db.executescript(SCHEMA)
+    _migrate(db)
     cur = db.execute("SELECT COUNT(*) AS c FROM users")
     if cur.fetchone()["c"] == 0:
         db.execute(
@@ -201,6 +217,10 @@ def can_edit_group(user, group_id):
     if user["role"] == "admin":
         return True
     return user["role"] == "editor" and user["group_id"] == group_id
+
+
+def can_view_group(user, group_id):
+    return user["role"] == "admin" or user["group_id"] == group_id
 
 
 # ---------------------------------------------------------------- 日志
@@ -391,7 +411,7 @@ def candidate_dict(row, group_names=None):
         r = get_db().execute("SELECT name FROM groups WHERE id=?", (row["group_id"],)).fetchone()
         gname = r["name"] if r else ""
     return {"id": row["id"], "group_id": row["group_id"], "group_name": gname,
-            "updated_at": row["updated_at"], "data": data}
+            "updated_at": row["updated_at"], "resume_name": row["resume_name"], "data": data}
 
 
 def group_name_map():
@@ -496,10 +516,133 @@ def api_candidate_delete(cid):
     if not can_edit_group(g.user, row["group_id"]):
         return jsonify({"error": "无该分组的编辑权限"}), 403
     name = json.loads(row["data"]).get("name", "")
+    _remove_resume_file(row["resume_file"])
     db.execute("DELETE FROM candidates WHERE id=?", (cid,))
     add_log(g.user, "delete", f"{g.user['display_name']} 删除了候选人「{name}」", cid, name, row["group_id"])
     db.commit()
     return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------- 简历管理
+def _remove_resume_file(stored_name):
+    if not stored_name:
+        return
+    path = os.path.join(RESUME_DIR, stored_name)
+    if os.path.exists(path):
+        os.remove(path)
+
+
+def _get_candidate_or_403(cid, need_edit=True):
+    """返回 (row, error_response)。"""
+    row = get_db().execute("SELECT * FROM candidates WHERE id=?", (cid,)).fetchone()
+    if not row:
+        return None, (jsonify({"error": "候选人不存在"}), 404)
+    ok = can_edit_group(g.user, row["group_id"]) if need_edit else can_view_group(g.user, row["group_id"])
+    if not ok:
+        return None, (jsonify({"error": "无该分组的操作权限"}), 403)
+    return row, None
+
+
+@app.post("/api/candidates/<int:cid>/resume")
+@login_required
+def api_resume_upload(cid):
+    row, err = _get_candidate_or_403(cid)
+    if err:
+        return err
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"error": "请选择简历文件"}), 400
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in ALLOWED_RESUME_EXT:
+        return jsonify({"error": "仅支持 .pdf 和 .docx 格式的简历"}), 400
+    os.makedirs(RESUME_DIR, exist_ok=True)
+    stored = f"{cid}_{secrets.token_hex(8)}{ext}"
+    f.save(os.path.join(RESUME_DIR, stored))
+    _remove_resume_file(row["resume_file"])
+
+    db = get_db()
+    db.execute("UPDATE candidates SET resume_file=?, resume_name=?, updated_at=? WHERE id=?",
+               (stored, f.filename, now_str(), cid))
+    name = json.loads(row["data"]).get("name", "")
+    verb = "更新" if row["resume_file"] else "上传"
+    add_log(g.user, "update", f"{g.user['display_name']} {verb}了「{name}」的简历（{f.filename}）",
+            cid, name, row["group_id"])
+    db.commit()
+    return jsonify({"ok": True, "resume_name": f.filename})
+
+
+@app.get("/api/candidates/<int:cid>/resume")
+@login_required
+def api_resume_download(cid):
+    row, err = _get_candidate_or_403(cid, need_edit=False)
+    if err:
+        return err
+    if not row["resume_file"]:
+        return jsonify({"error": "该候选人尚未上传简历"}), 404
+    path = os.path.join(RESUME_DIR, row["resume_file"])
+    if not os.path.exists(path):
+        return jsonify({"error": "简历文件丢失，请重新上传"}), 404
+    name = json.loads(row["data"]).get("name", "")
+    ext = os.path.splitext(row["resume_name"])[1]
+    return send_file(path, as_attachment=True, download_name=f"{name}_{os.path.splitext(row['resume_name'])[0]}{ext}")
+
+
+@app.delete("/api/candidates/<int:cid>/resume")
+@login_required
+def api_resume_delete(cid):
+    row, err = _get_candidate_or_403(cid)
+    if err:
+        return err
+    if not row["resume_file"]:
+        return jsonify({"error": "该候选人没有简历"}), 400
+    _remove_resume_file(row["resume_file"])
+    db = get_db()
+    db.execute("UPDATE candidates SET resume_file=NULL, resume_name=NULL, updated_at=? WHERE id=?",
+               (now_str(), cid))
+    name = json.loads(row["data"]).get("name", "")
+    add_log(g.user, "delete", f"{g.user['display_name']} 删除了「{name}」的简历（{row['resume_name']}）",
+            cid, name, row["group_id"])
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.post("/api/resumes/export")
+@login_required
+def api_resumes_export():
+    ids = request.get_json(force=True).get("ids") or []
+    if not ids:
+        return jsonify({"error": "请先勾选候选人"}), 400
+    db = get_db()
+    placeholders = ",".join("?" * len(ids))
+    rows = db.execute(f"SELECT * FROM candidates WHERE id IN ({placeholders})", ids).fetchall()
+
+    buf = io.BytesIO()
+    exported, used_names = 0, set()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for row in rows:
+            if not can_view_group(g.user, row["group_id"]) or not row["resume_file"]:
+                continue
+            path = os.path.join(RESUME_DIR, row["resume_file"])
+            if not os.path.exists(path):
+                continue
+            name = json.loads(row["data"]).get("name", "未命名")
+            arcname = f"{name}_{row['resume_name']}"
+            if arcname in used_names:
+                arcname = f"{name}_{row['id']}_{row['resume_name']}"
+            used_names.add(arcname)
+            zf.write(path, arcname)
+            exported += 1
+    if exported == 0:
+        return jsonify({"error": "选中的候选人均没有可导出的简历"}), 400
+
+    add_log(g.user, "export", f"{g.user['display_name']} 批量导出了 {exported} 份简历")
+    db.commit()
+    buf.seek(0)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    resp = send_file(buf, as_attachment=True, download_name=f"简历导出_{ts}.zip",
+                     mimetype="application/zip")
+    resp.headers["X-Export-Count"] = str(exported)
+    return resp
 
 
 # ---------------------------------------------------------------- Excel 导入/模板
