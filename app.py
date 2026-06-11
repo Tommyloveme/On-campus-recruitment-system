@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-"""校招候选人管理系统 - 跨平台（Windows / SUSE Linux）
+"""校招入职跟踪管理系统 - 跨平台（Windows / SUSE Linux）
 
+面向已接收 Offer 的校招候选人，跟踪签约、体检、入职预约到正式入职的全流程。
 技术栈：Flask + SQLite（标准库 sqlite3），Excel 导入使用 openpyxl。
 字段通过 config/fields.json 配置：导入哪些列、网页显示哪些列均可配置。
 """
@@ -1158,7 +1159,7 @@ if __name__ == "__main__":
         sys.exit(1)
     # 启动定时备份线程（启动即备份一次，之后每 interval_hours 小时一份，保留 retention_days 天）
     threading.Thread(target=backup_scheduler, daemon=True).start()
-    print(f"校招候选人管理系统已启动: http://127.0.0.1:{port} （waitress，{threads} 工作线程）")
+    print(f"校招入职跟踪管理系统已启动: http://127.0.0.1:{port} （waitress，{threads} 工作线程）")
     from waitress import serve
     serve(app, host="0.0.0.0", port=port, threads=threads,
           connection_limit=1024, channel_timeout=120)

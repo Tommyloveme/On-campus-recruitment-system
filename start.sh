@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 校招候选人管理系统 - Linux (SUSE 等) 启动脚本
+# 校招入职跟踪管理系统 - Linux (SUSE 等) 启动脚本
 set -e
 cd "$(dirname "$0")"
 

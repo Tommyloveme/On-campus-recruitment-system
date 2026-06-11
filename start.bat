@@ -1,5 +1,5 @@
 @echo off
-rem 校招候选人管理系统 - Windows 启动脚本
+rem 校招入职跟踪管理系统 - Windows 启动脚本
 chcp 65001 >nul
 cd /d "%~dp0"
 

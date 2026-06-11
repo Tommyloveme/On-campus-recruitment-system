@@ -60,13 +60,13 @@ def table(headers, rows, widths=None):
 
 
 # ============================================================ 封面/概述
-P("校招候选人管理系统", S_TITLE)
+P("校招入职跟踪管理系统", S_TITLE)
 P("操作手册 · Operation Manual", S_SUB)
 
 P("一、系统概述", S_H1)
-P("本系统用于校园招聘候选人的全流程跟踪管理，覆盖 Offer 发放、签约、体检、入职预约到正式入职的各个环节，"
-  "支持 Excel 批量导入/导出、简历管理与在线预览、数据透视图表、多级权限分组以及全程操作留痕。"
-  "系统跨平台运行（Windows / SUSE Linux），浏览器访问地址默认为 http://服务器IP:8000。")
+P("本系统面向<b>已接收 Offer</b> 的校招候选人，用于入职前的全流程跟踪维护，覆盖签约、体检、"
+  "入职预约到正式入职的各个环节，支持 Excel 批量导入/导出、简历管理与在线预览、数据透视图表、"
+  "多级权限分组以及全程操作留痕。系统跨平台运行（Windows / SUSE Linux），浏览器访问地址默认为 http://服务器IP:8000。")
 
 P("二、登录与角色权限", S_H1)
 P("使用管理员分配的账号登录。新建账号默认密码为 123456，首次登录后请联系管理员修改。", S_P)
@@ -147,6 +147,6 @@ P("—— 完 ——", S_SUB)
 doc = SimpleDocTemplate(OUT_PATH, pagesize=A4,
                         leftMargin=18 * mm, rightMargin=18 * mm,
                         topMargin=16 * mm, bottomMargin=16 * mm,
-                        title="校招候选人管理系统操作手册")
+                        title="校招入职跟踪管理系统操作手册")
 doc.build(story)
 print(f"操作手册已生成: {OUT_PATH}")
