@@ -7,9 +7,12 @@
 import io
 import json
 import os
+import re
 import sqlite3
 import sys
 import secrets
+import threading
+import time
 import zipfile
 from datetime import datetime
 from functools import wraps
@@ -24,6 +27,7 @@ CONFIG_PATH = os.path.join(BASE_DIR, "config", "fields.json")
 APP_CONFIG_PATH = os.path.join(BASE_DIR, "config", "app_config.json")
 SECRET_PATH = os.path.join(BASE_DIR, "data", ".secret_key")
 RESUME_DIR = os.path.join(BASE_DIR, "data", "resumes")
+BACKUP_DIR = os.path.join(BASE_DIR, "data", "backups")
 
 
 def load_app_config():
@@ -1029,6 +1033,107 @@ def api_overview():
     return jsonify(groups)
 
 
+# ---------------------------------------------------------------- 数据备份与恢复（仅管理员）
+BACKUP_NAME_RE = re.compile(r"^backup_\d{8}_\d{6}(_\d{3})?(_manual)?\.db$")
+
+
+def take_backup(manual=False):
+    """用 SQLite 在线备份 API 生成数据库快照（WAL 模式下安全，不阻塞读写）。"""
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    # 文件名带毫秒，避免同一秒内连续备份（如恢复前的自动保存）互相覆盖
+    ts = datetime.now()
+    name = ("backup_" + ts.strftime("%Y%m%d_%H%M%S") + f"_{ts.microsecond // 1000:03d}"
+            + ("_manual" if manual else "") + ".db")
+    path = os.path.join(BACKUP_DIR, name)
+    src = sqlite3.connect(DB_PATH)
+    dst = sqlite3.connect(path)
+    try:
+        with dst:
+            src.backup(dst)
+    finally:
+        src.close()
+        dst.close()
+    _prune_backups()
+    return name
+
+
+def _prune_backups():
+    """按配置保留期清理过期快照（默认3天，每小时一份约72份）。"""
+    retention_days = APP_CONFIG.get("backup", {}).get("retention_days", 3)
+    cutoff = time.time() - retention_days * 86400
+    for f in os.listdir(BACKUP_DIR):
+        path = os.path.join(BACKUP_DIR, f)
+        if BACKUP_NAME_RE.match(f) and os.path.getmtime(path) < cutoff:
+            os.remove(path)
+
+
+def backup_scheduler():
+    """后台守护线程：启动时立即备份一次，之后按配置间隔（默认每小时）自动备份。"""
+    interval = APP_CONFIG.get("backup", {}).get("interval_hours", 1) * 3600
+    while True:
+        try:
+            take_backup()
+        except Exception as e:
+            print(f"自动备份失败: {e}")
+        time.sleep(interval)
+
+
+@app.get("/api/backups")
+@admin_required
+def api_backups():
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    items = []
+    for f in os.listdir(BACKUP_DIR):
+        if not BACKUP_NAME_RE.match(f):
+            continue
+        path = os.path.join(BACKUP_DIR, f)
+        items.append({
+            "name": f,
+            "manual": "_manual" in f,
+            "time": datetime.fromtimestamp(os.path.getmtime(path)).strftime("%Y-%m-%d %H:%M:%S"),
+            "size_kb": round(os.path.getsize(path) / 1024, 1),
+        })
+    items.sort(key=lambda x: x["name"], reverse=True)
+    return jsonify(items)
+
+
+@app.post("/api/backups")
+@admin_required
+def api_backup_create():
+    name = take_backup(manual=True)
+    add_log(g.user, "backup", f"{g.user['display_name']} 手动创建了数据备份（{name}）")
+    get_db().commit()
+    return jsonify({"ok": True, "name": name})
+
+
+@app.post("/api/backups/restore")
+@admin_required
+def api_backup_restore():
+    name = (request.get_json(force=True).get("name") or "").strip()
+    if not BACKUP_NAME_RE.match(name):
+        return jsonify({"error": "备份文件名不合法"}), 400
+    path = os.path.join(BACKUP_DIR, name)
+    if not os.path.exists(path):
+        return jsonify({"error": "备份文件不存在"}), 404
+
+    # 恢复前自动保存当前状态，误恢复可再恢复回来
+    safety = take_backup(manual=True)
+
+    src = sqlite3.connect(path)
+    dst = sqlite3.connect(DB_PATH)
+    try:
+        with dst:
+            src.backup(dst)
+    finally:
+        src.close()
+        dst.close()
+
+    # 恢复后的库写入本次操作日志
+    add_log(g.user, "backup", f"{g.user['display_name']} 将数据恢复至备份「{name}」（恢复前状态已自动保存为 {safety}）")
+    get_db().commit()
+    return jsonify({"ok": True, "restored": name, "safety_backup": safety})
+
+
 # ---------------------------------------------------------------- 静态页面
 @app.get("/")
 def index():
@@ -1051,6 +1156,8 @@ if __name__ == "__main__":
     if port_in_use(port):
         print(f"错误：端口 {port} 已有服务在运行，请先停止旧实例（或修改 config/app_config.json 中的端口）。")
         sys.exit(1)
+    # 启动定时备份线程（启动即备份一次，之后每 interval_hours 小时一份，保留 retention_days 天）
+    threading.Thread(target=backup_scheduler, daemon=True).start()
     print(f"校招候选人管理系统已启动: http://127.0.0.1:{port} （waitress，{threads} 工作线程）")
     from waitress import serve
     serve(app, host="0.0.0.0", port=port, threads=threads,

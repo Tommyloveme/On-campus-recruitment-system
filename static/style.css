@@ -86,7 +86,11 @@ textarea { resize: vertical; line-height: 1.6; }
 .toolbar select { width: 160px; }
 
 /* ---------- 表格 ---------- */
-.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
+/* resize: horizontal 让整张表格容器右下角可拖拽，自定义整体宽度 */
+.table-wrap {
+  overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: #fff;
+  resize: horizontal; min-width: 480px; max-width: none;
+}
 table { border-collapse: collapse; width: 100%; min-width: 900px; }
 th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; font-size: 13px; }
 th { background: #f8fafc; color: var(--muted); font-weight: 600; position: sticky; top: 0; }
@@ -116,7 +120,7 @@ th.sortable:hover { color: var(--primary); }
 
 /* 过长内容截断：悬浮可见完整内容 */
 .clip {
-  display: inline-block; max-width: 150px;
+  display: inline-block; max-width: var(--clip-max, 320px);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   vertical-align: bottom; cursor: default;
 }

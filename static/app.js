@@ -120,6 +120,9 @@ async function boot() {
   state.app = cfg.app || {};
   state.groups = groups;
   cand.pageSize = state.app.page_size ?? 15;   // 每页默认条数由配置决定
+  // 长内容截断的默认宽度由配置决定（app_config.json -> ui.clip_max_width）
+  if (state.app.clip_max_width)
+    document.documentElement.style.setProperty("--clip-max", state.app.clip_max_width + "px");
 
   const tabs = [["candidates", "候选人"]];
   if (canSeeAll()) tabs.push(["overview", "全局总览"]);
@@ -1012,7 +1015,7 @@ function renderPivotTable(dims, sers, matrix, dimKey, serKey) {
 /* ---------------- 操作日志 ---------------- */
 const ACTION_BADGE = {
   create: ["新增", "green"], update: ["修改", "blue"], delete: ["删除", "red"],
-  import: ["导入", "yellow"], export: ["导出", "yellow"],
+  import: ["导入", "yellow"], export: ["导出", "yellow"], backup: ["备份", "gray"],
   user: ["用户", "gray"], group: ["分组", "gray"], config: ["配置", "gray"],
 };
 
@@ -1081,6 +1084,12 @@ async function renderAdmin() {
           </div>
         </div>
         <div class="card">
+          <div class="section-title">数据备份与恢复</div>
+          <p style="font-size:12px;color:#64748b;margin-bottom:10px">系统每小时自动备份一次，保留 3 天（可在 app_config.json 调整）；恢复前会自动保存当前状态。</p>
+          <div id="backup-list" style="max-height:260px;overflow-y:auto"></div>
+          <button class="btn btn-primary btn-sm" id="btn-backup-now" style="margin-top:12px">立即备份</button>
+        </div>
+        <div class="card">
           <div class="section-title">网页字段显示配置</div>
           <p style="font-size:12px;color:#64748b;margin-bottom:10px">全局配置写入 config/fields.json；分组配置各自独立成文件（fields_group_*.json），仅覆盖显示开关</p>
           <div class="form-item" style="max-width:260px">
@@ -1100,7 +1109,14 @@ async function renderAdmin() {
         <button class="btn btn-primary" id="btn-add-user" style="margin-top:12px">+ 新增用户</button>
       </div>
     </div>`;
-  await Promise.all([loadGroupList(), loadUserList()]);
+  await Promise.all([loadGroupList(), loadUserList(), loadBackupList()]);
+  $("#btn-backup-now").addEventListener("click", async () => {
+    try {
+      const r = await api("/api/backups", { method: "POST" });
+      toast(`备份完成：${r.name}`);
+      loadBackupList();
+    } catch (e) { toast(e.message, true); }
+  });
   fieldCfg.scope = "";
   fieldCfg.fields = state.fields;
   renderFieldConfig();
@@ -1141,6 +1157,43 @@ async function loadGroupList() {
         loadGroupList();
       } catch (e) { toast(e.message, true); }
     }));
+}
+
+/* 备份列表 + 一键恢复（仅管理员） */
+async function loadBackupList() {
+  const items = await api("/api/backups");
+  $("#backup-list").innerHTML = items.length ? items.map(b => `
+    <div class="tag-row">
+      <span title="${esc(b.name)}">
+        ${esc(b.time)}
+        <span class="badge badge-${b.manual ? "blue" : "gray"}">${b.manual ? "手动" : "自动"}</span>
+        <span style="color:#94a3b8;font-size:12px">${b.size_kb} KB</span>
+      </span>
+      <button class="btn btn-sm" data-restore="${esc(b.name)}">恢复</button>
+    </div>`).join("")
+    : `<div class="empty" style="padding:16px">暂无备份，服务启动后会自动生成</div>`;
+  $("#backup-list").querySelectorAll("[data-restore]").forEach(btn =>
+    btn.addEventListener("click", () => confirmRestore(btn.dataset.restore)));
+}
+
+function confirmRestore(name) {
+  openModal("恢复数据确认", `
+    <p>确定将系统数据恢复至备份 <b>${esc(name)}</b> 吗？</p>
+    <p style="font-size:12px;color:#64748b;line-height:1.8">
+      · 恢复会覆盖当前的候选人、用户、分组与日志数据；<br>
+      · 恢复前系统会自动保存当前状态为一份新的手动备份，误操作可再恢复回来；<br>
+      · 恢复完成后页面将自动刷新。
+    </p>`,
+    `<button class="btn" onclick="closeModal()">取消</button>
+     <button class="btn btn-danger" id="restore-confirm">确认恢复</button>`);
+  $("#restore-confirm").addEventListener("click", async () => {
+    try {
+      const r = await api("/api/backups/restore", { method: "POST", json: { name } });
+      toast(`已恢复至 ${r.restored}，正在刷新…`);
+      closeModal();
+      setTimeout(() => location.reload(), 1200);
+    } catch (e) { toast(e.message, true); }
+  });
 }
 
 async function loadUserList() {

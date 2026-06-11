@@ -8,7 +8,11 @@
   "ui": {
     "page_size": 15,
     "page_size_options": [15, 30, 50, 100, 0],
-    "clip_max_width": 150
+    "clip_max_width": 320
+  },
+  "backup": {
+    "interval_hours": 1,
+    "retention_days": 3
   },
   "security": {
     "default_password": "123456"

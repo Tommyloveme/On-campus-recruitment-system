@@ -312,6 +312,30 @@ batch_ids = [c["id"] for c in batch[:10]]
 s, r = call("POST", "/api/candidates/batch_delete", {"ids": batch_ids})
 check("管理员批量删除10名候选人", r["deleted"] == 10)
 
+# 9d. 数据备份与恢复（仅管理员）
+call("POST", "/api/login", {"username": "hr01", "password": "123456"})
+s, _ = call("GET", "/api/backups", expect_error=True)
+check("非管理员无备份权限", s == 403)
+
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+s, r = call("POST", "/api/backups", {})
+check("管理员手动创建备份", s == 200 and r.get("ok"))
+backup_name = r["name"]
+s, backups = call("GET", "/api/backups")
+check("备份列表包含新备份", s == 200 and any(b["name"] == backup_name for b in backups))
+
+# 备份后新增一名候选人，恢复备份后应消失
+s, groups_now = call("GET", "/api/groups")
+s, c_tmp = call("POST", "/api/candidates", {"group_id": groups_now[0]["id"], "data": {"name": "恢复测试甲"}})
+s, found = call("GET", "/api/candidates?q=" + quote("恢复测试甲"))
+check("恢复前能查到新候选人", len(found) == 1)
+s, r = call("POST", "/api/backups/restore", {"name": backup_name})
+check("管理员恢复指定备份", s == 200 and r.get("ok"))
+s, found = call("GET", "/api/candidates?q=" + quote("恢复测试甲"))
+check("恢复后新候选人已消失", len(found) == 0)
+s, _ = call("POST", "/api/backups/restore", {"name": "../etc/passwd"}, expect_error=True)
+check("非法备份名被拒绝", s == 400)
+
 # 10. 并发场景：60个并发会话同时登录+查询
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 conc_results = []
