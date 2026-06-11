@@ -1,0 +1,6 @@
+# 二进制文件不做换行符转换
+*.pdf -text
+*.xlsx -text
+*.db -text
+# 前端 vendor 大文件保持原样
+static/vendor/* -text
