@@ -784,17 +784,13 @@ const CHART_COLORS = [
 
 async function renderCharts() {
   const fields = visibleFields();
-  const dimOpts = [
-    `<option value="__group">权限分组</option>`,
+  const fieldOpts = (selected) => [
+    `<option value="__group"${selected === "__group" ? " selected" : ""}>权限分组</option>`,
     ...fields.map(f =>
-      `<option value="${f.key}" ${f.key === "offer_status" ? "selected" : ""}>${esc(f.label)}</option>`),
+      `<option value="${f.key}"${f.key === selected ? " selected" : ""}>${esc(f.label)}</option>`),
   ].join("");
-  const serOpts = [
-    `<option value="">（无）</option>`,
-    `<option value="__group">权限分组</option>`,
-    ...fields.filter(f => f.type === "select").map(f =>
-      `<option value="${f.key}">${esc(f.label)}</option>`),
-  ].join("");
+  const dimOpts = fieldOpts("offer_status");
+  const serOpts = `<option value="">（无）</option>` + fieldOpts("");
   // 组管理员只能看本组数据，分组范围固定为本组
   const groupCtrl = isGroupAdmin()
     ? `<div class="chart-ctrl"><label>分组范围</label>

@@ -73,7 +73,16 @@ chmod +x start.sh
 | `importable` | 是否参与 Excel 导入 |
 | `required` | 新增时是否必填 |
 
-修改该文件后无需重启服务，刷新页面即可生效；新增字段只需在此文件中追加一项。
+修改该文件后无需重启服务，刷新页面即可生效。**该文件是字段的唯一数据源**：新增字段只需在此追加一项，Excel 导入模板、导入匹配、网页表格列、编辑表单、数据图表维度全部自动联动，无需改代码或数据库。
+
+## 维测脚本（scripts/）
+
+| 命令 | Windows | Linux | 说明 |
+| --- | --- | --- | --- |
+| 状态 | `scripts\status.bat` | `./scripts/status.sh` | 端口/PID/残留进程检测 |
+| 停止 | `scripts\stop.bat` | `./scripts/stop.sh` | 按端口定位并停止服务 |
+| 强制停止 | `scripts\force_stop.bat` | `./scripts/force_stop.sh` | 杀掉端口进程+所有 app.py 残留进程 |
+| 重启 | `scripts\restart.bat` | `./scripts/restart.sh` | 停止后后台启动（日志写 `data/server.log`） |
 
 ## 项目结构
 
@@ -83,6 +92,7 @@ chmod +x start.sh
 ├── config/fields.json   # 全局字段配置（导入列 + 网页显示列 + 徽章颜色）
 ├── config/fields_group_*.json  # 各分组独立的字段显示配置（自动生成）
 ├── docs/维测指导手册.md  # 维护与测试指导
+├── scripts/             # 维测脚本（status/stop/force_stop/restart，bat+sh 双平台）
 ├── tools/gen_manual.py  # 操作手册 PDF 生成脚本（输出 static/manual.pdf）
 ├── static/              # 前端页面（原生 HTML/CSS/JS，无构建依赖）
 ├── data/                # SQLite 数据库 + 简历文件（首次运行自动创建）

@@ -7,6 +7,7 @@
 """
 import io
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -39,6 +40,35 @@ def load_app_config():
 
 APP_CONFIG = load_app_config()
 ALLOWED_RESUME_EXT = set(APP_CONFIG["resume"]["allowed_ext"])
+
+
+def setup_logging():
+    """运行日志写入 data/server.log 并同步输出控制台；级别由 LOG_LEVEL 环境变量或 app_config 控制。"""
+    level_name = os.environ.get("LOG_LEVEL") or APP_CONFIG.get("logging", {}).get("level", "INFO")
+    level = getattr(logging, level_name.upper(), logging.INFO)
+    os.makedirs(os.path.join(BASE_DIR, "data"), exist_ok=True)
+    fmt = logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s", datefmt="%H:%M:%S")
+    root = logging.getLogger("campus")
+    root.setLevel(level)
+    root.propagate = False
+    if not root.handlers:
+        fh = logging.FileHandler(os.path.join(BASE_DIR, "data", "server.log"), encoding="utf-8")
+        fh.setFormatter(fmt)
+        root.addHandler(fh)
+        # 交互式启动时同步输出控制台；脚本后台启动时 stderr 已重定向至 server.log，不再重复添加
+        if sys.stderr.isatty():
+            sh = logging.StreamHandler()
+            sh.setFormatter(fmt)
+            root.addHandler(sh)
+    return root
+
+
+log = setup_logging()
+
+
+def _who(user):
+    """日志中标识操作用户（用户名/显示名/角色）。"""
+    return f"{user['username']}({user['display_name']}/{user['role']})"
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 app.config["MAX_CONTENT_LENGTH"] = APP_CONFIG["server"]["max_upload_mb"] * 1024 * 1024
@@ -296,15 +326,23 @@ def add_log(user, action, message, candidate_id=None, candidate_name=None, group
 @app.post("/api/login")
 def api_login():
     body = request.get_json(force=True)
-    user = get_db().execute("SELECT * FROM users WHERE username=?", (body.get("username", ""),)).fetchone()
+    username = body.get("username", "")
+    user = get_db().execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
     if not user or not check_password_hash(user["password_hash"], body.get("password", "")):
+        log.warning("登录失败 username=%s ip=%s", username, request.remote_addr)
         return jsonify({"error": "用户名或密码错误"}), 401
     session["uid"] = user["id"]
+    log.info("登录成功 %s ip=%s", _who(user), request.remote_addr)
     return jsonify(user_dict(user))
 
 
 @app.post("/api/logout")
 def api_logout():
+    uid = session.get("uid")
+    if uid:
+        u = get_db().execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+        if u:
+            log.info("退出登录 %s", _who(u))
     session.clear()
     return jsonify({"ok": True})
 
@@ -354,6 +392,7 @@ def api_config_update():
     else:
         return jsonify({"error": "无配置权限"}), 403
 
+    log.debug("字段配置更新 %s group_id=%s keys=%s", _who(g.user), group_id, list(updates.keys()))
     if group_id:
         # 分组级配置：仅覆盖 visible 开关，独立文件存储
         path = group_config_path(group_id)
@@ -378,6 +417,7 @@ def api_config_update():
         save_fields(fields)
         add_log(g.user, "config", f"{g.user['display_name']} 调整了全局字段显示配置")
     get_db().commit()
+    log.info("字段配置已保存 %s scope=%s", _who(g.user), group_id or "global")
     return jsonify({"fields": load_fields(group_id), "group_id": group_id})
 
 
@@ -555,6 +595,8 @@ def api_candidates():
     if q:
         result = [c for c in result
                   if any(q in str(v) for v in c["data"].values()) or q in c["group_name"]]
+    log.debug("候选人列表 %s 返回%d条 q=%s group=%s",
+              _who(g.user), len(result), q or "-", request.args.get("group_id", "-"))
     return jsonify(result)
 
 
@@ -566,6 +608,7 @@ def api_candidate_create():
     if not group_id:
         return jsonify({"error": "请指定分组"}), 400
     if not can_edit_group(g.user, group_id):
+        log.warning("新增候选人权限拒绝 %s group_id=%s", _who(g.user), group_id)
         return jsonify({"error": "无该分组的编辑权限"}), 403
     fields = load_fields()
     data = {f["key"]: str(b.get("data", {}).get(f["key"], "") or "").strip() for f in fields if f.get("editable")}
@@ -580,6 +623,7 @@ def api_candidate_create():
     add_log(g.user, "create", f"{g.user['display_name']} 新增了候选人「{data['name']}」（{gname}）",
             cur.lastrowid, data["name"], group_id)
     db.commit()
+    log.info("新增候选人 %s id=%d name=%s group=%s", _who(g.user), cur.lastrowid, data["name"], gname)
     return jsonify({"ok": True, "id": cur.lastrowid})
 
 
@@ -591,6 +635,7 @@ def api_candidate_update(cid):
     if not row:
         return jsonify({"error": "候选人不存在"}), 404
     if not can_edit_group(g.user, row["group_id"]):
+        log.warning("修改候选人权限拒绝 %s cid=%d", _who(g.user), cid)
         return jsonify({"error": "无该分组的编辑权限"}), 403
     old = json.loads(row["data"])
     incoming = request.get_json(force=True).get("data", {})
@@ -618,6 +663,8 @@ def api_candidate_update(cid):
             f"{g.user['display_name']} 修改了「{name}」：" + "；".join(changes),
             cid, name, row["group_id"])
     db.commit()
+    log.info("修改候选人 %s id=%d name=%s 变更%d项", _who(g.user), cid, name, len(changes))
+    log.debug("修改明细 id=%d %s", cid, "；".join(changes))
     return jsonify({"ok": True, "changed": len(changes)})
 
 
@@ -629,12 +676,14 @@ def api_candidate_delete(cid):
     if not row:
         return jsonify({"error": "候选人不存在"}), 404
     if not can_delete_group(g.user, row["group_id"]):
+        log.warning("删除候选人权限拒绝 %s cid=%d", _who(g.user), cid)
         return jsonify({"error": "无删除权限（仅系统管理员和组管理员可删除）"}), 403
     name = json.loads(row["data"]).get("name", "")
     _remove_resume_file(row["resume_file"])
     db.execute("DELETE FROM candidates WHERE id=?", (cid,))
     add_log(g.user, "delete", f"{g.user['display_name']} 删除了候选人「{name}」", cid, name, row["group_id"])
     db.commit()
+    log.info("删除候选人 %s id=%d name=%s", _who(g.user), cid, name)
     return jsonify({"ok": True})
 
 
@@ -643,6 +692,7 @@ def api_candidate_delete(cid):
 def api_candidates_batch_delete():
     """批量删除：仅系统管理员（任意分组）与组管理员（本组）可执行。"""
     if g.user["role"] not in ("admin", "group_admin"):
+        log.warning("批量删除权限拒绝 %s", _who(g.user))
         return jsonify({"error": "仅系统管理员和组管理员可批量删除"}), 403
     ids = request.get_json(force=True).get("ids") or []
     if not ids:
@@ -666,6 +716,7 @@ def api_candidates_batch_delete():
             f"{g.user['display_name']} 批量删除了 {len(deleted_names)} 名候选人（{shown}）",
             group_id=g.user["group_id"])
     db.commit()
+    log.info("批量删除 %s 删除%d 跳过%d", _who(g.user), len(deleted_names), len(rows) - len(deleted_names))
     return jsonify({"ok": True, "deleted": len(deleted_names),
                     "skipped": len(rows) - len(deleted_names)})
 
@@ -715,6 +766,7 @@ def api_resume_upload(cid):
     add_log(g.user, "update", f"{g.user['display_name']} {verb}了「{name}」的简历（{f.filename}）",
             cid, name, row["group_id"])
     db.commit()
+    log.info("简历%s %s cid=%d name=%s file=%s", verb, _who(g.user), cid, name, f.filename)
     return jsonify({"ok": True, "resume_name": f.filename})
 
 
@@ -794,6 +846,7 @@ def api_resume_delete(cid):
     add_log(g.user, "delete", f"{g.user['display_name']} 删除了「{name}」的简历（{row['resume_name']}）",
             cid, name, row["group_id"])
     db.commit()
+    log.info("删除简历 %s cid=%d name=%s", _who(g.user), cid, name)
     return jsonify({"ok": True})
 
 
@@ -907,6 +960,7 @@ def api_import():
     if not group_id:
         return jsonify({"error": "请指定导入的分组"}), 400
     if not can_edit_group(g.user, group_id):
+        log.warning("Excel导入权限拒绝 %s group_id=%s", _who(g.user), group_id)
         return jsonify({"error": "无该分组的编辑权限"}), 403
 
     try:
@@ -928,6 +982,7 @@ def api_import():
                 break
     if "name" not in col_map.values():
         return jsonify({"error": "Excel中未找到“候选人”列，请参考导入模板"}), 400
+    log.debug("Excel导入列映射 %s group_id=%s cols=%s", _who(g.user), group_id, col_map)
 
     def cell_str(v):
         if v is None:
@@ -981,6 +1036,8 @@ def api_import():
             + (f"，跳过{skipped}行" if skipped else ""),
             None, None, group_id)
     db.commit()
+    log.info("Excel导入 %s group=%s 新增%d 更新%d 跳过%d",
+             _who(g.user), gname, created, updated, skipped)
     return jsonify({"ok": True, "created": created, "updated": updated, "skipped": skipped})
 
 
@@ -1055,6 +1112,7 @@ def take_backup(manual=False):
         src.close()
         dst.close()
     _prune_backups()
+    log.debug("数据库备份完成 %s manual=%s", name, manual)
     return name
 
 
@@ -1073,9 +1131,10 @@ def backup_scheduler():
     interval = APP_CONFIG.get("backup", {}).get("interval_hours", 1) * 3600
     while True:
         try:
-            take_backup()
+            name = take_backup()
+            log.info("自动备份完成 %s", name)
         except Exception as e:
-            print(f"自动备份失败: {e}")
+            log.error("自动备份失败: %s", e)
         time.sleep(interval)
 
 
@@ -1104,6 +1163,7 @@ def api_backup_create():
     name = take_backup(manual=True)
     add_log(g.user, "backup", f"{g.user['display_name']} 手动创建了数据备份（{name}）")
     get_db().commit()
+    log.info("手动备份 %s file=%s", _who(g.user), name)
     return jsonify({"ok": True, "name": name})
 
 
@@ -1132,6 +1192,7 @@ def api_backup_restore():
     # 恢复后的库写入本次操作日志
     add_log(g.user, "backup", f"{g.user['display_name']} 将数据恢复至备份「{name}」（恢复前状态已自动保存为 {safety}）")
     get_db().commit()
+    log.info("恢复备份 %s target=%s safety=%s", _who(g.user), name, safety)
     return jsonify({"ok": True, "restored": name, "safety_backup": safety})
 
 
@@ -1155,10 +1216,13 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", APP_CONFIG["server"]["port"]))
     threads = int(os.environ.get("THREADS", APP_CONFIG["server"]["threads"]))
     if port_in_use(port):
+        log.error("端口 %d 已被占用，启动中止", port)
         print(f"错误：端口 {port} 已有服务在运行，请先停止旧实例（或修改 config/app_config.json 中的端口）。")
         sys.exit(1)
     # 启动定时备份线程（启动即备份一次，之后每 interval_hours 小时一份，保留 retention_days 天）
     threading.Thread(target=backup_scheduler, daemon=True).start()
+    log.info("服务启动 port=%d threads=%d log_level=%s", port, threads,
+             os.environ.get("LOG_LEVEL") or APP_CONFIG.get("logging", {}).get("level", "INFO"))
     print(f"校招入职跟踪管理系统已启动: http://127.0.0.1:{port} （waitress，{threads} 工作线程）")
     from waitress import serve
     serve(app, host="0.0.0.0", port=port, threads=threads,

@@ -14,6 +14,9 @@
     "interval_hours": 1,
     "retention_days": 3
   },
+  "logging": {
+    "level": "INFO"
+  },
   "security": {
     "default_password": "123456"
   },
