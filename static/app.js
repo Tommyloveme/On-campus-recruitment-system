@@ -208,7 +208,7 @@ async function renderCandidates() {
         <thead>
           <tr>
             <th class="col-check"><input type="checkbox" id="sel-all" title="全选当前筛选结果"></th>
-            ${showGroupCol ? "<th>分组</th>" : ""}${headCells}<th>简历</th><th>操作</th>
+            ${showGroupCol ? "<th>二层部门</th>" : ""}${headCells}<th>简历</th><th>操作</th>
           </tr>
           <tr class="filter-row">
             <th></th>${groupFilter}${filterCells}<th></th><th></th>
@@ -785,7 +785,7 @@ const CHART_COLORS = [
 async function renderCharts() {
   const fields = visibleFields();
   const fieldOpts = (selected) => [
-    `<option value="__group"${selected === "__group" ? " selected" : ""}>权限分组</option>`,
+    `<option value="__group"${selected === "__group" ? " selected" : ""}>二层部门</option>`,
     ...fields.map(f =>
       `<option value="${f.key}"${f.key === selected ? " selected" : ""}>${esc(f.label)}</option>`),
   ].join("");
@@ -857,7 +857,7 @@ function chartValue(c, key, gran) {
 }
 
 function chartLabelOf(key) {
-  if (key === "__group") return "权限分组";
+  if (key === "__group") return "二层部门";
   const f = state.fields.find(f => f.key === key);
   return f ? f.label : key;
 }

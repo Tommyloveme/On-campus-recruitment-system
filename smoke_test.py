@@ -50,6 +50,15 @@ check("界面配置下发(每页15条)", cfg["app"]["page_size"] == 15)
 keys = [f["key"] for f in cfg["fields"]]
 check("已移除入职二层/接口人经理", "dept_level2" not in keys and "interface_manager" not in keys)
 check("含当前进展列", "progress" in keys)
+d3 = next(f for f in cfg["fields"] if f["key"] == "dept_level3")
+check("三层部门在候选人列之前且配置正确",
+      cfg["fields"].index(d3) < cfg["fields"].index(next(f for f in cfg["fields"] if f["key"] == "name"))
+      and d3["label"] == "三层部门" and d3["excel_column"] == "三层部门")
+from openpyxl import load_workbook
+req = urllib.request.Request(BASE + "/api/import/template")
+with opener.open(req) as r:
+    tpl_headers = [c.value for c in load_workbook(io.BytesIO(r.read())).active[1]]
+check("导入模板首列为三层部门", tpl_headers[0] == "三层部门" and "候选人" in tpl_headers)
 hidden = [f["key"] for f in cfg["fields"] if not f["visible"]]
 check("学历/院校/专业/电话/Offer状态默认隐藏",
       set(hidden) >= {"education", "school", "major", "phone", "offer_status"})
@@ -75,10 +84,10 @@ print("   日志示例:", msg)
 # 5. Excel 导入
 wb = Workbook()
 ws = wb.active
-ws.append(["候选人", "电话", "Offer状态", "拟录取工作地", "入职风险"])
-ws.append(["导入甲", "13700001111", "已接受", "北京", "低"])
-ws.append(["导入乙", "13700002222", "已发放", "成都", "中"])
-ws.append(["测试员", "13911112222", "已接受", "西安", ""])  # 应匹配并更新
+ws.append(["三层部门", "候选人", "电话", "Offer状态", "拟录取工作地", "入职风险"])
+ws.append(["存储部", "导入甲", "13700001111", "已接受", "北京", "低"])
+ws.append(["计算部", "导入乙", "13700002222", "已发放", "成都", "中"])
+ws.append(["", "测试员", "13911112222", "已接受", "西安", ""])  # 应匹配并更新
 buf = io.BytesIO()
 wb.save(buf)
 boundary = uuid.uuid4().hex
@@ -98,12 +107,38 @@ body.write(f"--{boundary}--\r\n".encode())
 s, r = call("POST", "/api/import", raw=body.getvalue(), ctype=f"multipart/form-data; boundary={boundary}")
 check("Excel导入(新增2 更新1)", r["created"] == 2 and r["updated"] == 1)
 
+# 5a. 旧表头「入职三层」仍兼容导入
+wb = Workbook()
+ws = wb.active
+ws.append(["入职三层", "候选人", "签约状态"])
+ws.append(["网络部", "旧表头测试", "已签约"])
+buf_legacy = io.BytesIO()
+wb.save(buf_legacy)
+boundary_l = uuid.uuid4().hex
+body_l = io.BytesIO()
+def part_l(name, value=None, filename=None, content=None):
+    body_l.write(f"--{boundary_l}\r\n".encode())
+    if filename:
+        body_l.write(f'Content-Disposition: form-data; name="{name}"; filename="{filename}"\r\n'.encode())
+        body_l.write(b"Content-Type: application/octet-stream\r\n\r\n")
+        body_l.write(content)
+        body_l.write(b"\r\n")
+    else:
+        body_l.write(f'Content-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
+part_l("group_id", str(g1))
+part_l("file", filename="legacy.xlsx", content=buf_legacy.getvalue())
+body_l.write(f"--{boundary_l}--\r\n".encode())
+s, r = call("POST", "/api/import", raw=body_l.getvalue(), ctype=f"multipart/form-data; boundary={boundary_l}")
+check("旧表头入职三层兼容导入", r["created"] == 1)
+s, found = call("GET", "/api/candidates?q=" + quote("旧表头测试"))
+check("旧表头导入写入三层部门", found[0]["data"].get("dept_level3") == "网络部")
+
 # 5b. 批量导入 120 名候选人
 wb = Workbook()
 ws = wb.active
-ws.append(["候选人", "电话", "学历", "毕业院校", "专业", "Offer状态", "毕业时间"])
+ws.append(["三层部门", "候选人", "电话", "学历", "毕业院校", "专业", "Offer状态", "毕业时间"])
 for i in range(1, 121):
-    ws.append([f"压测{i:03d}", f"139{i:08d}", ["本科", "硕士", "博士"][i % 3],
+    ws.append([f"部门{i % 5}", f"压测{i:03d}", f"139{i:08d}", ["本科", "硕士", "博士"][i % 3],
                f"测试大学{i % 10}", "计算机科学", ["未发放", "已发放", "已接受"][i % 3],
                f"2026-{(i % 12) + 1:02d}-15"])
 buf2 = io.BytesIO()
@@ -208,6 +243,8 @@ exp_ids = [c["id"] for c in cands[:5]] + [cid]
 s, content, headers = call_raw("POST", "/api/candidates/export",
                                raw=json.dumps({"ids": exp_ids}).encode(), ctype="application/json")
 check("选中数据导出Excel", s == 200 and content[:2] == b"PK" and headers.get("X-Export-Count") == "6")
+exp_headers = [c.value for c in load_workbook(io.BytesIO(content)).active[1]]
+check("导出Excel首列为二层部门且含三层部门", exp_headers[0] == "二层部门" and "三层部门" in exp_headers)
 
 s, _ = call("DELETE", f"/api/candidates/{cid}/resume")
 check("删除简历", s == 200)
@@ -374,7 +411,7 @@ for u in users:
 s, cands = call("GET", "/api/candidates?q=" + quote("压测"))
 for c in cands:
     call("DELETE", f"/api/candidates/{c['id']}")
-for n in ("测试员", "导入甲", "导入乙"):
+for n in ("测试员", "导入甲", "导入乙", "旧表头测试"):
     s, cands = call("GET", f"/api/candidates?q={quote(n)}")
     for c in cands:
         call("DELETE", f"/api/candidates/{c['id']}")

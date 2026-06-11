@@ -231,17 +231,17 @@ def _seed_demo(db):
         ("hr02", "招聘专员-小李", generate_password_hash("123456"), "editor", g2, now_str()),
     )
     samples = [
-        (g1, {"name": "张伟", "phone": "13800000001", "interface_manager": "王经理", "interface_person": "刘洋",
-              "dept_level2": "云计算BG", "dept_level3": "存储部", "offer_status": "已接受", "sign_status": "已签约",
+        (g1, {"name": "张伟", "phone": "13800000001", "interface_person": "刘洋",
+              "dept_level3": "存储部", "offer_status": "已接受", "sign_status": "已签约",
               "work_location": "深圳", "graduation_time": "2026-06-30", "expected_onboard_time": "2026-07-15",
               "physical_exam_time": "2026-06-20", "physical_exam_done": "否", "onboard_booked": "是",
               "onboard_booked_time": "2026-07-15", "onboarded": "否", "onboard_risk": "低"}),
-        (g1, {"name": "李娜", "phone": "13800000002", "interface_manager": "王经理", "interface_person": "刘洋",
-              "dept_level2": "云计算BG", "dept_level3": "计算部", "offer_status": "已发放", "sign_status": "未签约",
+        (g1, {"name": "李娜", "phone": "13800000002", "interface_person": "刘洋",
+              "dept_level3": "计算部", "offer_status": "已发放", "sign_status": "未签约",
               "work_location": "杭州", "graduation_time": "2026-06-30", "expected_onboard_time": "2026-08-01",
               "physical_exam_done": "否", "onboard_booked": "否", "onboarded": "否", "onboard_risk": "中"}),
-        (g2, {"name": "陈强", "phone": "13800000003", "interface_manager": "赵经理", "interface_person": "孙敏",
-              "dept_level2": "终端BG", "dept_level3": "软件部", "offer_status": "已接受", "sign_status": "已签约",
+        (g2, {"name": "陈强", "phone": "13800000003", "interface_person": "孙敏",
+              "dept_level3": "软件部", "offer_status": "已接受", "sign_status": "已签约",
               "work_location": "上海", "graduation_time": "2026-07-01", "expected_onboard_time": "2026-07-20",
               "physical_exam_time": "2026-06-25", "physical_exam_done": "是", "onboard_booked": "是",
               "onboard_booked_time": "2026-07-20", "onboarded": "否", "onboard_risk": "无"}),
@@ -853,7 +853,7 @@ def api_resume_delete(cid):
 @app.post("/api/candidates/export")
 @login_required
 def api_candidates_export():
-    """将勾选的候选人导出为 Excel：列 = 当前用户可见的字段配置 + 分组。"""
+    """将勾选的候选人导出为 Excel：列 = 二层部门（权限分组名）+ 当前用户可见字段（顺序同 fields.json）。"""
     ids = request.get_json(force=True).get("ids") or []
     if not ids:
         return jsonify({"error": "请先勾选候选人"}), 400
@@ -868,7 +868,7 @@ def api_candidates_export():
     wb = Workbook()
     ws = wb.active
     ws.title = "候选人导出"
-    headers = ["分组"] + [f["label"] for f in fields]
+    headers = ["二层部门"] + [f["label"] for f in fields]
     ws.append(headers)
     exported = 0
     for row in rows:
@@ -934,6 +934,13 @@ def api_resumes_export():
 
 
 # ---------------------------------------------------------------- Excel 导入/模板
+def _match_import_header(field, header):
+    """表头匹配：excel_column、label，以及 excel_aliases 中的旧表头（兼容历史模板）。"""
+    if header == field["excel_column"] or header == field["label"]:
+        return True
+    return header in field.get("excel_aliases", [])
+
+
 @app.get("/api/import/template")
 @login_required
 def api_template():
@@ -977,7 +984,7 @@ def api_import():
     col_map = {}  # 列下标 -> field key
     for idx, h in enumerate(header):
         for f in fields:
-            if h == f["excel_column"] or h == f["label"]:
+            if _match_import_header(f, h):
                 col_map[idx] = f["key"]
                 break
     if "name" not in col_map.values():

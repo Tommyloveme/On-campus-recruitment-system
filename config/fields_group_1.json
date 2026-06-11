@@ -3,10 +3,8 @@
   "visible": {
     "name": true,
     "phone": false,
-    "interface_manager": true,
-    "interface_person": true,
-    "dept_level2": true,
     "dept_level3": true,
+    "interface_person": true,
     "education": false,
     "school": false,
     "major": false,

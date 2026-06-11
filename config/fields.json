@@ -1,6 +1,16 @@
 {
-  "comment": "全局字段配置（唯一数据源）：在 fields 数组中新增一项即可扩展候选人字段，Excel导入模板、导入匹配、网页表格列、编辑表单、数据图表维度全部自动联动刷新，无需改代码或数据库（候选人数据以JSON存储）。属性说明：key=内部字段名(存库用,定下后勿改), label=网页显示名, excel_column=Excel导入时匹配的表头, type=text/date/select, options=下拉选项, colors=取值对应的徽章颜色(gray/blue/green/yellow/red), visible=是否在网页表格显示(各分组可用 fields_group_<id>.json 覆盖), editable=是否允许手动编辑, importable=是否参与Excel导入, required=新增时是否必填, multiline=编辑时使用多行文本框",
+  "comment": "全局字段配置（唯一数据源）：在 fields 数组中新增一项即可扩展候选人字段，Excel导入模板、导入匹配、网页表格列、编辑表单、数据图表维度全部自动联动刷新，无需改代码或数据库（候选人数据以JSON存储）。属性说明：key=内部字段名(存库用,定下后勿改), label=网页显示名, excel_column=Excel导入时匹配的表头, excel_aliases=旧表头别名(兼容历史Excel), type=text/date/select, options=下拉选项, colors=取值对应的徽章颜色(gray/blue/green/yellow/red), visible=是否在网页表格显示(各分组可用 fields_group_<id>.json 覆盖), editable=是否允许手动编辑, importable=是否参与Excel导入, required=新增时是否必填, multiline=编辑时使用多行文本框",
   "fields": [
+    {
+      "key": "dept_level3",
+      "label": "三层部门",
+      "excel_column": "三层部门",
+      "excel_aliases": ["入职三层"],
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
     {
       "key": "name",
       "label": "候选人",
@@ -52,15 +62,6 @@
       "key": "interface_person",
       "label": "接口人",
       "excel_column": "接口人",
-      "type": "text",
-      "visible": true,
-      "editable": true,
-      "importable": true
-    },
-    {
-      "key": "dept_level3",
-      "label": "入职三层",
-      "excel_column": "入职三层",
       "type": "text",
       "visible": true,
       "editable": true,
