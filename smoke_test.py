@@ -155,8 +155,48 @@ check("hr02无法修改他组候选人", s == 403)
 s, _ = call("GET", "/api/overview", expect_error=True)
 check("hr02无法访问管理员总览", s == 403)
 
+# 9. 细化权限：组管理员（增删改查+添加成员）/ 组成员（无删除权）
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+s, users = call("GET", "/api/users")
+for u in users:
+    if u["username"] in ("t_lead", "t_member"):
+        call("DELETE", f"/api/users/{u['id']}")
+g2 = groups[1]["id"]
+s, _ = call("POST", "/api/users", {"username": "t_lead", "display_name": "测试组管",
+                                   "password": "pw123", "role": "group_admin", "group_id": g2})
+check("管理员创建组管理员", s == 200)
+
+call("POST", "/api/login", {"username": "t_lead", "password": "pw123"})
+s, r = call("POST", "/api/candidates", {"data": {"name": "组管新增"}})
+check("组管理员新增本组候选人", s == 200)
+lead_cid = r["id"]
+s, _ = call("POST", "/api/users", {"username": "t_member", "display_name": "测试组员",
+                                   "password": "pw123", "role": "editor"})
+check("组管理员添加本组成员", s == 200)
+s, _ = call("POST", "/api/users", {"username": "t_admin2", "password": "pw123", "role": "admin"},
+            expect_error=True)
+check("组管理员不能创建管理员", s == 403)
+s, members = call("GET", "/api/users")
+check("组管理员仅见本组成员", all(u["group_id"] == g2 for u in members))
+
+call("POST", "/api/login", {"username": "t_member", "password": "pw123"})
+s, _ = call("PUT", f"/api/candidates/{lead_cid}", {"data": {"phone": "13099998888"}})
+check("组成员可编辑本组候选人", s == 200)
+s, _ = call("DELETE", f"/api/candidates/{lead_cid}", expect_error=True)
+check("组成员无删除权限", s == 403)
+s, _ = call("GET", "/api/users", expect_error=True)
+check("组成员无用户管理权限", s == 403)
+
+call("POST", "/api/login", {"username": "t_lead", "password": "pw123"})
+s, _ = call("DELETE", f"/api/candidates/{lead_cid}")
+check("组管理员可删除本组候选人", s == 200)
+
 # 清理测试数据
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+s, users = call("GET", "/api/users")
+for u in users:
+    if u["username"] in ("t_lead", "t_member"):
+        call("DELETE", f"/api/users/{u['id']}")
 for n in ("测试员", "导入甲", "导入乙"):
     s, cands = call("GET", f"/api/candidates?q={quote(n)}")
     for c in cands:

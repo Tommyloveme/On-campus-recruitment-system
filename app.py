@@ -150,6 +150,10 @@ def _seed_demo(db):
     g2 = db.execute("INSERT INTO groups (name, created_at) VALUES (?,?)", ("研发二组", now_str())).lastrowid
     db.execute(
         "INSERT INTO users (username, display_name, password_hash, role, group_id, created_at) VALUES (?,?,?,?,?,?)",
+        ("lead01", "组管理员-老张", generate_password_hash("123456"), "group_admin", g1, now_str()),
+    )
+    db.execute(
+        "INSERT INTO users (username, display_name, password_hash, role, group_id, created_at) VALUES (?,?,?,?,?,?)",
         ("hr01", "招聘专员-小王", generate_password_hash("123456"), "editor", g1, now_str()),
     )
     db.execute(
@@ -178,7 +182,7 @@ def _seed_demo(db):
             (gid, json.dumps(data, ensure_ascii=False), now_str(), now_str()),
         )
     db.commit()
-    print("已写入示例分组/用户/候选人数据（hr01、hr02 / 123456）。")
+    print("已写入示例分组/用户/候选人数据（lead01 组管理员、hr01、hr02 / 123456）。")
 
 
 # ---------------------------------------------------------------- 权限
@@ -213,10 +217,24 @@ def admin_required(fn):
     return wrapper
 
 
+# 角色说明：
+#   admin       系统管理员：全部权限
+#   group_admin 组管理员：本组候选人增/删/改/查 + 添加本组成员
+#   editor      组成员（同学）：本组候选人增/改/查，无删除权限
+#   viewer      只读：仅查看本组
+VALID_ROLES = ("admin", "group_admin", "editor", "viewer")
+
+
 def can_edit_group(user, group_id):
     if user["role"] == "admin":
         return True
-    return user["role"] == "editor" and user["group_id"] == group_id
+    return user["role"] in ("group_admin", "editor") and user["group_id"] == group_id
+
+
+def can_delete_group(user, group_id):
+    if user["role"] == "admin":
+        return True
+    return user["role"] == "group_admin" and user["group_id"] == group_id
 
 
 def can_view_group(user, group_id):
@@ -335,35 +353,54 @@ def api_group_delete(gid):
 
 # ---------------------------------------------------------------- 用户管理
 @app.get("/api/users")
-@admin_required
+@login_required
 def api_users():
-    rows = get_db().execute(
-        "SELECT u.id, u.username, u.display_name, u.role, u.group_id, g.name AS group_name "
-        "FROM users u LEFT JOIN groups g ON g.id=u.group_id ORDER BY u.id"
-    ).fetchall()
+    sql = ("SELECT u.id, u.username, u.display_name, u.role, u.group_id, g.name AS group_name "
+           "FROM users u LEFT JOIN groups g ON g.id=u.group_id")
+    params = []
+    if g.user["role"] == "admin":
+        pass
+    elif g.user["role"] == "group_admin":
+        sql += " WHERE u.group_id=?"
+        params.append(g.user["group_id"])
+    else:
+        return jsonify({"error": "无用户管理权限"}), 403
+    rows = get_db().execute(sql + " ORDER BY u.id", params).fetchall()
     return jsonify([dict(r) for r in rows])
 
 
 @app.post("/api/users")
-@admin_required
+@login_required
 def api_user_create():
     b = request.get_json(force=True)
     username = (b.get("username") or "").strip()
     if not username or not b.get("password"):
         return jsonify({"error": "用户名和密码不能为空"}), 400
     role = b.get("role", "editor")
-    if role not in ("admin", "editor", "viewer"):
-        return jsonify({"error": "角色不合法"}), 400
+    group_id = b.get("group_id")
+
+    if g.user["role"] == "admin":
+        if role not in VALID_ROLES:
+            return jsonify({"error": "角色不合法"}), 400
+    elif g.user["role"] == "group_admin":
+        # 组管理员只能向本组添加普通成员
+        if role not in ("editor", "viewer"):
+            return jsonify({"error": "组管理员只能添加组成员或只读账号"}), 403
+        group_id = g.user["group_id"]
+    else:
+        return jsonify({"error": "无添加用户权限"}), 403
+
     db = get_db()
     try:
         db.execute(
             "INSERT INTO users (username, display_name, password_hash, role, group_id, created_at) VALUES (?,?,?,?,?,?)",
             (username, b.get("display_name") or username, generate_password_hash(b["password"]),
-             role, b.get("group_id"), now_str()),
+             role, group_id, now_str()),
         )
     except sqlite3.IntegrityError:
         return jsonify({"error": "用户名已存在"}), 400
-    add_log(g.user, "user", f"{g.user['display_name']} 创建了用户「{b.get('display_name') or username}」")
+    add_log(g.user, "user", f"{g.user['display_name']} 创建了用户「{b.get('display_name') or username}」",
+            group_id=group_id)
     db.commit()
     return jsonify({"ok": True})
 
@@ -377,6 +414,8 @@ def api_user_update(uid):
     if not user:
         return jsonify({"error": "用户不存在"}), 404
     role = b.get("role", user["role"])
+    if role not in VALID_ROLES:
+        return jsonify({"error": "角色不合法"}), 400
     db.execute(
         "UPDATE users SET display_name=?, role=?, group_id=? WHERE id=?",
         (b.get("display_name", user["display_name"]), role, b.get("group_id", user["group_id"]), uid),
@@ -513,8 +552,8 @@ def api_candidate_delete(cid):
     row = db.execute("SELECT * FROM candidates WHERE id=?", (cid,)).fetchone()
     if not row:
         return jsonify({"error": "候选人不存在"}), 404
-    if not can_edit_group(g.user, row["group_id"]):
-        return jsonify({"error": "无该分组的编辑权限"}), 403
+    if not can_delete_group(g.user, row["group_id"]):
+        return jsonify({"error": "无删除权限（仅系统管理员和组管理员可删除）"}), 403
     name = json.loads(row["data"]).get("name", "")
     _remove_resume_file(row["resume_file"])
     db.execute("DELETE FROM candidates WHERE id=?", (cid,))
@@ -532,13 +571,13 @@ def _remove_resume_file(stored_name):
         os.remove(path)
 
 
-def _get_candidate_or_403(cid, need_edit=True):
-    """返回 (row, error_response)。"""
+def _get_candidate_or_403(cid, need="edit"):
+    """返回 (row, error_response)。need: view / edit / delete"""
     row = get_db().execute("SELECT * FROM candidates WHERE id=?", (cid,)).fetchone()
     if not row:
         return None, (jsonify({"error": "候选人不存在"}), 404)
-    ok = can_edit_group(g.user, row["group_id"]) if need_edit else can_view_group(g.user, row["group_id"])
-    if not ok:
+    check = {"view": can_view_group, "edit": can_edit_group, "delete": can_delete_group}[need]
+    if not check(g.user, row["group_id"]):
         return None, (jsonify({"error": "无该分组的操作权限"}), 403)
     return row, None
 
@@ -574,7 +613,7 @@ def api_resume_upload(cid):
 @app.get("/api/candidates/<int:cid>/resume")
 @login_required
 def api_resume_download(cid):
-    row, err = _get_candidate_or_403(cid, need_edit=False)
+    row, err = _get_candidate_or_403(cid, need="view")
     if err:
         return err
     if not row["resume_file"]:
@@ -590,7 +629,7 @@ def api_resume_download(cid):
 @app.delete("/api/candidates/<int:cid>/resume")
 @login_required
 def api_resume_delete(cid):
-    row, err = _get_candidate_or_403(cid)
+    row, err = _get_candidate_or_403(cid, need="delete")
     if err:
         return err
     if not row["resume_file"]:

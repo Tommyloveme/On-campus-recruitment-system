@@ -51,8 +51,12 @@ function openModal(title, bodyHtml, footHtml) {
 function closeModal() { $("#modal-mask").classList.add("hidden"); }
 $("#modal-mask").addEventListener("click", e => { if (e.target.id === "modal-mask") closeModal(); });
 
+const ROLE_NAMES = { admin: "系统管理员", group_admin: "组管理员", editor: "组成员", viewer: "只读" };
 const isAdmin = () => state.me && state.me.role === "admin";
-const canEdit = gid => isAdmin() || (state.me.role === "editor" && state.me.group_id === gid);
+const isGroupAdmin = () => state.me && state.me.role === "group_admin";
+const canEdit = gid => isAdmin() ||
+  (["group_admin", "editor"].includes(state.me.role) && state.me.group_id === gid);
+const canDelete = gid => isAdmin() || (isGroupAdmin() && state.me.group_id === gid);
 const visibleFields = () => state.fields.filter(f => f.visible);
 
 /* ---------------- 登录 ---------------- */
@@ -87,7 +91,7 @@ $("#logout-btn").addEventListener("click", async () => {
 async function boot() {
   $("#login-view").classList.add("hidden");
   $("#app-view").classList.remove("hidden");
-  const roleName = { admin: "管理员", editor: "编辑", viewer: "只读" }[state.me.role];
+  const roleName = ROLE_NAMES[state.me.role] || state.me.role;
   $("#user-info").textContent =
     `${state.me.display_name}（${roleName}${state.me.group_name ? " · " + state.me.group_name : ""}）`;
 
@@ -96,9 +100,10 @@ async function boot() {
   state.groups = groups;
 
   const tabs = [["candidates", "候选人"]];
-  if (isAdmin()) tabs.push(["overview", "全局总览"]);
+  if (isAdmin()) tabs.push(["overview", "全局总览"], ["charts", "数据图表"]);
   tabs.push(["logs", "操作日志"]);
   if (isAdmin()) tabs.push(["admin", "系统管理"]);
+  else if (isGroupAdmin()) tabs.push(["admin", "成员管理"]);
   $("#nav-tabs").innerHTML = tabs.map(([id, name]) =>
     `<button class="tab" data-tab="${id}">${name}</button>`).join("");
   $("#nav-tabs").querySelectorAll(".tab").forEach(btn =>
@@ -110,7 +115,8 @@ function switchTab(tab) {
   state.tab = tab;
   $("#nav-tabs").querySelectorAll(".tab").forEach(b =>
     b.classList.toggle("active", b.dataset.tab === tab));
-  ({ candidates: renderCandidates, overview: renderOverview, logs: renderLogs, admin: renderAdmin }[tab])();
+  ({ candidates: renderCandidates, overview: renderOverview, charts: renderCharts,
+     logs: renderLogs, admin: renderAdmin }[tab])();
 }
 
 /* ---------------- 候选人页 ---------------- */
@@ -274,8 +280,8 @@ function resumeCellHtml(c) {
     return `
       <span class="resume-actions" title="${esc(c.resume_name)}">
         <button class="btn btn-sm" data-resdl="${c.id}">下载</button>
-        ${editable ? `<button class="btn btn-sm" data-resup="${c.id}">更换</button>
-                      <button class="btn btn-sm btn-danger" data-resdel="${c.id}">删除</button>` : ""}
+        ${editable ? `<button class="btn btn-sm" data-resup="${c.id}">更换</button>` : ""}
+        ${canDelete(c.group_id) ? `<button class="btn btn-sm btn-danger" data-resdel="${c.id}">删除</button>` : ""}
       </span>`;
   }
   return editable
@@ -302,8 +308,8 @@ function renderCandidateRows() {
         <td>${resumeCellHtml(c)}</td>
         <td>
           ${canEdit(c.group_id)
-            ? `<button class="btn btn-sm" data-edit="${c.id}">编辑</button>
-               <button class="btn btn-sm btn-danger" data-del="${c.id}">删除</button>`
+            ? `<button class="btn btn-sm" data-edit="${c.id}">编辑</button>` +
+              (canDelete(c.group_id) ? `<button class="btn btn-sm btn-danger" data-del="${c.id}">删除</button>` : "")
             : `<span style="color:#94a3b8;font-size:12px">只读</span>`}
         </td>
       </tr>`).join("");
@@ -556,6 +562,213 @@ async function renderOverview() {
   $("#main").innerHTML = summary + (sections || `<div class="empty">尚未创建任何分组</div>`);
 }
 
+/* ---------------- 数据图表（管理员，类Excel数据透视图） ---------------- */
+const charts = { list: [], instance: null };
+const CHART_COLORS = [
+  "#2563eb", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6",
+  "#ec4899", "#84cc16", "#0ea5e9", "#f97316", "#14b8a6", "#64748b",
+];
+
+async function renderCharts() {
+  const fields = visibleFields();
+  const dimOpts = [
+    `<option value="__group">权限分组</option>`,
+    ...fields.map(f =>
+      `<option value="${f.key}" ${f.key === "offer_status" ? "selected" : ""}>${esc(f.label)}</option>`),
+  ].join("");
+  const serOpts = [
+    `<option value="">（无）</option>`,
+    `<option value="__group">权限分组</option>`,
+    ...fields.filter(f => f.type === "select").map(f =>
+      `<option value="${f.key}">${esc(f.label)}</option>`),
+  ].join("");
+  const groupOpts = [
+    `<option value="">全部分组</option>`,
+    ...state.groups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`),
+  ].join("");
+
+  $("#main").innerHTML = `
+    <div class="card">
+      <div class="toolbar" style="margin-bottom:0">
+        <div class="chart-ctrl"><label>分组范围</label><select id="ch-group">${groupOpts}</select></div>
+        <div class="chart-ctrl"><label>维度（横轴）</label><select id="ch-dim">${dimOpts}</select></div>
+        <div class="chart-ctrl"><label>系列（图例）</label><select id="ch-ser">${serOpts}</select></div>
+        <div class="chart-ctrl"><label>图表类型</label>
+          <select id="ch-type">
+            <option value="bar">柱状图</option>
+            <option value="stacked">堆叠柱状图</option>
+            <option value="hbar">条形图</option>
+            <option value="doughnut">环形图</option>
+            <option value="pie">饼图</option>
+          </select></div>
+        <div class="spacer"></div>
+        <span id="ch-count" class="badge badge-blue"></span>
+      </div>
+    </div>
+    <div class="chart-grid">
+      <div class="card chart-card">
+        <div class="section-title" id="ch-title"></div>
+        <div class="chart-canvas-wrap"><canvas id="ch-canvas"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="section-title">数据透视表</div>
+        <div id="ch-pivot"></div>
+      </div>
+    </div>`;
+
+  charts.list = await api("/api/candidates");
+  ["ch-group", "ch-dim", "ch-ser", "ch-type"].forEach(id =>
+    $("#" + id).addEventListener("change", drawChart));
+  drawChart();
+}
+
+function chartValue(c, key) {
+  if (key === "__group") return c.group_name || "（无分组）";
+  return c.data[key] || "（空）";
+}
+
+function chartLabelOf(key) {
+  if (key === "__group") return "权限分组";
+  const f = state.fields.find(f => f.key === key);
+  return f ? f.label : key;
+}
+
+/* 维度取值的展示顺序：select字段按配置选项顺序，其余按数量降序（最多30项） */
+function orderedValues(list, key) {
+  const counts = new Map();
+  list.forEach(c => {
+    const v = chartValue(c, key);
+    counts.set(v, (counts.get(v) || 0) + 1);
+  });
+  const f = state.fields.find(f => f.key === key);
+  let values;
+  if (key === "__group") {
+    values = state.groups.map(g => g.name).filter(n => counts.has(n));
+    if (counts.has("（无分组）")) values.push("（无分组）");
+  } else if (f && f.type === "select") {
+    values = (f.options || []).filter(o => counts.has(o));
+    if (counts.has("（空）")) values.push("（空）");
+  } else {
+    values = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a)).slice(0, 30);
+  }
+  return values;
+}
+
+function drawChart() {
+  const gid = $("#ch-group").value;
+  const dimKey = $("#ch-dim").value;
+  let serKey = $("#ch-ser").value;
+  const type = $("#ch-type").value;
+  if (["pie", "doughnut"].includes(type)) serKey = "";  // 饼图只看单一维度
+
+  let list = charts.list;
+  if (gid) list = list.filter(c => String(c.group_id) === gid);
+  $("#ch-count").textContent = `共 ${list.length} 名候选人`;
+
+  const dims = orderedValues(list, dimKey);
+  const sers = serKey ? orderedValues(list, serKey) : null;
+
+  // 透视计数：matrix[系列][维度]
+  const matrix = (sers || ["数量"]).map(() => dims.map(() => 0));
+  list.forEach(c => {
+    const di = dims.indexOf(chartValue(c, dimKey));
+    if (di < 0) return;
+    const si = sers ? sers.indexOf(chartValue(c, serKey)) : 0;
+    if (si < 0) return;
+    matrix[si][di] += 1;
+  });
+
+  const groupName = gid ? (state.groups.find(g => String(g.id) === gid)?.name || "") : "全部分组";
+  $("#ch-title").textContent =
+    `${chartLabelOf(dimKey)} 分布` + (serKey ? ` × ${chartLabelOf(serKey)}` : "") + `（${groupName}）`;
+
+  if (charts.instance) { charts.instance.destroy(); charts.instance = null; }
+  const ctx = $("#ch-canvas").getContext("2d");
+  const baseFont = { family: "'Segoe UI','Microsoft YaHei',sans-serif", size: 12 };
+
+  if (["pie", "doughnut"].includes(type)) {
+    charts.instance = new Chart(ctx, {
+      type,
+      data: {
+        labels: dims,
+        datasets: [{
+          data: matrix[0],
+          backgroundColor: dims.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
+          borderColor: "#fff", borderWidth: 2, hoverOffset: 8,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        cutout: type === "doughnut" ? "58%" : 0,
+        plugins: {
+          legend: { position: "right", labels: { font: baseFont, usePointStyle: true, padding: 14 } },
+          tooltip: { padding: 10, cornerRadius: 8 },
+        },
+      },
+    });
+  } else {
+    const horizontal = type === "hbar";
+    const stacked = type === "stacked";
+    charts.instance = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: dims,
+        datasets: (sers || ["数量"]).map((s, i) => ({
+          label: s,
+          data: matrix[i],
+          backgroundColor: CHART_COLORS[i % CHART_COLORS.length] + "cc",
+          hoverBackgroundColor: CHART_COLORS[i % CHART_COLORS.length],
+          borderRadius: 6, borderSkipped: false,
+          maxBarThickness: 46,
+        })),
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        indexAxis: horizontal ? "y" : "x",
+        scales: {
+          x: { stacked, grid: { display: horizontal }, ticks: { font: baseFont }, border: { display: false } },
+          y: { stacked, beginAtZero: true, ticks: { font: baseFont, precision: 0 }, border: { display: false } },
+        },
+        plugins: {
+          legend: { display: !!sers, position: "bottom", labels: { font: baseFont, usePointStyle: true, padding: 14 } },
+          tooltip: { padding: 10, cornerRadius: 8 },
+        },
+      },
+    });
+  }
+
+  renderPivotTable(dims, sers, matrix, dimKey, serKey);
+}
+
+function renderPivotTable(dims, sers, matrix, dimKey, serKey) {
+  const colHeads = sers || ["数量"];
+  const colTotals = colHeads.map((_, si) => matrix[si].reduce((a, b) => a + b, 0));
+  const grand = colTotals.reduce((a, b) => a + b, 0);
+  $("#ch-pivot").innerHTML = `
+    <div class="table-wrap"><table style="min-width:0">
+      <thead><tr>
+        <th>${esc(chartLabelOf(dimKey))}</th>
+        ${colHeads.map(h => `<th>${esc(h)}</th>`).join("")}
+        ${sers ? "<th>合计</th>" : ""}
+      </tr></thead>
+      <tbody>
+        ${dims.map((d, di) => {
+          const rowTotal = colHeads.reduce((acc, _, si) => acc + matrix[si][di], 0);
+          return `<tr>
+            <td>${esc(d)}</td>
+            ${colHeads.map((_, si) => `<td>${matrix[si][di] || 0}</td>`).join("")}
+            ${sers ? `<td><b>${rowTotal}</b></td>` : ""}
+          </tr>`;
+        }).join("")}
+        <tr style="background:#f8fafc">
+          <td><b>合计</b></td>
+          ${colTotals.map(t => `<td><b>${t}</b></td>`).join("")}
+          ${sers ? `<td><b>${grand}</b></td>` : ""}
+        </tr>
+      </tbody>
+    </table></div>`;
+}
+
 /* ---------------- 操作日志 ---------------- */
 const ACTION_BADGE = {
   create: ["新增", "green"], update: ["修改", "blue"], delete: ["删除", "red"],
@@ -590,6 +803,20 @@ async function renderLogs(page = 1) {
 
 /* ---------------- 系统管理（管理员） ---------------- */
 async function renderAdmin() {
+  if (isGroupAdmin()) {
+    // 组管理员：只能管理本组成员（添加组成员/只读账号）
+    $("#main").innerHTML = `
+      <div class="card">
+        <div class="section-title">成员管理 - ${esc(state.me.group_name || "")}</div>
+        <p style="font-size:12px;color:#64748b;margin-bottom:10px">您可以向本组添加「组成员」或「只读」账号；修改与删除用户需联系系统管理员。</p>
+        <div id="user-list"></div>
+        <button class="btn btn-primary" id="btn-add-user" style="margin-top:12px">+ 添加本组成员</button>
+      </div>`;
+    await loadUserList();
+    $("#btn-add-user").addEventListener("click", () => openUserModal(null));
+    return;
+  }
+
   $("#main").innerHTML = `
     <div class="admin-grid">
       <div>
@@ -651,21 +878,22 @@ async function loadGroupList() {
 
 async function loadUserList() {
   const users = await api("/api/users");
-  const roleName = { admin: "管理员", editor: "编辑", viewer: "只读" };
+  const roleBadge = { admin: "red", group_admin: "yellow", editor: "blue", viewer: "gray" };
+  const showOps = isAdmin();
   $("#user-list").innerHTML = `
     <div class="table-wrap"><table>
-      <thead><tr><th>账号</th><th>姓名</th><th>角色</th><th>所属分组</th><th>操作</th></tr></thead>
+      <thead><tr><th>账号</th><th>姓名</th><th>角色</th><th>所属分组</th>${showOps ? "<th>操作</th>" : ""}</tr></thead>
       <tbody>
         ${users.map(u => `
           <tr>
             <td>${esc(u.username)}</td>
             <td>${esc(u.display_name)}</td>
-            <td><span class="badge badge-${u.role === "admin" ? "red" : u.role === "editor" ? "blue" : "gray"}">${roleName[u.role]}</span></td>
+            <td><span class="badge badge-${roleBadge[u.role] || "gray"}">${ROLE_NAMES[u.role] || u.role}</span></td>
             <td>${esc(u.group_name || "—")}</td>
-            <td>
+            ${showOps ? `<td>
               <button class="btn btn-sm" data-uedit="${u.id}">编辑</button>
               ${u.id !== state.me.id ? `<button class="btn btn-sm btn-danger" data-udel="${u.id}">删除</button>` : ""}
-            </td>
+            </td>` : ""}
           </tr>`).join("")}
       </tbody>
     </table></div>`;
@@ -683,10 +911,22 @@ async function loadUserList() {
 
 function openUserModal(user) {
   const isNew = !user;
-  const groupOpts = [`<option value="">（无分组）</option>`,
-    ...state.groups.map(g =>
-      `<option value="${g.id}" ${user && user.group_id === g.id ? "selected" : ""}>${esc(g.name)}</option>`)].join("");
-  openModal(isNew ? "新增用户" : `编辑用户 - ${esc(user.username)}`, `
+  const groupAdminMode = isGroupAdmin();
+  const roleOptions = (groupAdminMode
+    ? [["editor", "组成员（本组增/改/查，无删除权）"],
+       ["viewer", "只读（仅查看本组）"]]
+    : [["editor", "组成员（本组增/改/查，无删除权）"],
+       ["group_admin", "组管理员（本组增/删/改/查 + 添加本组成员）"],
+       ["viewer", "只读（仅查看本组）"],
+       ["admin", "系统管理员（全部权限）"]])
+    .map(([v, t]) => `<option value="${v}" ${user?.role === v ? "selected" : ""}>${t}</option>`).join("");
+  const groupField = groupAdminMode
+    ? `<input value="${esc(state.me.group_name || "")}" disabled>`
+    : `<select id="u-group"><option value="">（无分组）</option>
+        ${state.groups.map(g =>
+          `<option value="${g.id}" ${user && user.group_id === g.id ? "selected" : ""}>${esc(g.name)}</option>`).join("")}
+       </select>`;
+  openModal(isNew ? (groupAdminMode ? "添加本组成员" : "新增用户") : `编辑用户 - ${esc(user.username)}`, `
     <div class="form-grid" style="grid-template-columns:1fr 1fr">
       <div class="form-item"><label>登录账号 *</label>
         <input id="u-username" value="${user ? esc(user.username) : ""}" ${isNew ? "" : "disabled"}></div>
@@ -695,13 +935,8 @@ function openUserModal(user) {
       <div class="form-item"><label>密码 ${isNew ? "*" : "（留空则不修改）"}</label>
         <input id="u-password" type="password" autocomplete="new-password"></div>
       <div class="form-item"><label>角色</label>
-        <select id="u-role">
-          <option value="editor" ${user?.role === "editor" ? "selected" : ""}>编辑（可改本组数据）</option>
-          <option value="viewer" ${user?.role === "viewer" ? "selected" : ""}>只读（仅查看本组）</option>
-          <option value="admin" ${user?.role === "admin" ? "selected" : ""}>管理员（全部权限）</option>
-        </select></div>
-      <div class="form-item"><label>所属权限分组</label>
-        <select id="u-group">${groupOpts}</select></div>
+        <select id="u-role">${roleOptions}</select></div>
+      <div class="form-item"><label>所属权限分组</label>${groupField}</div>
     </div>`,
     `<button class="btn" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="u-save">保存</button>`);
@@ -712,7 +947,8 @@ function openUserModal(user) {
       display_name: $("#u-display").value.trim(),
       password: $("#u-password").value,
       role: $("#u-role").value,
-      group_id: $("#u-group").value ? +$("#u-group").value : null,
+      // 组管理员模式下无分组选择框，后端会强制归入其本组
+      group_id: $("#u-group") && $("#u-group").value ? +$("#u-group").value : null,
     };
     try {
       if (isNew) await api("/api/users", { method: "POST", json: payload });
