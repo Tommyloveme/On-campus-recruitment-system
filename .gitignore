@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# 运行时数据（数据库、会话密钥）
+data/
+
+# IDE / 系统
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store

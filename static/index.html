@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>校招候选人管理系统</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- 登录页 -->
+<div id="login-view" class="login-wrap hidden">
+  <div class="login-card">
+    <div class="login-logo">🎓</div>
+    <h1>校招候选人管理系统</h1>
+    <p class="login-sub">Campus Recruitment Candidate Management</p>
+    <div class="form-item">
+      <label>用户名</label>
+      <input id="login-username" type="text" placeholder="请输入用户名" autocomplete="username">
+    </div>
+    <div class="form-item">
+      <label>密码</label>
+      <input id="login-password" type="password" placeholder="请输入密码" autocomplete="current-password">
+    </div>
+    <div id="login-error" class="login-error hidden"></div>
+    <button id="login-btn" class="btn btn-primary btn-block">登 录</button>
+  </div>
+</div>
+
+<!-- 主应用 -->
+<div id="app-view" class="hidden">
+  <header class="topbar">
+    <div class="brand">🎓 校招候选人管理系统</div>
+    <nav id="nav-tabs" class="tabs"></nav>
+    <div class="userbox">
+      <span id="user-info"></span>
+      <button id="logout-btn" class="btn btn-ghost btn-sm">退出</button>
+    </div>
+  </header>
+  <main id="main" class="main"></main>
+</div>
+
+<!-- 通用弹窗 -->
+<div id="modal-mask" class="modal-mask hidden">
+  <div class="modal">
+    <div class="modal-head">
+      <span id="modal-title"></span>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div id="modal-body" class="modal-body"></div>
+    <div id="modal-foot" class="modal-foot"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
