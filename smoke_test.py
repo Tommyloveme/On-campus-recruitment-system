@@ -51,7 +51,8 @@ keys = [f["key"] for f in cfg["fields"]]
 check("已移除入职二层/接口人经理", "dept_level2" not in keys and "interface_manager" not in keys)
 check("含当前进展列", "progress" in keys)
 hidden = [f["key"] for f in cfg["fields"] if not f["visible"]]
-check("学历/院校/专业/电话默认隐藏", set(hidden) >= {"education", "school", "major", "phone"})
+check("学历/院校/专业/电话/Offer状态默认隐藏",
+      set(hidden) >= {"education", "school", "major", "phone", "offer_status"})
 s, groups = call("GET", "/api/groups")
 check("读取分组(demo含2组)", len(groups) >= 2)
 g1 = groups[0]["id"]
@@ -275,6 +276,42 @@ check("组管理员可删除本组候选人", s == 200)
 # 恢复本组字段配置，避免影响后续使用
 call("PUT", "/api/config", {"fields": [{"key": "phone", "visible": True}]})
 
+# 9b. 全局查看员：界面同管理员（全分组/总览/图表数据），但只读、无系统管理
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+s, users = call("GET", "/api/users")
+for u in users:
+    if u["username"] == "t_gv":
+        call("DELETE", f"/api/users/{u['id']}")
+s, _ = call("POST", "/api/users", {"username": "t_gv", "display_name": "测试查看员",
+                                   "role": "global_viewer"})
+check("管理员创建全局查看员", s == 200)
+
+call("POST", "/api/login", {"username": "t_gv", "password": "123456"})
+s, cands = call("GET", "/api/candidates")
+check("全局查看员可见所有分组数据", len({c["group_id"] for c in cands}) >= 2)
+s, ov = call("GET", "/api/overview")
+check("全局查看员可看全局总览", s == 200 and len(ov) >= 2)
+s, logs = call("GET", "/api/logs")
+check("全局查看员可看全部日志", s == 200)
+any_cid = cands[0]["id"]
+s, _ = call("PUT", f"/api/candidates/{any_cid}", {"data": {"name": "越权改名"}}, expect_error=True)
+check("全局查看员不能修改数据", s == 403)
+s, _ = call("POST", "/api/candidates/batch_delete", {"ids": [any_cid]}, expect_error=True)
+check("全局查看员不能批量删除", s == 403)
+s, _ = call("GET", "/api/users", expect_error=True)
+check("全局查看员无用户管理权限", s == 403)
+
+# 9c. 批量删除：组成员被拒，组管理员/管理员可用
+call("POST", "/api/login", {"username": "hr01", "password": "123456"})
+s, _ = call("POST", "/api/candidates/batch_delete", {"ids": [any_cid]}, expect_error=True)
+check("组成员不能批量删除", s == 403)
+
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+s, batch = call("GET", "/api/candidates?q=" + quote("压测"))
+batch_ids = [c["id"] for c in batch[:10]]
+s, r = call("POST", "/api/candidates/batch_delete", {"ids": batch_ids})
+check("管理员批量删除10名候选人", r["deleted"] == 10)
+
 # 10. 并发场景：60个并发会话同时登录+查询
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 conc_results = []
@@ -308,7 +345,7 @@ check(f"并发60会话全部成功(耗时{elapsed:.1f}s)", len(conc_results) == 
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 s, users = call("GET", "/api/users")
 for u in users:
-    if u["username"] in ("t_lead", "t_member"):
+    if u["username"] in ("t_lead", "t_member", "t_gv"):
         call("DELETE", f"/api/users/{u['id']}")
 s, cands = call("GET", "/api/candidates?q=" + quote("压测"))
 for c in cands:

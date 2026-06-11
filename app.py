@@ -253,11 +253,13 @@ def admin_required(fn):
 
 
 # 角色说明：
-#   admin       系统管理员：全部权限
-#   group_admin 组管理员：本组候选人增/删/改/查 + 添加本组成员
-#   editor      组成员（同学）：本组候选人增/改/查，无删除权限
-#   viewer      只读：仅查看本组
-VALID_ROLES = ("admin", "group_admin", "editor", "viewer")
+#   admin         系统管理员：全部权限
+#   global_viewer 全局查看员：界面与系统管理员一致（全分组候选人/总览/图表/日志），但无系统管理入口，所有数据只读
+#   group_admin   组管理员：本组候选人增/删/改/查 + 添加本组成员
+#   editor        组成员（同学）：本组候选人增/改/查，无删除权限
+#   viewer        只读：仅查看本组
+VALID_ROLES = ("admin", "global_viewer", "group_admin", "editor", "viewer")
+GLOBAL_VIEW_ROLES = ("admin", "global_viewer")   # 可跨分组查看数据的角色
 
 
 def can_edit_group(user, group_id):
@@ -273,7 +275,7 @@ def can_delete_group(user, group_id):
 
 
 def can_view_group(user, group_id):
-    return user["role"] == "admin" or user["group_id"] == group_id
+    return user["role"] in GLOBAL_VIEW_ROLES or user["group_id"] == group_id
 
 
 # ---------------------------------------------------------------- 日志
@@ -321,8 +323,8 @@ def user_dict(u):
 @app.get("/api/config")
 @login_required
 def api_config():
-    """非管理员自动取本组配置；管理员可用 ?group_id= 查看某组配置，默认全局主配置。"""
-    if g.user["role"] == "admin":
+    """普通用户自动取本组配置；管理员/全局查看员可用 ?group_id= 查看某组配置，默认全局主配置。"""
+    if g.user["role"] in GLOBAL_VIEW_ROLES:
         group_id = request.args.get("group_id", type=int)
     else:
         group_id = g.user["group_id"]
@@ -532,7 +534,7 @@ def api_candidates():
     db = get_db()
     sql = "SELECT * FROM candidates"
     params = []
-    if g.user["role"] != "admin":
+    if g.user["role"] not in GLOBAL_VIEW_ROLES:
         if not g.user["group_id"]:
             return jsonify([])
         sql += " WHERE group_id=?"
@@ -629,6 +631,38 @@ def api_candidate_delete(cid):
     add_log(g.user, "delete", f"{g.user['display_name']} 删除了候选人「{name}」", cid, name, row["group_id"])
     db.commit()
     return jsonify({"ok": True})
+
+
+@app.post("/api/candidates/batch_delete")
+@login_required
+def api_candidates_batch_delete():
+    """批量删除：仅系统管理员（任意分组）与组管理员（本组）可执行。"""
+    if g.user["role"] not in ("admin", "group_admin"):
+        return jsonify({"error": "仅系统管理员和组管理员可批量删除"}), 403
+    ids = request.get_json(force=True).get("ids") or []
+    if not ids:
+        return jsonify({"error": "请先勾选候选人"}), 400
+    db = get_db()
+    placeholders = ",".join("?" * len(ids))
+    rows = db.execute(f"SELECT * FROM candidates WHERE id IN ({placeholders})", ids).fetchall()
+
+    deleted_names = []
+    for row in rows:
+        if not can_delete_group(g.user, row["group_id"]):
+            continue
+        _remove_resume_file(row["resume_file"])
+        db.execute("DELETE FROM candidates WHERE id=?", (row["id"],))
+        deleted_names.append(json.loads(row["data"]).get("name", ""))
+    if not deleted_names:
+        return jsonify({"error": "选中的候选人均无删除权限"}), 403
+
+    shown = "、".join(deleted_names[:5]) + ("等" if len(deleted_names) > 5 else "")
+    add_log(g.user, "delete",
+            f"{g.user['display_name']} 批量删除了 {len(deleted_names)} 名候选人（{shown}）",
+            group_id=g.user["group_id"])
+    db.commit()
+    return jsonify({"ok": True, "deleted": len(deleted_names),
+                    "skipped": len(rows) - len(deleted_names)})
 
 
 # ---------------------------------------------------------------- 简历管理
@@ -769,7 +803,7 @@ def api_candidates_export():
     placeholders = ",".join("?" * len(ids))
     rows = db.execute(f"SELECT * FROM candidates WHERE id IN ({placeholders})", ids).fetchall()
 
-    group_id = None if g.user["role"] == "admin" else g.user["group_id"]
+    group_id = None if g.user["role"] in GLOBAL_VIEW_ROLES else g.user["group_id"]
     fields = load_fields(group_id)
     names = group_name_map()
 
@@ -953,7 +987,7 @@ def api_logs():
     size = APP_CONFIG["logs"]["page_size"]
     db = get_db()
     where, params = "", []
-    if g.user["role"] != "admin":
+    if g.user["role"] not in GLOBAL_VIEW_ROLES:
         where = "WHERE group_id=? OR group_id IS NULL"
         params.append(g.user["group_id"] or -1)
     total = db.execute(f"SELECT COUNT(*) AS c FROM logs {where}", params).fetchone()["c"]
@@ -964,10 +998,12 @@ def api_logs():
     return jsonify({"total": total, "page": page, "size": size, "items": [dict(r) for r in rows]})
 
 
-# ---------------------------------------------------------------- 管理员总览
+# ---------------------------------------------------------------- 全局总览（管理员/全局查看员）
 @app.get("/api/overview")
-@admin_required
+@login_required
 def api_overview():
+    if g.user["role"] not in GLOBAL_VIEW_ROLES:
+        return jsonify({"error": "需要管理员或全局查看员权限"}), 403
     db = get_db()
     names = group_name_map()
     groups = []

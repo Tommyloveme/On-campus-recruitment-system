@@ -73,7 +73,7 @@
       "type": "select",
       "options": ["未发放", "已发放", "已接受", "已拒绝"],
       "colors": { "未发放": "gray", "已发放": "blue", "已接受": "green", "已拒绝": "red" },
-      "visible": true,
+      "visible": false,
       "editable": true,
       "importable": true
     },
@@ -90,7 +90,7 @@
     },
     {
       "key": "work_location",
-      "label": "拟录取工作地",
+      "label": "工作地",
       "excel_column": "拟录取工作地",
       "type": "text",
       "visible": true,

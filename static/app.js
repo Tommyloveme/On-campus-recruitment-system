@@ -65,12 +65,18 @@ function openModal(title, bodyHtml, footHtml) {
 function closeModal() { $("#modal-mask").classList.add("hidden"); }
 $("#modal-mask").addEventListener("click", e => { if (e.target.id === "modal-mask") closeModal(); });
 
-const ROLE_NAMES = { admin: "系统管理员", group_admin: "组管理员", editor: "组成员", viewer: "只读" };
+const ROLE_NAMES = { admin: "系统管理员", global_viewer: "全局查看员", group_admin: "组管理员", editor: "组成员", viewer: "只读" };
 const isAdmin = () => state.me && state.me.role === "admin";
 const isGroupAdmin = () => state.me && state.me.role === "group_admin";
+/* 可跨分组查看全部数据（界面与管理员一致，但全局查看员只读且无系统管理） */
+const canSeeAll = () => state.me && ["admin", "global_viewer"].includes(state.me.role);
+/* 可新增/导入候选人 */
+const canCreate = () => state.me && ["admin", "group_admin", "editor"].includes(state.me.role);
 const canEdit = gid => isAdmin() ||
   (["group_admin", "editor"].includes(state.me.role) && state.me.group_id === gid);
 const canDelete = gid => isAdmin() || (isGroupAdmin() && state.me.group_id === gid);
+/* 可使用批量删除功能 */
+const canBatchDelete = () => isAdmin() || isGroupAdmin();
 const visibleFields = () => state.fields.filter(f => f.visible);
 
 /* ---------------- 登录 ---------------- */
@@ -116,10 +122,10 @@ async function boot() {
   cand.pageSize = state.app.page_size ?? 15;   // 每页默认条数由配置决定
 
   const tabs = [["candidates", "候选人"]];
-  if (isAdmin()) tabs.push(["overview", "全局总览"]);
-  if (isAdmin() || isGroupAdmin()) tabs.push(["charts", "数据图表"]);
+  if (canSeeAll()) tabs.push(["overview", "全局总览"]);
+  if (canSeeAll() || isGroupAdmin()) tabs.push(["charts", "数据图表"]);
   tabs.push(["logs", "操作日志"]);
-  if (isAdmin()) tabs.push(["admin", "系统管理"]);
+  if (isAdmin()) tabs.push(["admin", "系统管理"]);   // 全局查看员无系统管理入口
   else if (isGroupAdmin()) tabs.push(["admin", "成员管理"]);
   $("#nav-tabs").innerHTML = tabs.map(([id, name]) =>
     `<button class="tab" data-tab="${id}">${name}</button>`).join("");
@@ -163,7 +169,7 @@ const cand = {
 
 async function renderCandidates() {
   const fields = visibleFields();
-  const showGroupCol = isAdmin();
+  const showGroupCol = canSeeAll();
 
   // 表头第一行：列名（日期列可点击排序）；第二行：每列筛选条件（可多列组合）
   const headCells = fields.map(f => f.type === "date"
@@ -186,11 +192,13 @@ async function renderCandidates() {
       <input type="text" id="cand-search" placeholder="全局搜索：姓名 / 电话 / 部门 / 任意字段…">
       <button class="btn btn-sm" id="btn-clear-filter">清空筛选</button>
       <div class="spacer"></div>
+      ${canBatchDelete() ? `<button class="btn btn-danger" id="btn-batch-del" disabled>删除选中 (0)</button>` : ""}
       <button class="btn" id="btn-export-excel" disabled>导出选中Excel (0)</button>
       <button class="btn" id="btn-export-resume" disabled>导出选中简历 (0)</button>
-      <button class="btn" id="btn-template">下载导入模板</button>
-      <button class="btn" id="btn-import">Excel 导入</button>
-      <button class="btn btn-primary" id="btn-add">+ 新增候选人</button>
+      ${canCreate() ? `
+        <button class="btn" id="btn-template">下载导入模板</button>
+        <button class="btn" id="btn-import">Excel 导入</button>
+        <button class="btn btn-primary" id="btn-add">+ 新增候选人</button>` : ""}
     </div>
     <div id="cand-table" class="table-wrap">
       <table>
@@ -209,9 +217,12 @@ async function renderCandidates() {
     <div id="cand-pager" class="pager-bar"></div>
     <input type="file" id="resume-input" accept=".pdf,.docx" style="display:none">`;
 
-  $("#btn-template").addEventListener("click", () => { location.href = "/api/import/template"; });
-  $("#btn-import").addEventListener("click", openImportModal);
-  $("#btn-add").addEventListener("click", () => openCandidateModal(null));
+  if (canCreate()) {
+    $("#btn-template").addEventListener("click", () => { location.href = "/api/import/template"; });
+    $("#btn-import").addEventListener("click", openImportModal);
+    $("#btn-add").addEventListener("click", () => openCandidateModal(null));
+  }
+  if (canBatchDelete()) $("#btn-batch-del").addEventListener("click", batchDeleteSelected);
   $("#btn-export-resume").addEventListener("click", exportSelectedResumes);
   $("#btn-export-excel").addEventListener("click", exportSelectedExcel);
   enableColumnResize();
@@ -336,10 +347,19 @@ function renderCandidateRows() {
         <td class="col-check"><input type="checkbox" data-sel="${c.id}" ${cand.selected.has(c.id) ? "checked" : ""}></td>
         ${showGroupCol ? `<td><span class="badge badge-gray">${esc(c.group_name)}</span></td>` : ""}
         ${fields.map(f => {
-          let inner = cellHtml(f, c.data[f.key]);
-          // 「当前进展」列提供快捷更新入口
-          if (f.key === "progress" && canEdit(c.group_id))
-            inner += ` <button class="btn btn-sm" data-prog="${c.id}" title="更新进展">更新</button>`;
+          let inner;
+          if (f.key === "progress") {
+            // 进展列只显示第一行（最新一条），完整内容悬浮可见
+            const full = c.data.progress || "";
+            const first = full.split("\n")[0];
+            inner = full
+              ? `<span class="clip" title="${esc(full)}">${esc(first)}</span>`
+              : `<span style="color:#cbd5e1">—</span>`;
+            if (canEdit(c.group_id))
+              inner += ` <button class="btn btn-sm" data-prog="${c.id}" title="更新进展">更新</button>`;
+          } else {
+            inner = cellHtml(f, c.data[f.key]);
+          }
           return `<td>${inner}</td>`;
         }).join("")}
         <td>${resumeCellHtml(c)}</td>
@@ -406,13 +426,38 @@ function renderPager(total, pages) {
 
 function updateSelectionUI(list) {
   const n = cand.selected.size;
-  const btnR = $("#btn-export-resume"), btnE = $("#btn-export-excel");
+  const btnR = $("#btn-export-resume"), btnE = $("#btn-export-excel"), btnD = $("#btn-batch-del");
   btnR.textContent = `导出选中简历 (${n})`;
   btnR.disabled = n === 0;
   btnE.textContent = `导出选中Excel (${n})`;
   btnE.disabled = n === 0;
+  if (btnD) {
+    btnD.textContent = `删除选中 (${n})`;
+    btnD.disabled = n === 0;
+  }
   const all = $("#sel-all");
   all.checked = list.length > 0 && list.every(c => cand.selected.has(c.id));
+}
+
+/* 批量删除选中候选人（仅系统管理员/组管理员） */
+function batchDeleteSelected() {
+  const n = cand.selected.size;
+  if (!n) return;
+  openModal("批量删除确认",
+    `<p>确定删除选中的 <b>${n}</b> 名候选人吗？其简历文件将一并删除，操作会记入日志，但数据<b>不可恢复</b>。</p>
+     <p style="font-size:12px;color:#64748b">无删除权限的候选人（非本组）将被自动跳过。</p>`,
+    `<button class="btn" onclick="closeModal()">取消</button>
+     <button class="btn btn-danger" id="batch-del-confirm">确认删除</button>`);
+  $("#batch-del-confirm").addEventListener("click", async () => {
+    try {
+      const r = await api("/api/candidates/batch_delete", { method: "POST", json: { ids: [...cand.selected] } });
+      toast(`已删除 ${r.deleted} 名候选人` + (r.skipped ? `，跳过无权限 ${r.skipped} 名` : ""));
+      closeModal();
+      cand.selected.clear();
+      state.groups = await api("/api/groups");
+      await loadCandidateTable();
+    } catch (e) { toast(e.message, true); }
+  });
 }
 
 /* ---------------- 列宽拖拽：所有列可横向拉伸 ---------------- */
@@ -572,20 +617,21 @@ function openCandidateModal(cand) {
   });
 }
 
-/* 快捷更新「当前进展」：在原内容后追加一行，自动带今天日期前缀（如 0612：） */
+/* 快捷更新「当前进展」：新内容写在第一行（带今天日期前缀，如 0612：），历史记录顺次后移 */
 function openProgressModal(c) {
   const cur = (c.data.progress || "").trim();
-  const initial = cur ? cur + "\n" + todayPrefix() : todayPrefix();
+  const prefix = todayPrefix();
+  const initial = cur ? prefix + "\n" + cur : prefix;
   openModal(`更新进展 - ${esc(c.data.name || "")}`, `
     <div class="form-item">
-      <label>当前进展（每行一条，已自动添加今天的日期前缀）</label>
+      <label>当前进展（最新一条写在第一行，列表只显示第一行）</label>
       <textarea id="prog-text" rows="8" style="width:100%">${esc(initial)}</textarea>
     </div>`,
     `<button class="btn" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="prog-save">保存</button>`);
   const ta = $("#prog-text");
   ta.focus();
-  ta.setSelectionRange(ta.value.length, ta.value.length);
+  ta.setSelectionRange(prefix.length, prefix.length);   // 光标定位到第一行日期前缀之后
   $("#prog-save").addEventListener("click", async () => {
     try {
       const r = await api(`/api/candidates/${c.id}`, { method: "PUT", json: { data: { progress: ta.value.trim() } } });
@@ -1099,7 +1145,7 @@ async function loadGroupList() {
 
 async function loadUserList() {
   const users = await api("/api/users");
-  const roleBadge = { admin: "red", group_admin: "yellow", editor: "blue", viewer: "gray" };
+  const roleBadge = { admin: "red", global_viewer: "blue", group_admin: "yellow", editor: "blue", viewer: "gray" };
   const showOps = isAdmin();
   $("#user-list").innerHTML = `
     <div class="table-wrap"><table>
@@ -1139,6 +1185,7 @@ function openUserModal(user) {
     : [["editor", "组成员（本组增/改/查，无删除权）"],
        ["group_admin", "组管理员（本组增/删/改/查 + 添加本组成员）"],
        ["viewer", "只读（仅查看本组）"],
+       ["global_viewer", "全局查看员（查看所有分组/总览/图表，只读，无系统管理）"],
        ["admin", "系统管理员（全部权限）"]])
     .map(([v, t]) => `<option value="${v}" ${user?.role === v ? "selected" : ""}>${t}</option>`).join("");
   const groupField = groupAdminMode
