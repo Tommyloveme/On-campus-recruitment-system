@@ -21,12 +21,22 @@ from openpyxl import Workbook, load_workbook
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "candidates.db")
 CONFIG_PATH = os.path.join(BASE_DIR, "config", "fields.json")
+APP_CONFIG_PATH = os.path.join(BASE_DIR, "config", "app_config.json")
 SECRET_PATH = os.path.join(BASE_DIR, "data", ".secret_key")
 RESUME_DIR = os.path.join(BASE_DIR, "data", "resumes")
-ALLOWED_RESUME_EXT = {".pdf", ".docx"}
+
+
+def load_app_config():
+    """运行配置（config/app_config.json）：端口、线程数、分页大小、默认密码等易变内容。"""
+    with open(APP_CONFIG_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+
+APP_CONFIG = load_app_config()
+ALLOWED_RESUME_EXT = set(APP_CONFIG["resume"]["allowed_ext"])
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
-app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = APP_CONFIG["server"]["max_upload_mb"] * 1024 * 1024
 
 
 # ---------------------------------------------------------------- 基础设施
@@ -316,7 +326,9 @@ def api_config():
         group_id = request.args.get("group_id", type=int)
     else:
         group_id = g.user["group_id"]
-    return jsonify({"fields": load_fields(group_id), "group_id": group_id})
+    # app 部分（分页大小等界面配置）一并下发给前端
+    return jsonify({"fields": load_fields(group_id), "group_id": group_id,
+                    "app": load_app_config().get("ui", {})})
 
 
 @app.put("/api/config")
@@ -432,7 +444,7 @@ def api_user_create():
     username = (b.get("username") or "").strip()
     if not username:
         return jsonify({"error": "用户名不能为空"}), 400
-    password = b.get("password") or "123456"   # 未填写时使用默认密码
+    password = b.get("password") or APP_CONFIG["security"]["default_password"]  # 未填写时使用默认密码
     role = b.get("role", "editor")
     group_id = b.get("group_id")
 
@@ -746,6 +758,50 @@ def api_resume_delete(cid):
     return jsonify({"ok": True})
 
 
+@app.post("/api/candidates/export")
+@login_required
+def api_candidates_export():
+    """将勾选的候选人导出为 Excel：列 = 当前用户可见的字段配置 + 分组。"""
+    ids = request.get_json(force=True).get("ids") or []
+    if not ids:
+        return jsonify({"error": "请先勾选候选人"}), 400
+    db = get_db()
+    placeholders = ",".join("?" * len(ids))
+    rows = db.execute(f"SELECT * FROM candidates WHERE id IN ({placeholders})", ids).fetchall()
+
+    group_id = None if g.user["role"] == "admin" else g.user["group_id"]
+    fields = load_fields(group_id)
+    names = group_name_map()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "候选人导出"
+    headers = ["分组"] + [f["label"] for f in fields]
+    ws.append(headers)
+    exported = 0
+    for row in rows:
+        if not can_view_group(g.user, row["group_id"]):
+            continue
+        data = json.loads(row["data"])
+        ws.append([names.get(row["group_id"], "")] + [data.get(f["key"], "") for f in fields])
+        exported += 1
+    if exported == 0:
+        return jsonify({"error": "选中的候选人均无导出权限"}), 403
+    for i, h in enumerate(headers, start=1):
+        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = max(12, len(h) * 2 + 4)
+
+    add_log(g.user, "export", f"{g.user['display_name']} 导出了 {exported} 名候选人的Excel数据")
+    db.commit()
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    resp = send_file(buf, as_attachment=True, download_name=f"候选人导出_{ts}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    resp.headers["X-Export-Count"] = str(exported)
+    return resp
+
+
 @app.post("/api/resumes/export")
 @login_required
 def api_resumes_export():
@@ -894,7 +950,7 @@ def api_import():
 @login_required
 def api_logs():
     page = max(1, request.args.get("page", 1, type=int))
-    size = 30
+    size = APP_CONFIG["logs"]["page_size"]
     db = get_db()
     where, params = "", []
     if g.user["role"] != "admin":
@@ -943,10 +999,22 @@ def index():
     return send_from_directory(app.static_folder, "index.html")
 
 
+def port_in_use(port):
+    """Windows 下多个进程可同时绑定同一端口导致请求被旧实例接管，启动前先探测。"""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(1)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
 if __name__ == "__main__":
     init_db(demo="--demo" in sys.argv)
-    port = int(os.environ.get("PORT", 8000))
-    threads = int(os.environ.get("THREADS", 32))
+    # 端口/线程优先级：环境变量 > app_config.json
+    port = int(os.environ.get("PORT", APP_CONFIG["server"]["port"]))
+    threads = int(os.environ.get("THREADS", APP_CONFIG["server"]["threads"]))
+    if port_in_use(port):
+        print(f"错误：端口 {port} 已有服务在运行，请先停止旧实例（或修改 config/app_config.json 中的端口）。")
+        sys.exit(1)
     print(f"校招候选人管理系统已启动: http://127.0.0.1:{port} （waitress，{threads} 工作线程）")
     from waitress import serve
     serve(app, host="0.0.0.0", port=port, threads=threads,

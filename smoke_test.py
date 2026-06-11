@@ -45,7 +45,13 @@ call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 
 # 2. 配置与分组
 s, cfg = call("GET", "/api/config")
-check("读取字段配置(20个字段)", len(cfg["fields"]) == 20)
+check("读取字段配置(19个字段)", len(cfg["fields"]) == 19)
+check("界面配置下发(每页15条)", cfg["app"]["page_size"] == 15)
+keys = [f["key"] for f in cfg["fields"]]
+check("已移除入职二层/接口人经理", "dept_level2" not in keys and "interface_manager" not in keys)
+check("含当前进展列", "progress" in keys)
+hidden = [f["key"] for f in cfg["fields"] if not f["visible"]]
+check("学历/院校/专业/电话默认隐藏", set(hidden) >= {"education", "school", "major", "phone"})
 s, groups = call("GET", "/api/groups")
 check("读取分组(demo含2组)", len(groups) >= 2)
 g1 = groups[0]["id"]
@@ -194,6 +200,13 @@ check("下载简历内容一致", s == 200 and content == b"%PDF-fake")
 s, content, headers = call_raw("POST", "/api/resumes/export",
                                raw=json.dumps({"ids": [cid]}).encode(), ctype="application/json")
 check("批量导出zip(含1份)", s == 200 and content[:2] == b"PK" and headers.get("X-Export-Count") == "1")
+
+# 7b. 选中数据导出Excel
+s, cands = call("GET", "/api/candidates?q=" + quote("压测"))
+exp_ids = [c["id"] for c in cands[:5]] + [cid]
+s, content, headers = call_raw("POST", "/api/candidates/export",
+                               raw=json.dumps({"ids": exp_ids}).encode(), ctype="application/json")
+check("选中数据导出Excel", s == 200 and content[:2] == b"PK" and headers.get("X-Export-Count") == "6")
 
 s, _ = call("DELETE", f"/api/candidates/{cid}/resume")
 check("删除简历", s == 200)

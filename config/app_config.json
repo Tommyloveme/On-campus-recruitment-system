@@ -1,0 +1,22 @@
+{
+  "comment": "系统运行配置：易于变更的内容集中在此，修改后重启服务生效（ui 部分刷新页面即生效）",
+  "server": {
+    "port": 8000,
+    "threads": 32,
+    "max_upload_mb": 16
+  },
+  "ui": {
+    "page_size": 15,
+    "page_size_options": [15, 30, 50, 100, 0],
+    "clip_max_width": 150
+  },
+  "security": {
+    "default_password": "123456"
+  },
+  "resume": {
+    "allowed_ext": [".pdf", ".docx"]
+  },
+  "logs": {
+    "page_size": 30
+  }
+}

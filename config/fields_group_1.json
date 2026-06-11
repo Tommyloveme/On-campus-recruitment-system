@@ -1,0 +1,25 @@
+{
+  "comment": "该分组的网页字段显示配置，覆盖主配置 fields.json 中的 visible 开关",
+  "visible": {
+    "name": true,
+    "phone": false,
+    "interface_manager": true,
+    "interface_person": true,
+    "dept_level2": true,
+    "dept_level3": true,
+    "education": true,
+    "school": true,
+    "major": true,
+    "offer_status": false,
+    "sign_status": true,
+    "work_location": true,
+    "graduation_time": true,
+    "expected_onboard_time": true,
+    "physical_exam_time": true,
+    "physical_exam_done": true,
+    "onboard_booked": true,
+    "onboard_booked_time": true,
+    "onboarded": true,
+    "onboard_risk": true
+  }
+}

@@ -3,8 +3,9 @@
 
 const state = {
   me: null,
-  fields: [],
+  fields: [],   // 当前用户生效的字段配置（含分组覆盖）
   groups: [],
+  app: {},      // 界面运行配置（分页大小等，来自 config/app_config.json 的 ui 部分）
   tab: "candidates",
   logPage: 1,
 };
@@ -16,12 +17,25 @@ async function api(url, options = {}) {
     options.headers = { "Content-Type": "application/json", ...(options.headers || {}) };
     delete options.json;
   }
-  const res = await fetch(url, options);
+  let res;
+  try {
+    res = await fetch(url, options);
+  } catch (_) {
+    // 网络层失败（服务未启动/断网）
+    toast("网络异常：无法连接服务器，请确认服务是否在线", true);
+    throw new Error("网络异常");
+  }
   let body = null;
   try { body = await res.json(); } catch (_) { /* 文件下载等场景 */ }
   if (!res.ok) {
-    const msg = (body && body.error) || `请求失败 (${res.status})`;
-    if (res.status === 401 && state.me) { showLogin(); }
+    // 会话失效：给出明确提示并回到登录页
+    if (res.status === 401 && state.me) {
+      toast("登录已失效，请重新登录", true);
+      showLogin();
+      throw new Error("登录已失效");
+    }
+    const msg = (body && body.error) ||
+      (res.status === 403 ? "无权限执行该操作" : `操作失败 (${res.status})`);
     throw new Error(msg);
   }
   return body;
@@ -97,7 +111,9 @@ async function boot() {
 
   const [cfg, groups] = await Promise.all([api("/api/config"), api("/api/groups")]);
   state.fields = cfg.fields;
+  state.app = cfg.app || {};
   state.groups = groups;
+  cand.pageSize = state.app.page_size ?? 15;   // 每页默认条数由配置决定
 
   const tabs = [["candidates", "候选人"]];
   if (isAdmin()) tabs.push(["overview", "全局总览"]);
@@ -121,22 +137,19 @@ function switchTab(tab) {
 }
 
 /* ---------------- 候选人页 ---------------- */
-const BADGE_RULES = {
-  offer_status: { "已接受": "green", "已发放": "blue", "未发放": "gray", "已拒绝": "red" },
-  sign_status: { "已签约": "green", "未签约": "yellow", "已违约": "red" },
-  physical_exam_done: { "是": "green", "否": "gray" },
-  onboard_booked: { "是": "green", "否": "gray" },
-  onboarded: { "是": "green", "否": "gray" },
-  onboard_risk: { "无": "green", "低": "blue", "中": "yellow", "高": "red" },
-};
-
+/* 徽章颜色来自字段配置（fields.json 的 colors 属性），无需改代码即可调整 */
 function cellHtml(field, value) {
   const v = value ?? "";
   if (v === "") return `<span style="color:#cbd5e1">—</span>`;
-  const rule = BADGE_RULES[field.key];
-  if (rule) return `<span class="badge badge-${rule[v] || "gray"}">${esc(v)}</span>`;
+  if (field.colors) return `<span class="badge badge-${field.colors[v] || "gray"}">${esc(v)}</span>`;
   // 过长内容：单元格内省略号截断，悬浮显示完整内容
   return `<span class="clip" title="${esc(v)}">${esc(v)}</span>`;
+}
+
+/* 今天日期前缀，用于「当前进展」快捷填写，如 0612： */
+function todayPrefix() {
+  const d = new Date();
+  return `${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}：`;
 }
 
 const cand = {
@@ -173,6 +186,7 @@ async function renderCandidates() {
       <input type="text" id="cand-search" placeholder="全局搜索：姓名 / 电话 / 部门 / 任意字段…">
       <button class="btn btn-sm" id="btn-clear-filter">清空筛选</button>
       <div class="spacer"></div>
+      <button class="btn" id="btn-export-excel" disabled>导出选中Excel (0)</button>
       <button class="btn" id="btn-export-resume" disabled>导出选中简历 (0)</button>
       <button class="btn" id="btn-template">下载导入模板</button>
       <button class="btn" id="btn-import">Excel 导入</button>
@@ -199,6 +213,8 @@ async function renderCandidates() {
   $("#btn-import").addEventListener("click", openImportModal);
   $("#btn-add").addEventListener("click", () => openCandidateModal(null));
   $("#btn-export-resume").addEventListener("click", exportSelectedResumes);
+  $("#btn-export-excel").addEventListener("click", exportSelectedExcel);
+  enableColumnResize();
   const onFilterChange = () => { cand.page = 1; renderCandidateRows(); };
   $("#cand-search").addEventListener("input", debounce(onFilterChange, 250));
   $("#btn-clear-filter").addEventListener("click", () => {
@@ -319,7 +335,13 @@ function renderCandidateRows() {
       <tr>
         <td class="col-check"><input type="checkbox" data-sel="${c.id}" ${cand.selected.has(c.id) ? "checked" : ""}></td>
         ${showGroupCol ? `<td><span class="badge badge-gray">${esc(c.group_name)}</span></td>` : ""}
-        ${fields.map(f => `<td>${cellHtml(f, c.data[f.key])}</td>`).join("")}
+        ${fields.map(f => {
+          let inner = cellHtml(f, c.data[f.key]);
+          // 「当前进展」列提供快捷更新入口
+          if (f.key === "progress" && canEdit(c.group_id))
+            inner += ` <button class="btn btn-sm" data-prog="${c.id}" title="更新进展">更新</button>`;
+          return `<td>${inner}</td>`;
+        }).join("")}
         <td>${resumeCellHtml(c)}</td>
         <td>
           ${canEdit(c.group_id)
@@ -352,13 +374,17 @@ function renderCandidateRows() {
     b.addEventListener("click", () => deleteResume(cand.list.find(c => c.id === +b.dataset.resdel))));
   tbody.querySelectorAll("[data-resprev]").forEach(b =>
     b.addEventListener("click", () => window.open(`/api/candidates/${b.dataset.resprev}/resume/preview`, "_blank")));
+  tbody.querySelectorAll("[data-prog]").forEach(b =>
+    b.addEventListener("click", () => openProgressModal(cand.list.find(c => c.id === +b.dataset.prog))));
 
   renderPager(total, pages);
   updateSelectionUI(list);
 }
 
 function renderPager(total, pages) {
-  const sizes = [10, 30, 50, 100, 0];
+  // 每页条数选项可在 config/app_config.json 中调整（0 = 全部）
+  const sizes = state.app.page_size_options || [15, 30, 50, 100, 0];
+  if (!sizes.includes(cand.pageSize)) sizes.unshift(cand.pageSize);
   $("#cand-pager").innerHTML = `
     <span>共 ${total} 人</span>
     <label>每页
@@ -379,11 +405,56 @@ function renderPager(total, pages) {
 }
 
 function updateSelectionUI(list) {
-  const btn = $("#btn-export-resume");
-  btn.textContent = `导出选中简历 (${cand.selected.size})`;
-  btn.disabled = cand.selected.size === 0;
+  const n = cand.selected.size;
+  const btnR = $("#btn-export-resume"), btnE = $("#btn-export-excel");
+  btnR.textContent = `导出选中简历 (${n})`;
+  btnR.disabled = n === 0;
+  btnE.textContent = `导出选中Excel (${n})`;
+  btnE.disabled = n === 0;
   const all = $("#sel-all");
   all.checked = list.length > 0 && list.every(c => cand.selected.has(c.id));
+}
+
+/* ---------------- 列宽拖拽：所有列可横向拉伸 ---------------- */
+function enableColumnResize() {
+  const table = $("#cand-table table");
+  if (!table) return;
+  let styleEl = $("#col-width-style");
+  if (!styleEl) {
+    styleEl = document.createElement("style");
+    styleEl.id = "col-width-style";
+    document.head.appendChild(styleEl);
+  }
+  const colWidths = {};
+  const applyWidths = () => {
+    styleEl.textContent = Object.entries(colWidths).map(([i, w]) =>
+      `#cand-table th:nth-child(${i}), #cand-table td:nth-child(${i}) { width:${w}px; min-width:${w}px; }
+       #cand-table td:nth-child(${i}) .clip { max-width:${Math.max(40, w - 24)}px; }`).join("\n");
+  };
+  table.querySelectorAll("thead tr:first-child th").forEach((th, idx) => {
+    const handle = document.createElement("span");
+    handle.className = "th-resize";
+    handle.title = "拖动调整列宽";
+    th.appendChild(handle);
+    handle.addEventListener("click", e => e.stopPropagation());  // 不触发排序
+    handle.addEventListener("mousedown", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const startX = e.pageX, startW = th.offsetWidth;
+      const onMove = ev => {
+        colWidths[idx + 1] = Math.max(48, startW + ev.pageX - startX);
+        applyWidths();
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        document.body.style.cursor = "";
+      };
+      document.body.style.cursor = "col-resize";
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+  });
 }
 
 /* ---------------- 简历操作 ---------------- */
@@ -448,6 +519,7 @@ function fieldInput(f, value) {
       `<option value="${esc(o)}" ${o === (value ?? "") ? "selected" : ""}>${o === "" ? "（未填写）" : esc(o)}</option>`).join("");
     return `<select data-field="${f.key}">${opts}</select>`;
   }
+  if (f.multiline) return `<textarea data-field="${f.key}" rows="3">${v}</textarea>`;
   const type = f.type === "date" ? "date" : "text";
   return `<input type="${type}" data-field="${f.key}" value="${v}">`;
 }
@@ -471,7 +543,8 @@ function openCandidateModal(cand) {
       ${editable.map(f => `
         <div class="form-item">
           <label>${esc(f.label)}${f.required ? " *" : ""}</label>
-          ${fieldInput(f, cand ? cand.data[f.key] : "")}
+          ${fieldInput(f, cand ? cand.data[f.key]
+                              : (f.key === "progress" ? todayPrefix() : ""))}
         </div>`).join("")}
     </div>`,
     `<button class="btn" onclick="closeModal()">取消</button>
@@ -480,6 +553,9 @@ function openCandidateModal(cand) {
   $("#cand-save").addEventListener("click", async () => {
     const data = {};
     $("#modal-body").querySelectorAll("[data-field]").forEach(el => { data[el.dataset.field] = el.value; });
+    // 客户端必填校验，立即给出提示
+    const missing = editable.filter(f => f.required && !(data[f.key] || "").trim());
+    if (missing.length) { toast(`请填写：${missing.map(f => f.label).join("、")}`, true); return; }
     try {
       if (isNew) {
         const gid = +$("#cand-modal-group").value;
@@ -494,6 +570,55 @@ function openCandidateModal(cand) {
       loadCandidateTable();
     } catch (e) { toast(e.message, true); }
   });
+}
+
+/* 快捷更新「当前进展」：在原内容后追加一行，自动带今天日期前缀（如 0612：） */
+function openProgressModal(c) {
+  const cur = (c.data.progress || "").trim();
+  const initial = cur ? cur + "\n" + todayPrefix() : todayPrefix();
+  openModal(`更新进展 - ${esc(c.data.name || "")}`, `
+    <div class="form-item">
+      <label>当前进展（每行一条，已自动添加今天的日期前缀）</label>
+      <textarea id="prog-text" rows="8" style="width:100%">${esc(initial)}</textarea>
+    </div>`,
+    `<button class="btn" onclick="closeModal()">取消</button>
+     <button class="btn btn-primary" id="prog-save">保存</button>`);
+  const ta = $("#prog-text");
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+  $("#prog-save").addEventListener("click", async () => {
+    try {
+      const r = await api(`/api/candidates/${c.id}`, { method: "PUT", json: { data: { progress: ta.value.trim() } } });
+      toast(r.changed ? "进展已更新" : "内容无变化");
+      closeModal();
+      await loadCandidateTable();
+    } catch (e) { toast(e.message, true); }
+  });
+}
+
+/* 导出选中候选人为 Excel */
+async function exportSelectedExcel() {
+  if (!cand.selected.size) return;
+  try {
+    const res = await fetch("/api/candidates/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [...cand.selected] }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      toast(j.error || "导出失败", true);
+      return;
+    }
+    const count = res.headers.get("X-Export-Count") || cand.selected.size;
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `候选人导出_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast(`已导出 ${count} 名候选人的Excel`);
+  } catch (e) { toast(e.message, true); }
 }
 
 function deleteCandidate(cand) {

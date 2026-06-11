@@ -1,5 +1,5 @@
 {
-  "comment": "字段配置文件：key=内部字段名, label=网页显示名, excel_column=Excel导入时匹配的表头, type=text/date/select, options=下拉选项, visible=是否在网页表格显示, editable=是否允许手动编辑, importable=是否参与Excel导入, required=新增时是否必填",
+  "comment": "全局字段配置：key=内部字段名, label=网页显示名, excel_column=Excel导入时匹配的表头, type=text/date/select, options=下拉选项, colors=取值对应的徽章颜色(gray/blue/green/yellow/red), visible=是否在网页表格显示(各分组可用 fields_group_<id>.json 覆盖), editable=是否允许手动编辑, importable=是否参与Excel导入, required=新增时是否必填, multiline=编辑时使用多行文本框",
   "fields": [
     {
       "key": "name",
@@ -16,16 +16,35 @@
       "label": "电话",
       "excel_column": "电话",
       "type": "text",
-      "visible": true,
+      "visible": false,
       "editable": true,
       "importable": true
     },
     {
-      "key": "interface_manager",
-      "label": "接口人经理",
-      "excel_column": "接口人经理",
+      "key": "education",
+      "label": "学历",
+      "excel_column": "学历",
+      "type": "select",
+      "options": ["大专", "本科", "硕士", "博士"],
+      "visible": false,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "school",
+      "label": "毕业院校",
+      "excel_column": "毕业院校",
       "type": "text",
-      "visible": true,
+      "visible": false,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "major",
+      "label": "专业",
+      "excel_column": "专业",
+      "type": "text",
+      "visible": false,
       "editable": true,
       "importable": true
     },
@@ -33,15 +52,6 @@
       "key": "interface_person",
       "label": "接口人",
       "excel_column": "接口人",
-      "type": "text",
-      "visible": true,
-      "editable": true,
-      "importable": true
-    },
-    {
-      "key": "dept_level2",
-      "label": "入职二层",
-      "excel_column": "入职二层",
       "type": "text",
       "visible": true,
       "editable": true,
@@ -57,49 +67,12 @@
       "importable": true
     },
     {
-      "key": "education",
-      "label": "学历",
-      "excel_column": "学历",
-      "type": "select",
-      "options": [
-        "大专",
-        "本科",
-        "硕士",
-        "博士"
-      ],
-      "visible": true,
-      "editable": true,
-      "importable": true
-    },
-    {
-      "key": "school",
-      "label": "毕业院校",
-      "excel_column": "毕业院校",
-      "type": "text",
-      "visible": true,
-      "editable": true,
-      "importable": true
-    },
-    {
-      "key": "major",
-      "label": "专业",
-      "excel_column": "专业",
-      "type": "text",
-      "visible": true,
-      "editable": true,
-      "importable": true
-    },
-    {
       "key": "offer_status",
       "label": "Offer状态",
       "excel_column": "Offer状态",
       "type": "select",
-      "options": [
-        "未发放",
-        "已发放",
-        "已接受",
-        "已拒绝"
-      ],
+      "options": ["未发放", "已发放", "已接受", "已拒绝"],
+      "colors": { "未发放": "gray", "已发放": "blue", "已接受": "green", "已拒绝": "red" },
       "visible": true,
       "editable": true,
       "importable": true
@@ -109,11 +82,8 @@
       "label": "签约状态",
       "excel_column": "签约状态",
       "type": "select",
-      "options": [
-        "未签约",
-        "已签约",
-        "已违约"
-      ],
+      "options": ["未签约", "已签约", "已违约"],
+      "colors": { "未签约": "yellow", "已签约": "green", "已违约": "red" },
       "visible": true,
       "editable": true,
       "importable": true
@@ -159,10 +129,8 @@
       "label": "是否体检",
       "excel_column": "是否体检",
       "type": "select",
-      "options": [
-        "否",
-        "是"
-      ],
+      "options": ["否", "是"],
+      "colors": { "是": "green", "否": "gray" },
       "visible": true,
       "editable": true,
       "importable": true
@@ -172,10 +140,8 @@
       "label": "是否预约入职",
       "excel_column": "是否预约入职",
       "type": "select",
-      "options": [
-        "否",
-        "是"
-      ],
+      "options": ["否", "是"],
+      "colors": { "是": "green", "否": "gray" },
       "visible": true,
       "editable": true,
       "importable": true
@@ -194,10 +160,8 @@
       "label": "是否入职",
       "excel_column": "是否入职",
       "type": "select",
-      "options": [
-        "否",
-        "是"
-      ],
+      "options": ["否", "是"],
+      "colors": { "是": "green", "否": "gray" },
       "visible": true,
       "editable": true,
       "importable": true
@@ -207,12 +171,18 @@
       "label": "入职风险",
       "excel_column": "入职风险",
       "type": "select",
-      "options": [
-        "无",
-        "低",
-        "中",
-        "高"
-      ],
+      "options": ["无", "低", "中", "高"],
+      "colors": { "无": "green", "低": "blue", "中": "yellow", "高": "red" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "progress",
+      "label": "当前进展",
+      "excel_column": "当前进展",
+      "type": "text",
+      "multiline": true,
       "visible": true,
       "editable": true,
       "importable": true
