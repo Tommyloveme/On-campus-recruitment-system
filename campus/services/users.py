@@ -219,3 +219,17 @@ def validate_registration_manual_create(data):
         if not str(data.get("registration_source_custom") or "").strip():
             missing.append("自定义简历来源")
     return missing
+
+
+def validate_registration_user_refs(db, sourcer, interface_person):
+    """拓源人须为已注册工号，接口人须为已注册姓名。"""
+    errors = []
+    emp = (sourcer or "").strip()
+    if emp:
+        if not db.execute("SELECT id FROM users WHERE username=?", (emp,)).fetchone():
+            errors.append(f"拓源人工号「{emp}」未在本系统注册，请先完成账号注册")
+    name = (interface_person or "").strip()
+    if name:
+        if not db.execute("SELECT id FROM users WHERE display_name=?", (name,)).fetchone():
+            errors.append(f"接口人「{name}」未在本系统注册，请先完成账号注册")
+    return "；".join(errors) if errors else None

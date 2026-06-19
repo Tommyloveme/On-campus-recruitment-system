@@ -10,7 +10,7 @@ from campus.auth.decorators import admin_required, login_required
 from campus.auth.permissions import VALID_ROLES
 from campus.db.connection import get_db, now_str
 from campus.services.audit import add_log
-from campus.services.users import normalize_job_roles, parse_job_roles, parse_user_profile_body, user_dict
+from campus.services.users import normalize_job_roles, parse_job_roles, parse_user_profile_body, user_dict, validate_registration_user_refs
 from campus.settings import APP_CONFIG
 
 bp = Blueprint("users", __name__)
@@ -29,6 +29,16 @@ def api_users():
         return jsonify({"error": "无用户管理权限"}), 403
     rows = get_db().execute(sql + " ORDER BY u.id").fetchall()
     return jsonify([_user_row_dict(r) for r in rows])
+
+
+@bp.get("/api/users/check-registration-refs")
+@login_required
+def api_check_registration_refs():
+    """校验拓源人工号、接口人姓名是否已在系统注册。"""
+    sourcer = (request.args.get("sourcer") or "").strip()
+    interface_person = (request.args.get("interface_person") or "").strip()
+    err = validate_registration_user_refs(get_db(), sourcer, interface_person)
+    return jsonify({"ok": not err, "error": err or ""})
 
 
 @bp.post("/api/users")

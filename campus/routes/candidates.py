@@ -12,7 +12,11 @@ from campus.db.connection import get_db, now_str
 from campus.logging_util import log, who
 from campus.services.audit import add_log
 from campus.services.candidates import candidate_dict, group_name_map
-from campus.services.users import apply_registration_candidate_defaults, validate_registration_manual_create
+from campus.services.users import (
+    apply_registration_candidate_defaults,
+    validate_registration_manual_create,
+    validate_registration_user_refs,
+)
 from campus.services.resumes import remove_resume_file
 from campus.stage_engine import compute_current_stage, merge_candidate_data, build_global_candidate_index
 
@@ -58,6 +62,7 @@ def api_candidate_create():
     if not data.get("name"):
         return jsonify({"error": "候选人姓名不能为空"}), 400
 
+    db = get_db()
     today = datetime.now().strftime("%Y-%m-%d")
     if stage == "registration":
         if not data.get("registration_time"):
@@ -68,9 +73,11 @@ def api_candidate_create():
         missing = validate_registration_manual_create(data)
         if missing:
             return jsonify({"error": f"请填写：{'、'.join(missing)}"}), 400
+        ref_err = validate_registration_user_refs(db, data.get("sourcer"), data.get("interface_person"))
+        if ref_err:
+            return jsonify({"error": ref_err, "code": "user_not_registered"}), 400
 
     phone = data.get("phone", "").strip()
-    db = get_db()
     confirm_overwrite = bool(b.get("confirm_overwrite"))
 
     # 登记阶段：同手机号须用户确认后才覆盖已有候选人
@@ -167,6 +174,10 @@ def api_candidate_update(cid):
         return jsonify({"ok": True, "changed": 0})
     if not new.get("name"):
         return jsonify({"error": "候选人姓名不能为空"}), 400
+    if stage == "registration":
+        ref_err = validate_registration_user_refs(db, new.get("sourcer"), new.get("interface_person"))
+        if ref_err:
+            return jsonify({"error": ref_err, "code": "user_not_registered"}), 400
     for k, v in old.items():
         if k not in new:
             new[k] = v

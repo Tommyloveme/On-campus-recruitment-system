@@ -121,19 +121,29 @@ function cellHtml(field, value) {
 
 function fieldInput(f, value, opts) {
   opts = opts || {};
-  const v = esc(value ?? "");
+  const v = value ?? "";
+  const ve = esc(v);
   if (opts.locked) {
-    return `<input type="text" data-field="${f.key}" value="${v}" disabled
-      title="该字段已由主数据表导入，不可修改">`;
+    const title = "该字段已由主数据表导入，不可修改";
+    if (f.type === "select") {
+      const display = (f.option_labels && f.option_labels[v]) ? f.option_labels[v] : v;
+      return `<select data-field="${f.key}" class="master-locked-field" disabled title="${title}">
+        <option selected>${esc(display || "（未填写）")}</option></select>`;
+    }
+    if (f.multiline) {
+      return `<textarea data-field="${f.key}" class="master-locked-field" rows="3" disabled title="${title}">${ve}</textarea>`;
+    }
+    const type = f.type === "date" ? "date" : "text";
+    return `<input type="${type}" data-field="${f.key}" class="master-locked-field" value="${ve}" disabled title="${title}">`;
   }
   if (f.type === "select") {
-    const opts = ["", ...(f.options || [])].map(o =>
-      `<option value="${esc(o)}" ${o === (value ?? "") ? "selected" : ""}>${o === "" ? "（未填写）" : esc(o)}</option>`).join("");
-    return `<select data-field="${f.key}">${opts}</select>`;
+    const selectOpts = ["", ...(f.options || [])].map(o =>
+      `<option value="${esc(o)}" ${o === v ? "selected" : ""}>${o === "" ? "（未填写）" : esc(o)}</option>`).join("");
+    return `<select data-field="${f.key}">${selectOpts}</select>`;
   }
-  if (f.multiline) return `<textarea data-field="${f.key}" rows="3">${v}</textarea>`;
+  if (f.multiline) return `<textarea data-field="${f.key}" rows="3">${ve}</textarea>`;
   const type = f.type === "date" ? "date" : "text";
-  return `<input type="${type}" data-field="${f.key}" value="${v}">`;
+  return `<input type="${type}" data-field="${f.key}" value="${ve}">`;
 }
 
 function showLogin() {

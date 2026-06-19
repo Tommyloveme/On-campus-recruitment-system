@@ -444,6 +444,34 @@ function validateRegistrationCreateForm(fields, data) {
   return true;
 }
 
+async function validateRegistrationUserRefs(data) {
+  const params = new URLSearchParams();
+  if ((data.sourcer || "").trim()) params.set("sourcer", data.sourcer.trim());
+  if ((data.interface_person || "").trim()) params.set("interface_person", data.interface_person.trim());
+  if (!params.toString()) return true;
+  try {
+    const body = await fetch(`/api/users/check-registration-refs?${params}`).then(r => r.json());
+    if (!body.ok) {
+      toast(body.error || "拓源人或接口人未在本系统注册", true);
+      return false;
+    }
+    return true;
+  } catch (_) {
+    toast("无法校验拓源人/接口人，请稍后重试", true);
+    return false;
+  }
+}
+
+function registrationFieldHint(f) {
+  if (f.key === "sourcer") {
+    return `<p class="field-hint">须为已在本系统注册的工号</p>`;
+  }
+  if (f.key === "interface_person") {
+    return `<p class="field-hint">须为已在本系统注册的姓名（与账号姓名一致）</p>`;
+  }
+  return "";
+}
+
 async function postCandidateCreate(data, stageKey, confirmOverwrite = false) {
   const res = await fetch("/api/candidates", {
     method: "POST",
@@ -505,9 +533,10 @@ function openCandidateModal(cand, stageKey) {
   openModal(isNew ? `新增候选人 - ${meta.label}` : `编辑 - ${esc(cand.data.name || "")}（${meta.label}）`, `
     <div class="form-grid">
       ${fields.map(f => `
-        <div class="form-item">
+        <div class="form-item${lockedFields.has(f.key) ? " is-master-locked" : ""}">
           <label>${esc(f.label)}${f.required ? " *" : ""}${lockedFields.has(f.key) ? "（主数据锁定）" : ""}</label>
           ${fieldInput(f, candidateFieldDefault(f, cand, isRegCreate), { locked: lockedFields.has(f.key) })}
+          ${(isRegCreate || stageKey === "registration") && !lockedFields.has(f.key) ? registrationFieldHint(f) : ""}
         </div>`).join("")}
       ${sourceCustomField}
     </div>`,
@@ -524,6 +553,7 @@ function openCandidateModal(cand, stageKey) {
       toast(`请填写：${missing.map(f => f.label).join("、")}`, true);
       return;
     }
+    if (stageKey === "registration" && !await validateRegistrationUserRefs(data)) return;
     try {
       if (isNew) {
         const r = await postCandidateCreate(data, stageKey, false);
