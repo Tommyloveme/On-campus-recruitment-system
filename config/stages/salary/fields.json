@@ -1,0 +1,53 @@
+{
+  "comment": "候选人谈薪阶段字段配置",
+  "fields": [
+    {
+      "key": "salary_status",
+      "label": "谈薪状态",
+      "excel_column": "谈薪状态",
+      "type": "select",
+      "options": ["待谈薪", "谈薪中", "已接受", "已拒绝"],
+      "colors": { "待谈薪": "gray", "谈薪中": "blue", "已接受": "green", "已拒绝": "red" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "expected_salary",
+      "label": "期望薪资",
+      "excel_column": "期望薪资",
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "offered_salary",
+      "label": "Offer薪资",
+      "excel_column": "Offer薪资",
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "salary_negotiation_time",
+      "label": "谈薪时间",
+      "excel_column": "谈薪时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "salary_remark",
+      "label": "谈薪备注",
+      "excel_column": "谈薪备注",
+      "type": "text",
+      "multiline": true,
+      "visible": false,
+      "editable": true,
+      "importable": true
+    }
+  ]
+}

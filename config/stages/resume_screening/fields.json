@@ -1,0 +1,45 @@
+{
+  "comment": "简历筛选阶段字段配置",
+  "fields": [
+    {
+      "key": "resume_screening_status",
+      "label": "筛选状态",
+      "excel_column": "简历筛选状态",
+      "excel_aliases": ["筛选状态"],
+      "type": "select",
+      "options": ["待筛选", "通过", "不通过", "待定"],
+      "colors": { "待筛选": "yellow", "通过": "green", "不通过": "red", "待定": "gray" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "resume_screening_reviewer",
+      "label": "筛选人",
+      "excel_column": "筛选人",
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "resume_screening_time",
+      "label": "筛选时间",
+      "excel_column": "筛选时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "resume_screening_remark",
+      "label": "筛选备注",
+      "excel_column": "筛选备注",
+      "type": "text",
+      "multiline": true,
+      "visible": false,
+      "editable": true,
+      "importable": true
+    }
+  ]
+}

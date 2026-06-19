@@ -1,0 +1,64 @@
+{
+  "comment": "候选人技术面试预约阶段字段配置",
+  "fields": [
+    {
+      "key": "tech_interview_book_time",
+      "label": "技术面预约时间",
+      "excel_column": "技术面预约时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "tech_interview_time",
+      "label": "技术面时间",
+      "excel_column": "技术面时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "tech_interviewer",
+      "label": "面试官",
+      "excel_column": "技术面试官",
+      "excel_aliases": ["面试官"],
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "tech_interview_status",
+      "label": "技术面状态",
+      "excel_column": "技术面状态",
+      "type": "select",
+      "options": ["待预约", "已预约", "已完成", "取消", "放弃"],
+      "colors": { "待预约": "gray", "已预约": "blue", "已完成": "green", "取消": "yellow", "放弃": "red" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "tech_interview_result",
+      "label": "技术面结果",
+      "excel_column": "技术面结果",
+      "type": "select",
+      "options": ["待定", "通过", "不通过"],
+      "colors": { "待定": "yellow", "通过": "green", "不通过": "red" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "tech_interview_score",
+      "label": "技术面评分",
+      "excel_column": "技术面评分",
+      "type": "text",
+      "visible": false,
+      "editable": true,
+      "importable": true
+    }
+  ]
+}

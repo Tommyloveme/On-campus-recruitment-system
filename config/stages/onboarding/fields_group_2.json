@@ -1,0 +1,6 @@
+{
+  "comment": "阶段「onboarding」分组 2 的字段显示配置",
+  "visible": {
+    "phone": true
+  }
+}

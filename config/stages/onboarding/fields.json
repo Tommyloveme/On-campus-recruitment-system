@@ -1,0 +1,97 @@
+{
+  "comment": "候选人入职管理阶段字段配置（原系统核心功能）",
+  "fields": [
+    {
+      "key": "sign_status",
+      "label": "签约状态",
+      "excel_column": "签约状态",
+      "type": "select",
+      "options": ["未签约", "已签约", "已违约"],
+      "colors": { "未签约": "yellow", "已签约": "green", "已违约": "red" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "expected_onboard_time",
+      "label": "预计入职时间",
+      "excel_column": "预计入职时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "physical_exam_time",
+      "label": "预约体检时间",
+      "excel_column": "预约体检时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "physical_exam_done",
+      "label": "是否体检",
+      "excel_column": "是否体检",
+      "type": "select",
+      "options": ["否", "是", "待复查"],
+      "colors": { "是": "green", "否": "gray" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "onboard_booked",
+      "label": "是否预约入职",
+      "excel_column": "是否预约入职",
+      "type": "select",
+      "options": ["否", "是"],
+      "colors": { "是": "green", "否": "gray" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "onboard_booked_time",
+      "label": "预约入职时间",
+      "excel_column": "预约入职时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "onboarded",
+      "label": "是否入职",
+      "excel_column": "是否入职",
+      "type": "select",
+      "options": ["否", "是"],
+      "colors": { "是": "green", "否": "gray" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "onboard_risk",
+      "label": "入职风险",
+      "excel_column": "入职风险",
+      "type": "select",
+      "options": ["无", "低", "中", "高"],
+      "colors": { "无": "green", "低": "blue", "中": "yellow", "高": "red" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "progress",
+      "label": "当前进展",
+      "excel_column": "当前进展",
+      "type": "text",
+      "multiline": true,
+      "visible": true,
+      "editable": true,
+      "importable": true
+    }
+  ]
+}

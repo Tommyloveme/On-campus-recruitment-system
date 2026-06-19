@@ -1,0 +1,44 @@
+{
+  "comment": "候选人Offer发放阶段字段配置",
+  "fields": [
+    {
+      "key": "offer_status",
+      "label": "Offer状态",
+      "excel_column": "Offer状态",
+      "type": "select",
+      "options": ["未发放", "已发放", "已接受", "已拒绝"],
+      "colors": { "未发放": "gray", "已发放": "blue", "已接受": "green", "已拒绝": "red" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "offer_send_time",
+      "label": "发放时间",
+      "excel_column": "Offer发放时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "offer_accept_deadline",
+      "label": "接受截止",
+      "excel_column": "Offer接受截止",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "offer_remark",
+      "label": "Offer备注",
+      "excel_column": "Offer备注",
+      "type": "text",
+      "multiline": true,
+      "visible": false,
+      "editable": true,
+      "importable": true
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "comment": "主数据表导入配置：1~2 张 Excel 驱动全流程，导入后合并到候选人 JSON，并按 stage_rules 计算 current_stage",
+  "current_stage_field": "current_stage",
+  "sources": [
+    {
+      "key": "primary",
+      "label": "校招主进度表",
+      "description": "候选人基本信息与各阶段主状态列（第一张完整 Excel）",
+      "columns": [
+        { "excel_column": "三层部门", "field_key": "dept_level3", "excel_aliases": ["入职三层"] },
+        { "excel_column": "候选人", "field_key": "name", "required": true },
+        { "excel_column": "电话", "field_key": "phone" },
+        { "excel_column": "接口人", "field_key": "interface_person" },
+        { "excel_column": "拟录取工作地", "field_key": "work_location", "excel_aliases": ["工作地"] },
+        { "excel_column": "登记状态", "field_key": "registration_status" },
+        { "excel_column": "简历筛选状态", "field_key": "resume_screening_status" },
+        { "excel_column": "资审状态", "field_key": "qualification_status" },
+        { "excel_column": "笔试状态", "field_key": "written_test_status" },
+        { "excel_column": "技术面状态", "field_key": "tech_interview_status" },
+        { "excel_column": "主管面状态", "field_key": "manager_interview_status" },
+        { "excel_column": "报批状态", "field_key": "approval_status" },
+        { "excel_column": "谈薪状态", "field_key": "salary_status" },
+        { "excel_column": "Offer状态", "field_key": "offer_status" },
+        { "excel_column": "签约状态", "field_key": "sign_status" },
+        { "excel_column": "是否入职", "field_key": "onboarded" }
+      ]
+    },
+    {
+      "key": "secondary",
+      "label": "校招补充状态表",
+      "description": "第二张 Excel，按电话/姓名合并补充字段（如面试结果、Offer 细节等）",
+      "columns": [
+        { "excel_column": "候选人", "field_key": "name", "required": true },
+        { "excel_column": "电话", "field_key": "phone" },
+        { "excel_column": "技术面结果", "field_key": "tech_interview_result" },
+        { "excel_column": "主管面结果", "field_key": "manager_interview_result" },
+        { "excel_column": "Offer发放时间", "field_key": "offer_send_time" },
+        { "excel_column": "预计入职时间", "field_key": "expected_onboard_time" },
+        { "excel_column": "入职风险", "field_key": "onboard_risk" },
+        { "excel_column": "当前进展", "field_key": "progress" }
+      ]
+    }
+  ],
+  "stage_rules": {
+    "comment": "按 priority 从高到低匹配，首个命中的规则决定 current_stage。fields 与 values 一一对应，values 中 * 表示任意非空值",
+    "rules": [
+      { "priority": 100, "stage": "onboarding", "label": "入职阶段", "fields": ["onboarded"], "values": ["是"] },
+      { "priority": 95, "stage": "onboarding", "label": "已签约待入职", "fields": ["sign_status", "onboarded"], "values": ["已签约", "否"] },
+      { "priority": 90, "stage": "offer", "label": "Offer已发待签约", "fields": ["offer_status", "sign_status"], "values": ["已发放", "未签约"] },
+      { "priority": 85, "stage": "offer", "label": "Offer已接受", "fields": ["offer_status", "sign_status"], "values": ["已接受", "*"] },
+      { "priority": 80, "stage": "salary", "label": "谈薪中", "fields": ["salary_status", "offer_status"], "values": ["谈薪中", "未发放"] },
+      { "priority": 75, "stage": "salary", "label": "谈薪待Offer", "fields": ["salary_status", "offer_status"], "values": ["已接受", "未发放"] },
+      { "priority": 70, "stage": "approval", "label": "报批中", "fields": ["approval_status", "salary_status"], "values": ["审批中", "*"] },
+      { "priority": 65, "stage": "approval", "label": "报批已通过", "fields": ["approval_status", "salary_status"], "values": ["已通过", "待谈薪"] },
+      { "priority": 60, "stage": "manager_interview", "label": "主管面进行中", "fields": ["manager_interview_status", "approval_status"], "values": ["已预约", "待提交"] },
+      { "priority": 55, "stage": "manager_interview", "label": "主管面已完成", "fields": ["manager_interview_status", "approval_status"], "values": ["已完成", "待提交"] },
+      { "priority": 50, "stage": "tech_interview", "label": "技术面进行中", "fields": ["tech_interview_status", "manager_interview_status"], "values": ["已预约", "待预约"] },
+      { "priority": 45, "stage": "tech_interview", "label": "技术面已完成", "fields": ["tech_interview_status", "manager_interview_status"], "values": ["已完成", "待预约"] },
+      { "priority": 40, "stage": "written_test", "label": "笔试阶段", "fields": ["written_test_status", "tech_interview_status"], "values": ["已预约", "待预约"] },
+      { "priority": 35, "stage": "written_test", "label": "笔试已完成", "fields": ["written_test_status", "tech_interview_status"], "values": ["已完成", "待预约"] },
+      { "priority": 30, "stage": "qualification", "label": "资审阶段", "fields": ["qualification_status", "written_test_status"], "values": ["待审查", "待预约"] },
+      { "priority": 25, "stage": "qualification", "label": "资审通过待笔试", "fields": ["qualification_status", "written_test_status"], "values": ["通过", "待预约"] },
+      { "priority": 20, "stage": "resume_screening", "label": "简历筛选", "fields": ["registration_status", "resume_screening_status"], "values": ["已登记", "待筛选"] },
+      { "priority": 15, "stage": "resume_screening", "label": "简历筛选通过", "fields": ["registration_status", "resume_screening_status"], "values": ["已登记", "通过"] },
+      { "priority": 10, "stage": "registration", "label": "登记阶段", "fields": ["registration_status", "resume_screening_status"], "values": ["待完善", "*"] },
+      { "priority": 5, "stage": "registration", "label": "默认登记", "fields": ["registration_status"], "values": ["*"] }
+    ]
+  }
+}

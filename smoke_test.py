@@ -45,32 +45,33 @@ call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 
 # 2. 配置与分组
 s, cfg = call("GET", "/api/config")
-check("读取字段配置(19个字段)", len(cfg["fields"]) == 19)
+check("读取10个流程阶段", len(cfg["stages"]) == 10)
 check("界面配置下发(每页15条)", cfg["app"]["page_size"] == 15)
-keys = [f["key"] for f in cfg["fields"]]
-check("已移除入职二层/接口人经理", "dept_level2" not in keys and "interface_manager" not in keys)
-check("含当前进展列", "progress" in keys)
-d3 = next(f for f in cfg["fields"] if f["key"] == "dept_level3")
-check("三层部门在候选人列之前且配置正确",
-      cfg["fields"].index(d3) < cfg["fields"].index(next(f for f in cfg["fields"] if f["key"] == "name"))
-      and d3["label"] == "三层部门" and d3["excel_column"] == "三层部门")
+check("含登记与入职阶段", "registration" in cfg["stage_fields"] and "onboarding" in cfg["stage_fields"])
+reg_fields = cfg["stage_fields"]["registration"]
+check("登记阶段含候选人列", any(f["key"] == "name" for f in reg_fields))
+onb_fields = cfg["stage_fields"]["onboarding"]
+check("入职阶段含当前进展列", any(f["key"] == "progress" for f in onb_fields))
 from openpyxl import load_workbook
-req = urllib.request.Request(BASE + "/api/import/template")
+req = urllib.request.Request(BASE + "/api/import/template?stage=registration")
 with opener.open(req) as r:
     tpl_headers = [c.value for c in load_workbook(io.BytesIO(r.read())).active[1]]
-check("导入模板首列为三层部门", tpl_headers[0] == "三层部门" and "候选人" in tpl_headers)
-hidden = [f["key"] for f in cfg["fields"] if not f["visible"]]
-check("学历/院校/专业/电话/Offer状态默认隐藏",
-      set(hidden) >= {"education", "school", "major", "phone", "offer_status"})
+check("登记导入模板含候选人列", "候选人" in tpl_headers)
 s, groups = call("GET", "/api/groups")
 check("读取分组(demo含2组)", len(groups) >= 2)
 g1 = groups[0]["id"]
 
 # 3. 候选人 CRUD
-s, r = call("POST", "/api/candidates", {"group_id": g1, "data": {"name": "测试员", "phone": "13911112222", "offer_status": "已发放"}})
+s, r = call("POST", "/api/candidates", {
+    "group_id": g1, "stage": "registration",
+    "data": {"name": "测试员", "phone": "13911112222", "registration_status": "已登记"},
+})
 cid = r["id"]
-check("新增候选人", s == 200)
-s, r = call("PUT", f"/api/candidates/{cid}", {"data": {"sign_status": "已签约", "onboard_risk": "高"}})
+check("新增候选人(登记阶段)", s == 200)
+s, r = call("PUT", f"/api/candidates/{cid}", {
+    "stage": "onboarding",
+    "data": {"sign_status": "已签约", "onboard_risk": "高"},
+})
 check("修改候选人(2项变更)", r["changed"] == 2)
 s, cands = call("GET", "/api/candidates?q=" + quote("测试员"))
 check("搜索候选人", len(cands) == 1 and cands[0]["data"]["sign_status"] == "已签约")
@@ -81,13 +82,13 @@ msg = logs["items"][0]["message"]
 check("修改日志简洁呈现", "修改了「测试员」" in msg and "未签约" not in msg.split("：")[0] and "→" in msg)
 print("   日志示例:", msg)
 
-# 5. Excel 导入
+# 5. Excel 导入（登记阶段）
 wb = Workbook()
 ws = wb.active
-ws.append(["三层部门", "候选人", "电话", "Offer状态", "拟录取工作地", "入职风险"])
-ws.append(["存储部", "导入甲", "13700001111", "已接受", "北京", "低"])
-ws.append(["计算部", "导入乙", "13700002222", "已发放", "成都", "中"])
-ws.append(["", "测试员", "13911112222", "已接受", "西安", ""])  # 应匹配并更新
+ws.append(["三层部门", "候选人", "电话", "登记状态", "拟录取工作地"])
+ws.append(["存储部", "导入甲", "13700001111", "已登记", "北京"])
+ws.append(["计算部", "导入乙", "13700002222", "已登记", "成都"])
+ws.append(["", "测试员", "13911112222", "已登记", "西安"])  # 应匹配并更新
 buf = io.BytesIO()
 wb.save(buf)
 boundary = uuid.uuid4().hex
@@ -102,16 +103,17 @@ def part(name, value=None, filename=None, content=None):
     else:
         body.write(f'Content-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
 part("group_id", str(g1))
+part("stage", "registration")
 part("file", filename="t.xlsx", content=buf.getvalue())
 body.write(f"--{boundary}--\r\n".encode())
 s, r = call("POST", "/api/import", raw=body.getvalue(), ctype=f"multipart/form-data; boundary={boundary}")
 check("Excel导入(新增2 更新1)", r["created"] == 2 and r["updated"] == 1)
 
-# 5a. 旧表头「入职三层」仍兼容导入
+# 5a. 旧表头「入职三层」仍兼容导入（登记阶段）
 wb = Workbook()
 ws = wb.active
-ws.append(["入职三层", "候选人", "签约状态"])
-ws.append(["网络部", "旧表头测试", "已签约"])
+ws.append(["入职三层", "候选人", "登记状态"])
+ws.append(["网络部", "旧表头测试", "已登记"])
 buf_legacy = io.BytesIO()
 wb.save(buf_legacy)
 boundary_l = uuid.uuid4().hex
@@ -126,6 +128,7 @@ def part_l(name, value=None, filename=None, content=None):
     else:
         body_l.write(f'Content-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
 part_l("group_id", str(g1))
+part_l("stage", "registration")
 part_l("file", filename="legacy.xlsx", content=buf_legacy.getvalue())
 body_l.write(f"--{boundary_l}--\r\n".encode())
 s, r = call("POST", "/api/import", raw=body_l.getvalue(), ctype=f"multipart/form-data; boundary={boundary_l}")
@@ -133,13 +136,13 @@ check("旧表头入职三层兼容导入", r["created"] == 1)
 s, found = call("GET", "/api/candidates?q=" + quote("旧表头测试"))
 check("旧表头导入写入三层部门", found[0]["data"].get("dept_level3") == "网络部")
 
-# 5b. 批量导入 120 名候选人
+# 5b. 批量导入 120 名候选人（登记阶段）
 wb = Workbook()
 ws = wb.active
-ws.append(["三层部门", "候选人", "电话", "学历", "毕业院校", "专业", "Offer状态", "毕业时间"])
+ws.append(["三层部门", "候选人", "电话", "学历", "毕业院校", "专业", "登记状态", "毕业时间"])
 for i in range(1, 121):
     ws.append([f"部门{i % 5}", f"压测{i:03d}", f"139{i:08d}", ["本科", "硕士", "博士"][i % 3],
-               f"测试大学{i % 10}", "计算机科学", ["未发放", "已发放", "已接受"][i % 3],
+               f"测试大学{i % 10}", "计算机科学", "已登记",
                f"2026-{(i % 12) + 1:02d}-15"])
 buf2 = io.BytesIO()
 wb.save(buf2)
@@ -155,6 +158,7 @@ def part2(name, value=None, filename=None, content=None):
     else:
         body2.write(f'Content-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
 part2("group_id", str(g1))
+part2("stage", "registration")
 part2("file", filename="bulk.xlsx", content=buf2.getvalue())
 body2.write(f"--{boundary2}--\r\n".encode())
 s, r = call("POST", "/api/import", raw=body2.getvalue(), ctype=f"multipart/form-data; boundary={boundary2}")
@@ -241,10 +245,11 @@ check("批量导出zip(含1份)", s == 200 and content[:2] == b"PK" and headers.
 s, cands = call("GET", "/api/candidates?q=" + quote("压测"))
 exp_ids = [c["id"] for c in cands[:5]] + [cid]
 s, content, headers = call_raw("POST", "/api/candidates/export",
-                               raw=json.dumps({"ids": exp_ids}).encode(), ctype="application/json")
+                               raw=json.dumps({"ids": exp_ids, "stage": "registration"}).encode(),
+                               ctype="application/json")
 check("选中数据导出Excel", s == 200 and content[:2] == b"PK" and headers.get("X-Export-Count") == "6")
 exp_headers = [c.value for c in load_workbook(io.BytesIO(content)).active[1]]
-check("导出Excel首列为二层部门且含三层部门", exp_headers[0] == "二层部门" and "三层部门" in exp_headers)
+check("导出Excel首列为二层部门且含候选人", exp_headers[0] == "二层部门" and "候选人" in exp_headers)
 
 s, _ = call("DELETE", f"/api/candidates/{cid}/resume")
 check("删除简历", s == 200)
@@ -276,17 +281,20 @@ s, _ = call("POST", "/api/users", {"username": "t_lead", "display_name": "测试
 check("管理员创建组管理员", s == 200)
 
 call("POST", "/api/login", {"username": "t_lead", "password": "pw123"})
-s, r = call("POST", "/api/candidates", {"data": {"name": "组管新增"}})
+s, r = call("POST", "/api/candidates", {"stage": "registration", "data": {"name": "组管新增"}})
 check("组管理员新增本组候选人", s == 200)
 lead_cid = r["id"]
 s, _ = call("POST", "/api/users", {"username": "t_member", "display_name": "测试组员",
                                    "role": "editor"})  # 不传密码 -> 默认123456
 check("组管理员添加本组成员", s == 200)
 
-# 组管理员配置本组字段显示（独立配置文件）
-s, _ = call("PUT", "/api/config", {"fields": [{"key": "phone", "visible": False}]})
+# 组管理员配置本组字段显示（各阶段独立配置文件）
+s, _ = call("PUT", "/api/config", {
+    "stage": "registration", "group_id": g2,
+    "fields": [{"key": "phone", "visible": False}],
+})
 check("组管理员配置本组字段", s == 200)
-s, cfg2 = call("GET", "/api/config")
+s, cfg2 = call("GET", f"/api/config?stage=registration&group_id={g2}")
 phone2 = next(f for f in cfg2["fields"] if f["key"] == "phone")
 check("本组配置生效(电话列隐藏)", phone2["visible"] is False)
 s, _ = call("POST", "/api/users", {"username": "t_admin2", "password": "pw123", "role": "admin"},
@@ -298,9 +306,11 @@ check("组管理员仅见本组成员", all(u["group_id"] == g2 for u in members
 call("POST", "/api/login", {"username": "t_member", "password": "123456"})
 s, me2 = call("GET", "/api/me")
 check("默认密码123456登录成功", s == 200 and me2["username"] == "t_member")
-s, cfg3 = call("GET", "/api/config")
+s, cfg3 = call("GET", f"/api/config?stage=registration&group_id={g2}")
 check("组成员看到的也是本组配置", next(f for f in cfg3["fields"] if f["key"] == "phone")["visible"] is False)
-s, _ = call("PUT", f"/api/candidates/{lead_cid}", {"data": {"phone": "13099998888"}})
+s, _ = call("PUT", f"/api/candidates/{lead_cid}", {
+    "stage": "registration", "data": {"phone": "13099998888"},
+})
 check("组成员可编辑本组候选人", s == 200)
 s, _ = call("DELETE", f"/api/candidates/{lead_cid}", expect_error=True)
 check("组成员无删除权限", s == 403)
@@ -311,7 +321,10 @@ call("POST", "/api/login", {"username": "t_lead", "password": "pw123"})
 s, _ = call("DELETE", f"/api/candidates/{lead_cid}")
 check("组管理员可删除本组候选人", s == 200)
 # 恢复本组字段配置，避免影响后续使用
-call("PUT", "/api/config", {"fields": [{"key": "phone", "visible": True}]})
+call("PUT", "/api/config", {
+    "stage": "registration", "group_id": g2,
+    "fields": [{"key": "phone", "visible": True}],
+})
 
 # 9b. 全局查看员：界面同管理员（全分组/总览/图表数据），但只读、无系统管理
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
@@ -363,7 +376,10 @@ check("备份列表包含新备份", s == 200 and any(b["name"] == backup_name f
 
 # 备份后新增一名候选人，恢复备份后应消失
 s, groups_now = call("GET", "/api/groups")
-s, c_tmp = call("POST", "/api/candidates", {"group_id": groups_now[0]["id"], "data": {"name": "恢复测试甲"}})
+s, c_tmp = call("POST", "/api/candidates", {
+    "group_id": groups_now[0]["id"], "stage": "registration",
+    "data": {"name": "恢复测试甲"},
+})
 s, found = call("GET", "/api/candidates?q=" + quote("恢复测试甲"))
 check("恢复前能查到新候选人", len(found) == 1)
 s, r = call("POST", "/api/backups/restore", {"name": backup_name})

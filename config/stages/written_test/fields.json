@@ -1,0 +1,52 @@
+{
+  "comment": "候选人笔试预约阶段字段配置",
+  "fields": [
+    {
+      "key": "written_test_book_time",
+      "label": "笔试预约时间",
+      "excel_column": "笔试预约时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "written_test_time",
+      "label": "笔试时间",
+      "excel_column": "笔试时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "written_test_location",
+      "label": "笔试地点",
+      "excel_column": "笔试地点",
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "written_test_status",
+      "label": "笔试状态",
+      "excel_column": "笔试状态",
+      "type": "select",
+      "options": ["待预约", "已预约", "已完成", "缺考", "放弃"],
+      "colors": { "待预约": "gray", "已预约": "blue", "已完成": "green", "缺考": "red", "放弃": "yellow" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "written_test_score",
+      "label": "笔试成绩",
+      "excel_column": "笔试成绩",
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    }
+  ]
+}

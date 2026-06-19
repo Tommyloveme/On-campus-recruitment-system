@@ -1,0 +1,23 @@
+{
+  "comment": "阶段「onboarding」分组 1 的字段显示配置（从旧版 fields_group_1.json 迁移）",
+  "visible": {
+    "name": true,
+    "phone": false,
+    "dept_level3": true,
+    "interface_person": true,
+    "education": false,
+    "school": false,
+    "major": false,
+    "work_location": true,
+    "graduation_time": true,
+    "sign_status": true,
+    "expected_onboard_time": true,
+    "physical_exam_time": true,
+    "physical_exam_done": true,
+    "onboard_booked": true,
+    "onboard_booked_time": true,
+    "onboarded": true,
+    "onboard_risk": true,
+    "progress": true
+  }
+}

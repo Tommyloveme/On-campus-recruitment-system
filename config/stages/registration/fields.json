@@ -1,0 +1,45 @@
+{
+  "comment": "候选人登记阶段字段配置",
+  "fields": [
+    {
+      "key": "registration_time",
+      "label": "登记时间",
+      "excel_column": "登记时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "registration_source",
+      "label": "来源渠道",
+      "excel_column": "来源渠道",
+      "type": "select",
+      "options": ["校园宣讲", "线上投递", "内推", "猎头", "其他"],
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "registration_status",
+      "label": "登记状态",
+      "excel_column": "登记状态",
+      "type": "select",
+      "options": ["待完善", "已登记", "已放弃"],
+      "colors": { "待完善": "yellow", "已登记": "green", "已放弃": "red" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "registration_remark",
+      "label": "登记备注",
+      "excel_column": "登记备注",
+      "type": "text",
+      "multiline": true,
+      "visible": false,
+      "editable": true,
+      "importable": true
+    }
+  ]
+}

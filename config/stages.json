@@ -1,0 +1,97 @@
+{
+  "comment": "校招全流程阶段定义。各阶段字段配置位于 config/stages/<key>/fields.json；公共身份字段位于 config/stages/_common/fields.json",
+  "stages": [
+    {
+      "key": "registration",
+      "label": "候选人登记",
+      "short_label": "登记",
+      "order": 1,
+      "icon": "📝",
+      "can_create": true,
+      "description": "校招候选人信息登记与简历收集"
+    },
+    {
+      "key": "resume_screening",
+      "label": "简历筛选",
+      "short_label": "筛简历",
+      "order": 2,
+      "icon": "🔍",
+      "can_create": false,
+      "description": "简历初筛与筛选结果记录"
+    },
+    {
+      "key": "qualification",
+      "label": "资格审查",
+      "short_label": "资审",
+      "order": 3,
+      "icon": "✅",
+      "can_create": false,
+      "description": "候选人学历、院校等资格审查"
+    },
+    {
+      "key": "written_test",
+      "label": "笔试预约",
+      "short_label": "笔试",
+      "order": 4,
+      "icon": "📋",
+      "can_create": false,
+      "description": "笔试时间与地点预约安排"
+    },
+    {
+      "key": "tech_interview",
+      "label": "技术面试预约",
+      "short_label": "技术面",
+      "order": 5,
+      "icon": "💻",
+      "can_create": false,
+      "has_interview_calendar": true,
+      "description": "技术面试预约与结果记录（支持面试官日程）"
+    },
+    {
+      "key": "manager_interview",
+      "label": "主管面试预约",
+      "short_label": "主管面",
+      "order": 6,
+      "icon": "👔",
+      "can_create": false,
+      "has_interview_calendar": true,
+      "description": "主管面试预约与结果记录（支持面试官日程）"
+    },
+    {
+      "key": "approval",
+      "label": "报批",
+      "short_label": "报批",
+      "order": 7,
+      "icon": "📑",
+      "can_create": false,
+      "description": "录用报批流程跟踪"
+    },
+    {
+      "key": "salary",
+      "label": "谈薪",
+      "short_label": "谈薪",
+      "order": 8,
+      "icon": "💰",
+      "can_create": false,
+      "description": "薪资谈判与意向确认"
+    },
+    {
+      "key": "offer",
+      "label": "Offer发放",
+      "short_label": "Offer",
+      "order": 9,
+      "icon": "📧",
+      "can_create": false,
+      "description": "Offer 发放与接受状态跟踪"
+    },
+    {
+      "key": "onboarding",
+      "label": "入职管理",
+      "short_label": "入职",
+      "order": 10,
+      "icon": "🎓",
+      "can_create": false,
+      "description": "签约、体检、入职预约到正式入职"
+    }
+  ]
+}

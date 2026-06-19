@@ -1,0 +1,44 @@
+{
+  "comment": "候选人资格审查阶段字段配置",
+  "fields": [
+    {
+      "key": "qualification_status",
+      "label": "资审状态",
+      "excel_column": "资审状态",
+      "type": "select",
+      "options": ["待审查", "通过", "不通过", "待定"],
+      "colors": { "待审查": "yellow", "通过": "green", "不通过": "red", "待定": "gray" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "qualification_reviewer",
+      "label": "审查人",
+      "excel_column": "审查人",
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "qualification_time",
+      "label": "审查时间",
+      "excel_column": "审查时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "qualification_remark",
+      "label": "资审备注",
+      "excel_column": "资审备注",
+      "type": "text",
+      "multiline": true,
+      "visible": false,
+      "editable": true,
+      "importable": true
+    }
+  ]
+}

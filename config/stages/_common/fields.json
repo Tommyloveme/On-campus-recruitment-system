@@ -1,0 +1,110 @@
+{
+  "comment": "各流程标签页共用的候选人身份字段（在登记阶段可编辑，其他阶段默认只读展示）",
+  "fields": [
+    {
+      "key": "dept_level3",
+      "label": "三层部门",
+      "excel_column": "三层部门",
+      "excel_aliases": ["入职三层"],
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "name",
+      "label": "候选人",
+      "excel_column": "候选人",
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true,
+      "required": true
+    },
+    {
+      "key": "phone",
+      "label": "电话",
+      "excel_column": "电话",
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "education",
+      "label": "学历",
+      "excel_column": "学历",
+      "type": "select",
+      "options": ["大专", "本科", "硕士", "博士"],
+      "visible": false,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "school",
+      "label": "毕业院校",
+      "excel_column": "毕业院校",
+      "type": "text",
+      "visible": false,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "major",
+      "label": "专业",
+      "excel_column": "专业",
+      "type": "text",
+      "visible": false,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "interface_person",
+      "label": "接口人",
+      "excel_column": "接口人",
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "work_location",
+      "label": "工作地",
+      "excel_column": "拟录取工作地",
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "graduation_time",
+      "label": "毕业时间",
+      "excel_column": "毕业时间",
+      "type": "date",
+      "visible": false,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "current_stage",
+      "label": "当前流程",
+      "excel_column": "当前流程",
+      "type": "select",
+      "options": ["registration", "resume_screening", "qualification", "written_test", "tech_interview", "manager_interview", "approval", "salary", "offer", "onboarding"],
+      "option_labels": {
+        "registration": "登记", "resume_screening": "筛简历", "qualification": "资审",
+        "written_test": "笔试", "tech_interview": "技术面", "manager_interview": "主管面",
+        "approval": "报批", "salary": "谈薪", "offer": "Offer", "onboarding": "入职"
+      },
+      "colors": {
+        "registration": "gray", "resume_screening": "blue", "qualification": "blue",
+        "written_test": "blue", "tech_interview": "yellow", "manager_interview": "yellow",
+        "approval": "yellow", "salary": "yellow", "offer": "green", "onboarding": "green"
+      },
+      "visible": true,
+      "editable": false,
+      "importable": false,
+      "computed": true
+    }
+  ]
+}

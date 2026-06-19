@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>校招入职跟踪管理系统</title>
+<title>校招全流程管理系统</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -12,8 +12,8 @@
 <div id="login-view" class="login-wrap hidden">
   <div class="login-card">
     <div class="login-logo">🎓</div>
-    <h1>校招入职跟踪管理系统</h1>
-    <p class="login-sub">Campus Recruitment Onboarding Tracking</p>
+    <h1>校招全流程管理系统</h1>
+    <p class="login-sub">Campus Recruitment Full Lifecycle</p>
     <div class="form-item">
       <label>用户名</label>
       <input id="login-username" type="text" placeholder="请输入用户名" autocomplete="username">
@@ -28,17 +28,19 @@
 </div>
 
 <!-- 主应用 -->
-<div id="app-view" class="hidden">
+<div id="app-view" class="app-shell hidden">
   <header class="topbar">
-    <div class="brand">🎓 校招入职跟踪管理系统</div>
-    <nav id="nav-tabs" class="tabs"></nav>
+    <div class="brand">🎓 校招全流程管理系统</div>
     <div class="userbox">
       <span id="user-info"></span>
       <a class="btn btn-ghost btn-sm" href="/static/manual.pdf" target="_blank" title="查看系统操作手册（PDF）">📖 操作手册</a>
       <button id="logout-btn" class="btn btn-ghost btn-sm">退出</button>
     </div>
   </header>
-  <main id="main" class="main"></main>
+  <div class="app-body">
+    <aside id="sidebar" class="sidebar"></aside>
+    <main id="main" class="main"></main>
+  </div>
 </div>
 
 <!-- 通用弹窗 -->
@@ -56,6 +58,10 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="/static/vendor/chart.umd.min.js"></script>
-<script src="/static/app.js"></script>
+<script src="/static/js/core.js"></script>
+<script src="/static/js/interview-calendar.js"></script>
+<script src="/static/js/stage-view.js"></script>
+<script src="/static/js/pages.js"></script>
+<script src="/static/js/main.js"></script>
 </body>
 </html>

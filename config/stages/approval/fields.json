@@ -1,0 +1,44 @@
+{
+  "comment": "候选人报批阶段字段配置",
+  "fields": [
+    {
+      "key": "approval_status",
+      "label": "报批状态",
+      "excel_column": "报批状态",
+      "type": "select",
+      "options": ["待提交", "审批中", "已通过", "已驳回"],
+      "colors": { "待提交": "gray", "审批中": "blue", "已通过": "green", "已驳回": "red" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "approval_submit_time",
+      "label": "提交时间",
+      "excel_column": "报批提交时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "approval_pass_time",
+      "label": "通过时间",
+      "excel_column": "报批通过时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "approval_remark",
+      "label": "报批备注",
+      "excel_column": "报批备注",
+      "type": "text",
+      "multiline": true,
+      "visible": false,
+      "editable": true,
+      "importable": true
+    }
+  ]
+}
