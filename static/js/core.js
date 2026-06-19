@@ -33,7 +33,13 @@ async function api(url, options = {}) {
     }
     const msg = (body && body.error) ||
       (res.status === 403 ? "无权限执行该操作" : `操作失败 (${res.status})`);
-    throw new Error(msg);
+    const err = new Error(msg);
+    err.status = res.status;
+    if (body) {
+      err.code = body.code;
+      err.existing = body.existing;
+    }
+    throw err;
   }
   return body;
 }
@@ -69,9 +75,8 @@ const isAdmin = () => state.me && state.me.role === "admin";
 const isGroupAdmin = () => state.me && state.me.role === "group_admin";
 const canSeeAll = () => state.me && ["admin", "global_viewer"].includes(state.me.role);
 const canCreate = () => state.me && ["admin", "group_admin", "editor"].includes(state.me.role);
-const canEdit = gid => isAdmin() ||
-  (["group_admin", "editor"].includes(state.me.role) && state.me.group_id === gid);
-const canDelete = gid => isAdmin() || (isGroupAdmin() && state.me.group_id === gid);
+const canEdit = () => state.me && ["admin", "group_admin", "editor"].includes(state.me.role);
+const canDelete = () => isAdmin() || isGroupAdmin();
 const canBatchDelete = () => isAdmin() || isGroupAdmin();
 
 function currentStageMeta() {
@@ -129,6 +134,7 @@ function fieldInput(f, value) {
 function showLogin() {
   state.me = null;
   $("#app-view").classList.add("hidden");
+  $("#register-view")?.classList.add("hidden");
   $("#login-view").classList.remove("hidden");
 }
 

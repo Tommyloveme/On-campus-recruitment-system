@@ -110,7 +110,7 @@ async function renderInterviewCalendar(stageKey) {
     el.addEventListener("click", () => openBookModal(stageKey, el.dataset.iid, el.dataset.start)));
   document.querySelectorAll(".iv-slot.booked").forEach(el =>
     el.addEventListener("click", () => {
-      if (canEdit(state.me.group_id) && el.dataset.bid)
+      if (canEdit() && el.dataset.bid)
         openCancelBookModal(el.dataset.bid, el.querySelector(".iv-cname")?.textContent);
     }));
 }

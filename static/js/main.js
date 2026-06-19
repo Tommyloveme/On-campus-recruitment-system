@@ -74,15 +74,13 @@ async function boot() {
   $("#login-view").classList.add("hidden");
   $("#app-view").classList.remove("hidden");
   const roleName = ROLE_NAMES[state.me.role] || state.me.role;
-  $("#user-info").textContent =
-    `${state.me.display_name}（${roleName}${state.me.group_name ? " · " + state.me.group_name : ""}）`;
+  $("#user-info").textContent = `${state.me.display_name}（${roleName}）`;
 
-  const [cfg, groups] = await Promise.all([api("/api/config"), api("/api/groups")]);
+  const [cfg] = await Promise.all([api("/api/config")]);
   state.stages = cfg.stages;
   state.stageFields = cfg.stage_fields;
   state.masterImport = cfg.master_import || {};
   state.app = cfg.app || {};
-  state.groups = groups;
 
   if (state.app.clip_max_width)
     document.documentElement.style.setProperty("--clip-max", state.app.clip_max_width + "px");

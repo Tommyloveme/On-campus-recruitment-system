@@ -82,7 +82,7 @@ def load_all_fields(group_id=None):
     seen = set()
     merged = []
     for stage in load_stages_meta():
-        for f in load_stage_fields(stage["key"], group_id):
+        for f in load_stage_fields(stage["key"]):
             if f["key"] not in seen:
                 seen.add(f["key"])
                 merged.append(copy.deepcopy(f))
@@ -152,7 +152,7 @@ def build_config_response(group_id=None):
     """构建 /api/config 完整响应。"""
     from campus.stage_engine import load_master_import_config
     stages = load_stages_meta()
-    stage_fields = {s["key"]: load_stage_fields(s["key"], group_id) for s in stages}
+    stage_fields = {s["key"]: load_stage_fields(s["key"]) for s in stages}
     try:
         master = load_master_import_config("registration")
     except (ValueError, OSError, json.JSONDecodeError):
@@ -160,7 +160,6 @@ def build_config_response(group_id=None):
     return {
         "stages": stages,
         "stage_fields": stage_fields,
-        "group_id": group_id,
         "master_import": {
             "page": master.get("page", "registration"),
             "import_mode": master.get("import_mode", "dual_file"),

@@ -10,13 +10,5 @@
   "file_patterns": {
     "application": "Application*.xlsx",
     "candidate_mgmt": "候选人管理*.xlsx"
-  },
-  "group_mapping": {
-    "comment": "新建候选人时按 Excel 列解析二层部门",
-    "excel_column": "二层部门",
-    "excel_aliases": ["入职二层", "二层部门"],
-    "match_patterns": ["*部门*"],
-    "field_key": "_group_name",
-    "fallback": "first"
   }
 }

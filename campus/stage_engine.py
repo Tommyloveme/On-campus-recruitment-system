@@ -247,7 +247,7 @@ def join_master_rows(app_rows, mgmt_rows, join_key="resume_id"):
     return merged
 
 
-def run_dual_master_refresh(db, cfg, can_edit_fn, user, groups_list):
+def run_dual_master_refresh(db, cfg, can_edit_fn, user):
     """从已上传的双表文件读取、关联、全局刷新全部候选人。"""
     from campus.services.master_import_store import both_files_ready, get_stored_files
 
@@ -264,7 +264,7 @@ def run_dual_master_refresh(db, cfg, can_edit_fn, user, groups_list):
     rows_data = join_master_rows(app_rows, mgmt_rows, join_key)
 
     created, updated, skipped = apply_master_rows(
-        rows_data, db, cfg, can_edit_fn, user, groups_list)
+        rows_data, db, cfg, can_edit_fn, user)
 
     from campus.services.master_import_store import load_meta, save_meta
     meta = load_meta(page)
@@ -278,8 +278,8 @@ def run_dual_master_refresh(db, cfg, can_edit_fn, user, groups_list):
     return created, updated, skipped, meta["last_refresh_stats"]
 
 
-def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, groups_list):
-    """全局主表导入：跨分组匹配，按权限更新/新建。"""
+def apply_master_rows(rows_data, db, cfg, can_edit_fn, user):
+    """全局主表导入：跨记录匹配，按权限更新/新建。"""
     created = updated = skipped = 0
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     by_resume_id, by_phone, by_name = build_global_candidate_index(db)
@@ -306,8 +306,7 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, groups_list):
                 break
 
         if match:
-            group_id = match["group_id"]
-            if not can_edit_fn(user, group_id):
+            if not can_edit_fn(user):
                 skipped += 1
                 continue
             old = json.loads(match["data"])
@@ -331,14 +330,13 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, groups_list):
             if not data.get("name"):
                 skipped += 1
                 continue
-            group_id = resolve_group_id(data, cfg, groups_list)
-            if not group_id or not can_edit_fn(user, group_id):
+            if not can_edit_fn(user):
                 skipped += 1
                 continue
             payload = _strip_internal_fields(data)
             cur = db.execute(
                 "INSERT INTO candidates (group_id, data, created_at, updated_at) VALUES (?,?,?,?)",
-                (group_id, json.dumps(payload, ensure_ascii=False), now, now),
+                (None, json.dumps(payload, ensure_ascii=False), now, now),
             )
             row = db.execute("SELECT * FROM candidates WHERE id=?", (cur.lastrowid,)).fetchone()
             d = json.loads(row["data"])

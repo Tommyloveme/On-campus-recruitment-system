@@ -4,7 +4,6 @@ from campus.routes.auth import bp as auth_bp
 from campus.routes.backups import bp as backups_bp
 from campus.routes.candidates import bp as candidates_bp
 from campus.routes.config import bp as config_bp
-from campus.routes.groups import bp as groups_bp
 from campus.routes.import_export import bp as import_export_bp
 from campus.routes.interviews import bp as interviews_bp
 from campus.routes.logs import bp as logs_bp
@@ -18,7 +17,6 @@ def register_routes(app):
     for bp in (
         auth_bp,
         config_bp,
-        groups_bp,
         users_bp,
         candidates_bp,
         resumes_bp,

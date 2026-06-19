@@ -9,24 +9,15 @@ const CHART_COLORS = [
 
 async function renderCharts() {
   const fields = allFieldsFlat().filter(f => f.type === "select" || f.type === "date");
-  const fieldOpts = (selected) => [
-    `<option value="__group"${selected === "__group" ? " selected" : ""}>二层部门</option>`,
-    ...fields.map(f =>
-      `<option value="${f.key}"${f.key === selected ? " selected" : ""}>${esc(f.label)}</option>`),
-  ].join("");
+  const fieldOpts = (selected) =>
+    fields.map(f =>
+      `<option value="${f.key}"${f.key === selected ? " selected" : ""}>${esc(f.label)}</option>`).join("");
   const dimOpts = fieldOpts("offer_status");
   const serOpts = `<option value="">（无）</option>` + fieldOpts("");
-  const groupCtrl = isGroupAdmin()
-    ? `<div class="chart-ctrl"><label>分组范围</label>
-        <select id="ch-group" disabled><option value="${state.me.group_id}">${esc(state.me.group_name || "")}</option></select></div>`
-    : `<div class="chart-ctrl"><label>分组范围</label>
-        <select id="ch-group"><option value="">全部分组</option>
-          ${state.groups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join("")}</select></div>`;
 
   $("#main").innerHTML = `
     <div class="card">
       <div class="toolbar" style="margin-bottom:0">
-        ${groupCtrl}
         <div class="chart-ctrl"><label>维度（横轴）</label><select id="ch-dim">${dimOpts}</select></div>
         <div class="chart-ctrl hidden" id="ch-gran-wrap"><label>日期粒度</label>
           <select id="ch-gran">
@@ -59,7 +50,7 @@ async function renderCharts() {
     </div>`;
 
   charts.list = await api("/api/candidates");
-  ["ch-group", "ch-dim", "ch-ser", "ch-type", "ch-gran"].forEach(id =>
+  ["ch-dim", "ch-ser", "ch-type", "ch-gran"].forEach(id =>
     $("#" + id).addEventListener("change", drawChart));
   drawChart();
 }
@@ -70,7 +61,6 @@ function isDateField(key) {
 }
 
 function chartValue(c, key, gran) {
-  if (key === "__group") return c.group_name || "（无分组）";
   let v = c.data[key] || "（空）";
   if (gran && v !== "（空）" && isDateField(key)) {
     if (gran === "ym" && v.length >= 7) v = v.slice(0, 7);
@@ -80,7 +70,6 @@ function chartValue(c, key, gran) {
 }
 
 function chartLabelOf(key) {
-  if (key === "__group") return "二层部门";
   const f = allFieldsFlat().find(f => f.key === key);
   return f ? f.label : key;
 }
@@ -93,10 +82,7 @@ function orderedValues(list, key, gran) {
   });
   const f = allFieldsFlat().find(f => f.key === key);
   let values;
-  if (key === "__group") {
-    values = state.groups.map(g => g.name).filter(n => counts.has(n));
-    if (counts.has("（无分组）")) values.push("（无分组）");
-  } else if (f && f.type === "date") {
+  if (f && f.type === "date") {
     values = [...counts.keys()].filter(v => v !== "（空）").sort();
     if (counts.has("（空）")) values.push("（空）");
   } else if (f && f.type === "select") {
@@ -109,7 +95,6 @@ function orderedValues(list, key, gran) {
 }
 
 function drawChart() {
-  const gid = $("#ch-group").value;
   const dimKey = $("#ch-dim").value;
   let serKey = $("#ch-ser").value;
   const type = $("#ch-type").value;
@@ -120,7 +105,6 @@ function drawChart() {
   const gran = dimIsDate ? $("#ch-gran").value : null;
 
   let list = charts.list;
-  if (gid) list = list.filter(c => String(c.group_id) === gid);
   $("#ch-count").textContent = `共 ${list.length} 名候选人`;
 
   const dims = orderedValues(list, dimKey, gran);
@@ -135,10 +119,9 @@ function drawChart() {
   });
 
   const granName = { ymd: "按年月日", ym: "按年月", m: "按月份" }[gran] || "";
-  const groupName = gid ? (state.groups.find(g => String(g.id) === gid)?.name || "") : "全部分组";
   $("#ch-title").textContent =
     `${chartLabelOf(dimKey)}${granName ? "·" + granName : ""} 分布` +
-    (serKey ? ` × ${chartLabelOf(serKey)}` : "") + `（${groupName}）`;
+    (serKey ? ` × ${chartLabelOf(serKey)}` : "");
 
   if (charts.instance) { charts.instance.destroy(); charts.instance = null; }
   const ctx = $("#ch-canvas").getContext("2d");

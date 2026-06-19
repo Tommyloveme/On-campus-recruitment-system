@@ -6,16 +6,13 @@ from datetime import datetime
 from flask import Blueprint, g, jsonify, request
 
 from campus.auth.decorators import login_required
-from campus.auth.permissions import (
-    GLOBAL_VIEW_ROLES,
-    can_delete_group,
-    can_edit_group,
-)
+from campus.auth.permissions import can_delete_group, can_edit_group
 from campus.config_loader import editable_fields, field_labels, get_stage_meta, validate_stage
 from campus.db.connection import get_db, now_str
 from campus.logging_util import log, who
 from campus.services.audit import add_log
 from campus.services.candidates import candidate_dict, group_name_map
+from campus.services.users import apply_registration_candidate_defaults, validate_registration_manual_create
 from campus.services.resumes import remove_resume_file
 from campus.stage_engine import compute_current_stage, merge_candidate_data, build_global_candidate_index
 
@@ -26,25 +23,13 @@ bp = Blueprint("candidates", __name__)
 @login_required
 def api_candidates():
     db = get_db()
-    sql = "SELECT * FROM candidates"
-    params = []
-    if g.user["role"] not in GLOBAL_VIEW_ROLES:
-        if not g.user["group_id"]:
-            return jsonify([])
-        sql += " WHERE group_id=?"
-        params.append(g.user["group_id"])
-    elif request.args.get("group_id"):
-        sql += " WHERE group_id=?"
-        params.append(int(request.args["group_id"]))
-    sql += " ORDER BY updated_at DESC"
-    rows = db.execute(sql, params).fetchall()
+    rows = db.execute("SELECT * FROM candidates ORDER BY updated_at DESC").fetchall()
     names = group_name_map()
     result = [candidate_dict(r, names) for r in rows]
     q = (request.args.get("q") or "").strip()
     stage_filter = request.args.get("stage")
     if q:
-        result = [c for c in result
-                  if any(q in str(v) for v in c["data"].values()) or q in c["group_name"]]
+        result = [c for c in result if any(q in str(v) for v in c["data"].values())]
     if stage_filter:
         result = [c for c in result if c["data"].get("current_stage") == stage_filter]
     log.debug("候选人列表 %s 返回%d条 q=%s group=%s stage=%s",
@@ -64,12 +49,10 @@ def api_candidate_create():
     meta = get_stage_meta(stage)
     if not meta.get("can_create"):
         return jsonify({"error": f"「{meta['label']}」阶段不支持新增候选人，请在登记阶段新增"}), 400
-    group_id = b.get("group_id") or g.user["group_id"]
-    if not group_id:
-        return jsonify({"error": "请指定分组"}), 400
-    if not can_edit_group(g.user, group_id):
-        log.warning("新增候选人权限拒绝 %s group_id=%s", who(g.user), group_id)
-        return jsonify({"error": "无该分组的编辑权限"}), 403
+    if not can_edit_group(g.user):
+        log.warning("新增候选人权限拒绝 %s", who(g.user))
+        return jsonify({"error": "无新增候选人权限"}), 403
+    group_id = None
     fields = editable_fields(stage)
     data = {f["key"]: str(b.get("data", {}).get(f["key"], "") or "").strip() for f in fields}
     if not data.get("name"):
@@ -81,45 +64,59 @@ def api_candidate_create():
             data["registration_time"] = today
         if not data.get("registration_status"):
             data["registration_status"] = "待投递"
+        data = apply_registration_candidate_defaults(data, g.user)
+        missing = validate_registration_manual_create(data)
+        if missing:
+            return jsonify({"error": f"请填写：{'、'.join(missing)}"}), 400
 
     phone = data.get("phone", "").strip()
     db = get_db()
+    confirm_overwrite = bool(b.get("confirm_overwrite"))
 
-    # 登记阶段：电话与已有候选人（含主数据导入）匹配则合并为一条
+    # 登记阶段：同手机号须用户确认后才覆盖已有候选人
     if stage == "registration" and phone:
         _, by_phone, _ = build_global_candidate_index(db)
         match = by_phone.get(phone)
-        if match and can_edit_group(g.user, match["group_id"]):
+        if match and can_edit_group(g.user):
             old = json.loads(match["data"])
+            if not confirm_overwrite:
+                return jsonify({
+                    "error": "该手机号已存在",
+                    "code": "phone_duplicate",
+                    "existing": {
+                        "id": match["id"],
+                        "name": old.get("name") or "",
+                        "phone": phone,
+                        "sourcer": old.get("sourcer") or "",
+                        "interface_person": old.get("interface_person") or "",
+                    },
+                }), 409
             merged = merge_candidate_data(old, data)
             merged["registration_time"] = data.get("registration_time") or today
             if not str(old.get("registration_status") or "").strip():
                 merged["registration_status"] = data.get("registration_status", "待投递")
             compute_current_stage(merged)
-            if merged != old:
-                db.execute(
-                    "UPDATE candidates SET data=?, updated_at=? WHERE id=?",
-                    (json.dumps(merged, ensure_ascii=False), now_str(), match["id"]),
-                )
-                name = merged.get("name") or old.get("name", "")
-                gname = group_name_map().get(match["group_id"], "")
-                add_log(g.user, "update",
-                        f"{g.user['display_name']} 登记合并了候选人「{name}」（电话 {phone}，{gname}）",
-                        match["id"], name, match["group_id"])
-                db.commit()
-                log.info("登记合并 %s id=%d phone=%s", who(g.user), match["id"], phone)
-            return jsonify({"ok": True, "id": match["id"], "merged": True})
+            db.execute(
+                "UPDATE candidates SET data=?, updated_at=? WHERE id=?",
+                (json.dumps(merged, ensure_ascii=False), now_str(), match["id"]),
+            )
+            name = merged.get("name") or old.get("name", "")
+            add_log(g.user, "update",
+                    f"{g.user['display_name']} 登记覆盖了候选人「{name}」（电话 {phone}）",
+                    match["id"], name)
+            db.commit()
+            log.info("登记覆盖 %s id=%d phone=%s", who(g.user), match["id"], phone)
+            return jsonify({"ok": True, "id": match["id"], "overwritten": True})
 
     compute_current_stage(data)
     cur = db.execute(
         "INSERT INTO candidates (group_id, data, created_at, updated_at) VALUES (?,?,?,?)",
         (group_id, json.dumps(data, ensure_ascii=False), now_str(), now_str()),
     )
-    gname = group_name_map().get(group_id, "")
-    add_log(g.user, "create", f"{g.user['display_name']} 在{meta['label']}新增了候选人「{data['name']}」（{gname}）",
-            cur.lastrowid, data["name"], group_id)
+    add_log(g.user, "create", f"{g.user['display_name']} 在{meta['label']}新增了候选人「{data['name']}」",
+            cur.lastrowid, data["name"])
     db.commit()
-    log.info("新增候选人 %s id=%d name=%s group=%s stage=%s", who(g.user), cur.lastrowid, data["name"], gname, stage)
+    log.info("新增候选人 %s id=%d name=%s stage=%s", who(g.user), cur.lastrowid, data["name"], stage)
     return jsonify({"ok": True, "id": cur.lastrowid})
 
 
@@ -232,10 +229,7 @@ def api_recompute_stages():
     if g.user["role"] not in ("admin", "group_admin"):
         return jsonify({"error": "无权限"}), 403
     db = get_db()
-    if g.user["role"] == "group_admin":
-        rows = db.execute("SELECT * FROM candidates WHERE group_id=?", (g.user["group_id"],)).fetchall()
-    else:
-        rows = db.execute("SELECT * FROM candidates").fetchall()
+    rows = db.execute("SELECT * FROM candidates").fetchall()
     n = 0
     for row in rows:
         data = json.loads(row["data"])

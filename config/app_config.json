@@ -18,7 +18,10 @@
     "level": "INFO"
   },
   "security": {
-    "default_password": "123456"
+    "default_password": "123456",
+    "reserved_accounts": ["admin"],
+    "registerable_job_roles": ["拓源人", "接口人", "技术面试官", "主管面试官", "HR", "BA"],
+    "default_register_job_roles": ["拓源人", "接口人"]
   },
   "resume": {
     "allowed_ext": [".pdf", ".docx"]

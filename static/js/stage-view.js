@@ -48,7 +48,6 @@ async function renderStageList(stageKey) {
   const meta = state.stages.find(s => s.key === stageKey);
   const ss = getStageState(stageKey);
   const fields = visibleFields(stageKey);
-  const showGroupCol = canSeeAll() && stageKey !== "registration";
   const showResume = stageKey === "registration";
   const canAdd = canCreate() && meta.can_create;
   const showMasterImport = stageKey === "registration" && canCreate();
@@ -63,10 +62,6 @@ async function renderStageList(stageKey) {
     }
     return `<th><input type="text" data-filter="${f.key}" placeholder="筛选"></th>`;
   }).join("");
-  const groupFilter = showGroupCol
-    ? `<th><select data-filter="__group"><option value="">全部</option>
-        ${state.groups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join("")}</select></th>`
-    : "";
 
   const root = $("#stage-content") || $("#main");
   root.innerHTML = `
@@ -90,11 +85,11 @@ async function renderStageList(stageKey) {
         <thead>
           <tr>
             <th class="col-check"><input type="checkbox" id="sel-all" title="全选当前筛选结果"></th>
-            ${showGroupCol ? "<th>二层部门</th>" : ""}${headCells}
+            ${headCells}
             ${showResume ? "<th>简历</th>" : ""}<th>操作</th>
           </tr>
           <tr class="filter-row">
-            <th></th>${groupFilter}${filterCells}${showResume ? "<th></th>" : ""}<th></th>
+            <th></th>${filterCells}${showResume ? "<th></th>" : ""}<th></th>
           </tr>
         </thead>
         <tbody id="cand-tbody"></tbody>
@@ -162,16 +157,13 @@ function filteredCandidates(stageKey) {
   const q = ($("#cand-search")?.value || "").trim().toLowerCase();
   if (q) {
     list = list.filter(c =>
-      Object.values(c.data).some(v => String(v).toLowerCase().includes(q)) ||
-      c.group_name.toLowerCase().includes(q));
+      Object.values(c.data).some(v => String(v).toLowerCase().includes(q)));
   }
   document.querySelectorAll("[data-filter]").forEach(el => {
     const val = el.value.trim();
     if (!val) return;
     const key = el.dataset.filter;
-    if (key === "__group") {
-      list = list.filter(c => String(c.group_id) === val);
-    } else if (el.tagName === "SELECT") {
+    if (el.tagName === "SELECT") {
       list = list.filter(c => (c.data[key] || "") === val);
     } else {
       const lv = val.toLowerCase();
@@ -204,14 +196,14 @@ function toggleSort(stageKey, key) {
 }
 
 function resumeCellHtml(c) {
-  const editable = canEdit(c.group_id);
+  const editable = canEdit();
   if (c.resume_name) {
     return `
       <span class="resume-actions" title="${esc(c.resume_name)}">
         <button class="btn btn-sm" data-resprev="${c.id}">预览</button>
         <button class="btn btn-sm" data-resdl="${c.id}">下载</button>
         ${editable ? `<button class="btn btn-sm" data-resup="${c.id}">更换</button>` : ""}
-        ${canDelete(c.group_id) ? `<button class="btn btn-sm btn-danger" data-resdel="${c.id}">删除</button>` : ""}
+        ${canDelete() ? `<button class="btn btn-sm btn-danger" data-resdel="${c.id}">删除</button>` : ""}
       </span>`;
   }
   return editable
@@ -224,10 +216,9 @@ function renderCandidateRows(stageKey) {
   if (!tbody) return;
   const ss = getStageState(stageKey);
   const fields = visibleFields(stageKey);
-  const showGroupCol = canSeeAll() && stageKey !== "registration";
   const showResume = stageKey === "registration";
   const list = filteredCandidates(stageKey);
-  const colCount = 3 + fields.length + (showGroupCol ? 1 : 0) + (showResume ? 1 : 0);
+  const colCount = 3 + fields.length + (showResume ? 1 : 0);
 
   const total = list.length;
   const pages = ss.pageSize > 0 ? Math.max(1, Math.ceil(total / ss.pageSize)) : 1;
@@ -242,7 +233,6 @@ function renderCandidateRows(stageKey) {
     tbody.innerHTML = pageList.map(c => `
       <tr>
         <td class="col-check"><input type="checkbox" data-sel="${c.id}" ${ss.selected.has(c.id) ? "checked" : ""}></td>
-        ${showGroupCol ? `<td><span class="badge badge-gray">${esc(c.group_name)}</span></td>` : ""}
         ${fields.map(f => {
           let inner;
           if (f.key === "progress") {
@@ -251,8 +241,11 @@ function renderCandidateRows(stageKey) {
             inner = full
               ? `<span class="clip" title="${esc(full)}">${esc(first)}</span>`
               : `<span style="color:#cbd5e1">—</span>`;
-            if (canEdit(c.group_id))
+            if (canEdit())
               inner += ` <button class="btn btn-sm" data-prog="${c.id}" title="更新进展">更新</button>`;
+          } else if (f.key === "registration_source" && c.data.registration_source === "其他") {
+            const custom = (c.data.registration_source_custom || "").trim();
+            inner = cellHtml(f, custom ? `其他：${custom}` : "其他");
           } else {
             inner = cellHtml(f, c.data[f.key]);
           }
@@ -260,9 +253,9 @@ function renderCandidateRows(stageKey) {
         }).join("")}
         ${showResume ? `<td>${resumeCellHtml(c)}</td>` : ""}
         <td>
-          ${canEdit(c.group_id)
+          ${canEdit()
             ? `<button class="btn btn-sm" data-edit="${c.id}">编辑</button>` +
-              (canDelete(c.group_id) && stageKey === "registration"
+              (canDelete() && stageKey === "registration"
                 ? `<button class="btn btn-sm btn-danger" data-del="${c.id}">删除</button>` : "")
             : `<span style="color:#94a3b8;font-size:12px">只读</span>`}
         </td>
@@ -388,55 +381,165 @@ function enableColumnResize() {
   });
 }
 
+function registrationCreateHiddenKeys() {
+  return new Set([
+    "registration_time", "registration_status",
+    "resume_id", "work_location", "sourcer_dept", "graduation_time", "interface_dept",
+    "registration_source_custom",
+  ]);
+}
+
+const REGISTRATION_CREATE_OPTIONAL = new Set(["registration_remark"]);
+
+function registrationCreateFields(stageKey) {
+  const hide = registrationCreateHiddenKeys();
+  const fromEditable = fieldsForStage(stageKey).filter(f => f.editable && !hide.has(f.key));
+  const remark = fieldsForStage(stageKey).find(f => f.key === "registration_remark");
+  if (remark && !fromEditable.some(f => f.key === "registration_remark")) {
+    fromEditable.push(remark);
+  }
+  return fromEditable.map(f => ({
+    ...f,
+    required: !REGISTRATION_CREATE_OPTIONAL.has(f.key),
+  }));
+}
+
+function candidateFieldDefault(f, cand, isRegCreate) {
+  if (cand) return cand.data[f.key];
+  if (f.key === "progress") return todayPrefix();
+  return "";
+}
+
+function bindRegistrationSourceCustom() {
+  const sel = $("#modal-body").querySelector("[data-field='registration_source']");
+  const wrap = $("#reg-source-custom-wrap");
+  if (!sel || !wrap) return;
+  const toggle = () => {
+    const isOther = sel.value === "其他";
+    wrap.classList.toggle("hidden", !isOther);
+    const inp = $("#reg-source-custom");
+    if (inp) inp.required = isOther;
+  };
+  sel.addEventListener("change", toggle);
+  toggle();
+}
+
+function collectCandidateFormData(fields) {
+  const data = {};
+  $("#modal-body").querySelectorAll("[data-field]").forEach(el => {
+    data[el.dataset.field] = el.value;
+  });
+  return data;
+}
+
+function validateRegistrationCreateForm(fields, data) {
+  const missing = fields.filter(f => f.required && !(data[f.key] || "").trim());
+  if (data.registration_source === "其他" && !(data.registration_source_custom || "").trim()) {
+    missing.push({ label: "自定义简历来源" });
+  }
+  if (missing.length) {
+    toast(`请填写：${missing.map(f => f.label).join("、")}`, true);
+    return false;
+  }
+  return true;
+}
+
+async function postCandidateCreate(data, stageKey, confirmOverwrite = false) {
+  const res = await fetch("/api/candidates", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data, stage: stageKey, confirm_overwrite: confirmOverwrite }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(body.error || "操作失败");
+    err.status = res.status;
+    err.code = body.code;
+    err.existing = body.existing;
+    throw err;
+  }
+  return body;
+}
+
+function openPhoneDuplicateModal(existing, data, stageKey, fields) {
+  openModal("手机号已存在", `
+    <p style="margin-bottom:12px">已存在相同手机号的候选人，是否用当前表单信息覆盖？</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>姓名</th><th>电话</th><th>拓源人</th><th>接口人</th></tr></thead>
+        <tbody><tr>
+          <td>${esc(existing.name || "—")}</td>
+          <td>${esc(existing.phone || "—")}</td>
+          <td>${esc(existing.sourcer || "—")}</td>
+          <td>${esc(existing.interface_person || "—")}</td>
+        </tr></tbody>
+      </table>
+    </div>`,
+    `<button class="btn" onclick="closeModal()">取消</button>
+     <button class="btn btn-danger" id="phone-dup-confirm">确认覆盖</button>`);
+  $("#phone-dup-confirm").addEventListener("click", async () => {
+    try {
+      const r = await postCandidateCreate(data, stageKey, true);
+      toast("已覆盖已有候选人信息");
+      closeModal();
+      loadCandidateTable(stageKey);
+    } catch (e) { toast(e.message, true); }
+  });
+}
+
 function openCandidateModal(cand, stageKey) {
   const allEditable = fieldsForStage(stageKey).filter(f => f.editable);
   const isNew = !cand;
-  // 登记阶段手动新增：登记时间/状态由系统自动填写，不在表单中展示
-  const fields = isNew && stageKey === "registration"
-    ? allEditable.filter(f => f.key !== "registration_time" && f.key !== "registration_status")
-    : allEditable;
+  const isRegCreate = isNew && stageKey === "registration";
+  const fields = isRegCreate ? registrationCreateFields(stageKey) : allEditable;
   const meta = state.stages.find(s => s.key === stageKey);
-  const editableGroups = state.groups.filter(g => canEdit(g.id));
-  const groupSelect = isNew ? `
-    <div class="form-item">
-      <label>所属分组 *</label>
-      <select id="cand-modal-group">
-        ${editableGroups.map(g => `<option value="${g.id}" ${state.me.group_id === g.id ? "selected" : ""}>${esc(g.name)}</option>`).join("")}
-      </select>
-    </div>` : `
-    <div class="form-item"><label>所属分组</label><input value="${esc(cand.group_name)}" disabled></div>`;
+
+  const sourceCustomField = isRegCreate ? `
+    <div id="reg-source-custom-wrap" class="form-item hidden" style="grid-column:1/-1">
+      <label>自定义简历来源 *</label>
+      <input type="text" id="reg-source-custom" data-field="registration_source_custom"
+             placeholder="请填写具体简历来源">
+    </div>` : "";
 
   openModal(isNew ? `新增候选人 - ${meta.label}` : `编辑 - ${esc(cand.data.name || "")}（${meta.label}）`, `
-    ${groupSelect}
     <div class="form-grid">
       ${fields.map(f => `
         <div class="form-item">
           <label>${esc(f.label)}${f.required ? " *" : ""}</label>
-          ${fieldInput(f, cand ? cand.data[f.key]
-                              : (f.key === "progress" ? todayPrefix() : ""))}
+          ${fieldInput(f, candidateFieldDefault(f, cand, isRegCreate))}
         </div>`).join("")}
+      ${sourceCustomField}
     </div>`,
     `<button class="btn" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="cand-save">保存</button>`);
 
+  if (isRegCreate) bindRegistrationSourceCustom();
+
   $("#cand-save").addEventListener("click", async () => {
-    const data = {};
-    $("#modal-body").querySelectorAll("[data-field]").forEach(el => { data[el.dataset.field] = el.value; });
+    const data = collectCandidateFormData(fields);
+    if (isRegCreate && !validateRegistrationCreateForm(fields, data)) return;
     const missing = fields.filter(f => f.required && !(data[f.key] || "").trim());
-    if (missing.length) { toast(`请填写：${missing.map(f => f.label).join("、")}`, true); return; }
+    if (!isRegCreate && missing.length) {
+      toast(`请填写：${missing.map(f => f.label).join("、")}`, true);
+      return;
+    }
     try {
       if (isNew) {
-        const gid = +$("#cand-modal-group").value;
-        const r = await api("/api/candidates", { method: "POST", json: { group_id: gid, data, stage: stageKey } });
-        toast(r.merged ? "已按电话合并到已有候选人" : "候选人已新增");
+        const r = await postCandidateCreate(data, stageKey, false);
+        toast(r.overwritten ? "已覆盖已有候选人" : "候选人已新增");
       } else {
         const r = await api(`/api/candidates/${cand.id}`, { method: "PUT", json: { data, stage: stageKey } });
         toast(r.changed ? `已保存，更新了 ${r.changed} 项信息` : "内容无变化");
       }
       closeModal();
-      state.groups = await api("/api/groups");
       loadCandidateTable(stageKey);
-    } catch (e) { toast(e.message, true); }
+    } catch (e) {
+      if (e.code === "phone_duplicate" && e.existing) {
+        openPhoneDuplicateModal(e.existing, data, stageKey, fields);
+      } else {
+        toast(e.message, true);
+      }
+    }
   });
 }
 
@@ -501,7 +604,6 @@ function deleteCandidate(cand, stageKey) {
       await api(`/api/candidates/${cand.id}`, { method: "DELETE" });
       toast("已删除");
       closeModal();
-      state.groups = await api("/api/groups");
       loadCandidateTable(stageKey);
     } catch (e) { toast(e.message, true); }
   });
@@ -521,7 +623,6 @@ function batchDeleteSelected(stageKey) {
       toast(`已删除 ${r.deleted} 名` + (r.skipped ? `，跳过 ${r.skipped} 名` : ""));
       closeModal();
       ss.selected.clear();
-      state.groups = await api("/api/groups");
       await loadCandidateTable(stageKey);
     } catch (e) { toast(e.message, true); }
   });
@@ -529,16 +630,8 @@ function batchDeleteSelected(stageKey) {
 
 function openImportModal(stageKey) {
   const meta = state.stages.find(s => s.key === stageKey);
-  const editableGroups = state.groups.filter(g => canEdit(g.id));
-  if (!editableGroups.length) { toast("您没有任何分组的编辑权限", true); return; }
   const importCols = fieldsForStage(stageKey).filter(f => f.importable).map(f => f.excel_column).join("、");
   openModal(`Excel 导入 - ${meta.label}`, `
-    <div class="form-item">
-      <label>导入到分组</label>
-      <select id="import-group">
-        ${editableGroups.map(g => `<option value="${g.id}" ${state.me.group_id === g.id ? "selected" : ""}>${esc(g.name)}</option>`).join("")}
-      </select>
-    </div>
     <div class="form-item">
       <label>选择 .xlsx 文件（第一行为表头）</label>
       <input type="file" id="import-file" accept=".xlsx">
@@ -555,13 +648,11 @@ function openImportModal(stageKey) {
     if (!file) { toast("请先选择文件", true); return; }
     const fd = new FormData();
     fd.append("file", file);
-    fd.append("group_id", $("#import-group").value);
     fd.append("stage", stageKey);
     try {
       const r = await api("/api/import", { method: "POST", body: fd });
       toast(`导入完成：新增 ${r.created} 人，更新 ${r.updated} 人${r.skipped ? "，跳过 " + r.skipped + " 行" : ""}`);
       closeModal();
-      state.groups = await api("/api/groups");
       loadCandidateTable(stageKey);
     } catch (e) { toast(e.message, true); }
   });

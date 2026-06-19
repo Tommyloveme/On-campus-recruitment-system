@@ -24,16 +24,3 @@ def candidate_dict(row, group_names=None):
     }
 
 
-def user_dict(u):
-    group_name = None
-    if u["group_id"]:
-        row = get_db().execute("SELECT name FROM groups WHERE id=?", (u["group_id"],)).fetchone()
-        group_name = row["name"] if row else None
-    return {
-        "id": u["id"],
-        "username": u["username"],
-        "display_name": u["display_name"],
-        "role": u["role"],
-        "group_id": u["group_id"],
-        "group_name": group_name,
-    }

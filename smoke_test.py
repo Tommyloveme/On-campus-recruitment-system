@@ -17,6 +17,18 @@ cj = http.cookiejar.CookieJar()
 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
 
 
+def sample_reg_data(name, phone=None, **extra):
+    d = {
+        "name": name,
+        "phone": phone or f"139{uuid.uuid4().int % 100000000:08d}",
+        "sourcer": "T001", "interface_person": "接口人",
+        "education": "本科", "school": "测试大学", "major": "计算机",
+        "registration_source": "校园宣讲",
+    }
+    d.update(extra)
+    return d
+
+
 def call(method, path, payload=None, raw=None, ctype="application/json", expect_error=False):
     data = json.dumps(payload).encode() if payload is not None else raw
     req = urllib.request.Request(BASE + path, data=data, method=method)
@@ -44,6 +56,33 @@ s, _ = call("POST", "/api/login", {"username": "admin", "password": "wrong"}, ex
 check("错误密码被拒绝", s == 401)
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+
+# 1b. 用户注册与个人资料
+req = urllib.request.Request(BASE + "/api/register/options")
+with opener.open(req) as r:
+    reg_opts = json.loads(r.read().decode())
+check("注册可选业务角色", "拓源人" in reg_opts["job_roles"] and "接口人" in reg_opts["default_job_roles"])
+s, _ = call("POST", "/api/register", {
+    "employee_id": "admin", "display_name": "假管理员", "supervisor": "X",
+    "department": "Y", "password": "123456", "job_roles": ["拓源人"],
+}, expect_error=True)
+check("固定管理员账号不可注册", s == 403)
+test_emp = "emp" + uuid.uuid4().hex[:8]
+s, reg_r = call("POST", "/api/register", {
+    "employee_id": test_emp, "display_name": "注册测试", "supervisor": "张主管",
+    "department": "存储部", "password": "123456", "job_roles": ["拓源人", "接口人"],
+})
+check("用户自助注册成功", s == 200 and reg_r.get("ok"))
+s, me_reg = call("POST", "/api/login", {"username": test_emp, "password": "123456"})
+check("注册用户可登录", s == 200 and me_reg["display_name"] == "注册测试")
+s, me_up = call("PUT", "/api/profile", {
+    "display_name": "注册测试改", "supervisor": "王主管", "department": "存储部",
+    "job_roles": ["拓源人", "HR"],
+})
+check("用户可更新个人资料", me_up["display_name"] == "注册测试改" and "HR" in me_up["job_roles"])
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+
 # 2. 配置与分组
 s, cfg = call("GET", "/api/config")
 check("读取10个流程阶段", len(cfg["stages"]) == 10)
@@ -63,9 +102,6 @@ req = urllib.request.Request(BASE + "/api/import/template?stage=registration")
 with opener.open(req) as r:
     tpl_headers = [c.value for c in load_workbook(io.BytesIO(r.read())).active[1]]
 check("登记导入模板首列为候选人", tpl_headers[0] == "候选人" and "三层部门" not in tpl_headers)
-s, groups = call("GET", "/api/groups")
-check("读取分组(demo含2组)", len(groups) >= 2)
-g1 = groups[0]["id"]
 
 # 3. 候选人 CRUD（清理可能残留的测试数据）
 for n in ("测试员", "导入甲", "导入乙", "三层部门测试"):
@@ -75,20 +111,66 @@ for n in ("测试员", "导入甲", "导入乙", "三层部门测试"):
 
 # 3. 候选人 CRUD
 s, r = call("POST", "/api/candidates", {
-    "group_id": g1, "stage": "registration",
-    "data": {"name": "测试员", "phone": "13911112222"},
+    "stage": "registration",
+    "data": {
+        "name": "测试员", "phone": "13911112222",
+        "sourcer": "hr01", "interface_person": "接口人甲",
+        "education": "本科", "school": "测试大学", "major": "计算机",
+        "registration_source": "校园宣讲",
+    },
 })
 cid = r["id"]
 check("新增候选人(登记阶段)", s == 200 and not r.get("merged"))
+# hr01 登记自动带入拓源人/部门（无需手填分组）
+s, users = call("GET", "/api/users")
+hr01 = next((u for u in users if u["username"] == "hr01"), None)
+if hr01:
+    call("PUT", f"/api/users/{hr01['id']}", {
+        "display_name": hr01["display_name"], "role": hr01["role"],
+        "supervisor": "李主管", "department": "存储部", "job_roles": ["拓源人", "接口人"],
+    })
+call("POST", "/api/login", {"username": "hr01", "password": "123456"})
+s, r_auto = call("POST", "/api/candidates", {
+    "stage": "registration",
+    "data": {
+        "name": "自动带入测试", "phone": "13922223333",
+        "sourcer": "E001", "interface_person": "小王",
+        "education": "硕士", "school": "测试大学", "major": "软件工程",
+        "registration_source": "内推",
+    },
+})
+auto_id = r_auto["id"]
+s, auto_cands = call("GET", "/api/candidates?q=" + quote("自动带入测试"))
+auto_data = auto_cands[0]["data"]
+check("登记自动带入拓源人部门", auto_data.get("sourcer_dept") == "存储部")
+check("登记保存拓源人工号", auto_data.get("sourcer") == "E001")
+check("登记不手填简历编号", not auto_data.get("resume_id"))
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+call("DELETE", f"/api/candidates/{auto_id}")
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 s, cands = call("GET", "/api/candidates?q=" + quote("测试员"))
 check("手动登记默认待投递", cands[0]["data"]["registration_status"] == "待投递"
       and cands[0]["data"].get("registration_time"))
-# 电话匹配合并
+# 电话重复须确认后覆盖
+dup_status, dup_body = call("POST", "/api/candidates", {
+    "stage": "registration",
+    "data": {
+        "name": "测试员", "phone": "13911112222", "sourcer": "张三",
+        "interface_person": "接口人甲", "education": "本科",
+        "school": "测试大学", "major": "计算机", "registration_source": "校园宣讲",
+    },
+}, expect_error=True)
+check("同手机号未确认返回409", dup_status == 409 and dup_body.get("code") == "phone_duplicate")
 s, r2 = call("POST", "/api/candidates", {
-    "group_id": g1, "stage": "registration",
-    "data": {"name": "测试员", "phone": "13911112222", "sourcer": "张三"},
+    "stage": "registration",
+    "confirm_overwrite": True,
+    "data": {
+        "name": "测试员", "phone": "13911112222", "sourcer": "张三",
+        "interface_person": "接口人甲", "education": "本科",
+        "school": "测试大学", "major": "计算机", "registration_source": "校园宣讲",
+    },
 })
-check("登记电话匹配合并", r2.get("merged") and r2["id"] == cid)
+check("确认后覆盖同手机号候选人", r2.get("overwritten") and r2["id"] == cid)
 s, cands = call("GET", "/api/candidates?q=" + quote("测试员"))
 check("合并后保留拓源人", cands[0]["data"].get("sourcer") == "张三")
 s, r = call("PUT", f"/api/candidates/{cid}", {
@@ -125,7 +207,6 @@ def part(name, value=None, filename=None, content=None):
         body.write(b"\r\n")
     else:
         body.write(f'Content-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
-part("group_id", str(g1))
 part("stage", "registration")
 part("file", filename="t.xlsx", content=buf.getvalue())
 body.write(f"--{boundary}--\r\n".encode())
@@ -150,7 +231,6 @@ def part_l(name, value=None, filename=None, content=None):
         body_l.write(b"\r\n")
     else:
         body_l.write(f'Content-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
-part_l("group_id", str(g1))
 part_l("stage", "onboarding")
 part_l("file", filename="legacy.xlsx", content=buf_legacy.getvalue())
 body_l.write(f"--{boundary_l}--\r\n".encode())
@@ -220,7 +300,6 @@ def part2(name, value=None, filename=None, content=None):
         body2.write(b"\r\n")
     else:
         body2.write(f'Content-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
-part2("group_id", str(g1))
 part2("stage", "registration")
 part2("file", filename="bulk.xlsx", content=buf2.getvalue())
 body2.write(f"--{boundary2}--\r\n".encode())
@@ -312,7 +391,7 @@ s, content, headers = call_raw("POST", "/api/candidates/export",
                                ctype="application/json")
 check("选中数据导出Excel", s == 200 and content[:2] == b"PK" and headers.get("X-Export-Count") == "6")
 exp_headers = [c.value for c in load_workbook(io.BytesIO(content)).active[1]]
-check("导出Excel首列为二层部门且含候选人", exp_headers[0] == "二层部门" and "候选人" in exp_headers)
+check("导出Excel首列为候选人", exp_headers[0] == "候选人")
 
 s, _ = call("DELETE", f"/api/candidates/{cid}/resume")
 check("删除简历", s == 200)
@@ -326,11 +405,11 @@ check("简历操作已记录日志", any("简历" in m for m in resume_logs))
 # 8. 普通用户权限
 call("POST", "/api/login", {"username": "hr02", "password": "123456"})
 s, cands = call("GET", "/api/candidates")
-check("hr02只能看到本组数据", all(c["group_name"] == "研发二组" for c in cands) and len(cands) >= 1)
-s, _ = call("PUT", f"/api/candidates/{cid}", {"data": {"name": "越权"}}, expect_error=True)
-check("hr02无法修改他组候选人", s == 403)
+check("组成员可见全部候选人", len(cands) >= 1)
+s, r = call("PUT", f"/api/candidates/{cid}", {"stage": "registration", "data": {"phone": "13911112223"}})
+check("组成员可修改候选人", s == 200 and r.get("changed") == 1)
 s, _ = call("GET", "/api/overview", expect_error=True)
-check("hr02无法访问管理员总览", s == 403)
+check("组成员无法访问管理员总览", s == 403)
 
 # 9. 细化权限：组管理员（增删改查+添加成员）/ 组成员（无删除权）
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
@@ -338,43 +417,30 @@ s, users = call("GET", "/api/users")
 for u in users:
     if u["username"] in ("t_lead", "t_member"):
         call("DELETE", f"/api/users/{u['id']}")
-g2 = groups[1]["id"]
 s, _ = call("POST", "/api/users", {"username": "t_lead", "display_name": "测试组管",
-                                   "password": "pw123", "role": "group_admin", "group_id": g2})
+                                   "password": "pw123", "role": "group_admin"})
 check("管理员创建组管理员", s == 200)
 
 call("POST", "/api/login", {"username": "t_lead", "password": "pw123"})
-s, r = call("POST", "/api/candidates", {"stage": "registration", "data": {"name": "组管新增"}})
-check("组管理员新增本组候选人", s == 200)
+s, r = call("POST", "/api/candidates", {"stage": "registration", "data": sample_reg_data("组管新增")})
+check("组管理员新增候选人", s == 200)
 lead_cid = r["id"]
 s, _ = call("POST", "/api/users", {"username": "t_member", "display_name": "测试组员",
                                    "role": "editor"})  # 不传密码 -> 默认123456
-check("组管理员添加本组成员", s == 200)
-
-# 组管理员配置本组字段显示（各阶段独立配置文件）
-s, _ = call("PUT", "/api/config", {
-    "stage": "registration", "group_id": g2,
-    "fields": [{"key": "phone", "visible": False}],
-})
-check("组管理员配置本组字段", s == 200)
-s, cfg2 = call("GET", f"/api/config?stage=registration&group_id={g2}")
-phone2 = next(f for f in cfg2["fields"] if f["key"] == "phone")
-check("本组配置生效(电话列隐藏)", phone2["visible"] is False)
+check("组管理员添加成员", s == 200)
 s, _ = call("POST", "/api/users", {"username": "t_admin2", "password": "pw123", "role": "admin"},
             expect_error=True)
 check("组管理员不能创建管理员", s == 403)
 s, members = call("GET", "/api/users")
-check("组管理员仅见本组成员", all(u["group_id"] == g2 for u in members))
+check("组管理员可见用户列表", len(members) >= 1)
 
 call("POST", "/api/login", {"username": "t_member", "password": "123456"})
 s, me2 = call("GET", "/api/me")
 check("默认密码123456登录成功", s == 200 and me2["username"] == "t_member")
-s, cfg3 = call("GET", f"/api/config?stage=registration&group_id={g2}")
-check("组成员看到的也是本组配置", next(f for f in cfg3["fields"] if f["key"] == "phone")["visible"] is False)
 s, _ = call("PUT", f"/api/candidates/{lead_cid}", {
     "stage": "registration", "data": {"phone": "13099998888"},
 })
-check("组成员可编辑本组候选人", s == 200)
+check("组成员可编辑候选人", s == 200)
 s, _ = call("DELETE", f"/api/candidates/{lead_cid}", expect_error=True)
 check("组成员无删除权限", s == 403)
 s, _ = call("GET", "/api/users", expect_error=True)
@@ -382,14 +448,9 @@ check("组成员无用户管理权限", s == 403)
 
 call("POST", "/api/login", {"username": "t_lead", "password": "pw123"})
 s, _ = call("DELETE", f"/api/candidates/{lead_cid}")
-check("组管理员可删除本组候选人", s == 200)
-# 恢复本组字段配置，避免影响后续使用
-call("PUT", "/api/config", {
-    "stage": "registration", "group_id": g2,
-    "fields": [{"key": "phone", "visible": True}],
-})
+check("组管理员可删除候选人", s == 200)
 
-# 9b. 全局查看员：界面同管理员（全分组/总览/图表数据），但只读、无系统管理
+# 9b. 全局查看员：只读、无系统管理
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 s, users = call("GET", "/api/users")
 for u in users:
@@ -401,9 +462,9 @@ check("管理员创建全局查看员", s == 200)
 
 call("POST", "/api/login", {"username": "t_gv", "password": "123456"})
 s, cands = call("GET", "/api/candidates")
-check("全局查看员可见所有分组数据", len({c["group_id"] for c in cands}) >= 2)
+check("全局查看员可见候选人数据", len(cands) >= 1)
 s, ov = call("GET", "/api/overview")
-check("全局查看员可看全局总览", s == 200 and len(ov) >= 2)
+check("全局查看员可看全局总览", s == 200 and len(ov) >= 1)
 s, logs = call("GET", "/api/logs")
 check("全局查看员可看全部日志", s == 200)
 any_cid = cands[0]["id"]
@@ -438,10 +499,9 @@ s, backups = call("GET", "/api/backups")
 check("备份列表包含新备份", s == 200 and any(b["name"] == backup_name for b in backups))
 
 # 备份后新增一名候选人，恢复备份后应消失
-s, groups_now = call("GET", "/api/groups")
 s, c_tmp = call("POST", "/api/candidates", {
-    "group_id": groups_now[0]["id"], "stage": "registration",
-    "data": {"name": "恢复测试甲"},
+    "stage": "registration",
+    "data": sample_reg_data("恢复测试甲"),
 })
 s, found = call("GET", "/api/candidates?q=" + quote("恢复测试甲"))
 check("恢复前能查到新候选人", len(found) == 1)
@@ -485,12 +545,12 @@ check(f"并发60会话全部成功(耗时{elapsed:.1f}s)", len(conc_results) == 
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 s, users = call("GET", "/api/users")
 for u in users:
-    if u["username"] in ("t_lead", "t_member", "t_gv"):
+    if u["username"] in ("t_lead", "t_member", "t_gv") or u["username"].startswith("emp"):
         call("DELETE", f"/api/users/{u['id']}")
 s, cands = call("GET", "/api/candidates?q=" + quote("压测"))
 for c in cands:
     call("DELETE", f"/api/candidates/{c['id']}")
-for n in ("测试员", "导入甲", "导入乙", "三层部门测试"):
+for n in ("测试员", "导入甲", "导入乙", "三层部门测试", "自动带入测试"):
     s, cands = call("GET", f"/api/candidates?q={quote(n)}")
     for c in cands:
         call("DELETE", f"/api/candidates/{c['id']}")

@@ -19,7 +19,6 @@ from campus.config_loader import (
 from campus.db.connection import get_db, now_str
 from campus.logging_util import log, who
 from campus.services.audit import add_log
-from campus.services.candidates import group_name_map
 from campus.stage_engine import compute_current_stage, load_master_import_config, run_dual_master_refresh
 from campus.services.master_import_store import (
     both_files_ready,
@@ -40,8 +39,7 @@ def api_template():
         validate_stage(stage)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    group_id = None if g.user["role"] in GLOBAL_VIEW_ROLES else g.user["group_id"]
-    fields = importable_fields(stage, group_id)
+    fields = importable_fields(stage)
     stage_label = get_stage_meta(stage)["label"]
     wb = Workbook()
     ws = wb.active
@@ -66,12 +64,9 @@ def api_import():
         validate_stage(stage)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    group_id = request.form.get("group_id", type=int) or g.user["group_id"]
-    if not group_id:
-        return jsonify({"error": "请指定导入的分组"}), 400
-    if not can_edit_group(g.user, group_id):
-        log.warning("Excel导入权限拒绝 %s group_id=%s stage=%s", who(g.user), group_id, stage)
-        return jsonify({"error": "无该分组的编辑权限"}), 403
+    if not can_edit_group(g.user):
+        log.warning("Excel导入权限拒绝 %s stage=%s", who(g.user), stage)
+        return jsonify({"error": "无导入权限"}), 403
 
     try:
         wb = load_workbook(request.files["file"], data_only=True)
@@ -92,7 +87,7 @@ def api_import():
                 break
     if "name" not in col_map.values():
         return jsonify({"error": "Excel中未找到“候选人”列，请参考导入模板"}), 400
-    log.debug("Excel导入列映射 %s group_id=%s stage=%s cols=%s", who(g.user), group_id, stage, col_map)
+    log.debug("Excel导入列映射 %s stage=%s cols=%s", who(g.user), stage, col_map)
 
     def cell_str(v):
         if v is None:
@@ -102,15 +97,8 @@ def api_import():
         return str(v).strip()
 
     db = get_db()
-    existing = db.execute("SELECT * FROM candidates WHERE group_id=?", (group_id,)).fetchall()
-    by_phone = {}
-    by_name = {}
-    for r in existing:
-        d = json.loads(r["data"])
-        if d.get("phone"):
-            by_phone[d["phone"]] = r
-        if d.get("name"):
-            by_name[d["name"]] = r
+    from campus.stage_engine import build_global_candidate_index
+    _, by_phone, by_name = build_global_candidate_index(db)
 
     created = updated = skipped = 0
     for raw in rows[1:]:
@@ -138,22 +126,20 @@ def api_import():
                 updated += 1
         else:
             cur = db.execute("INSERT INTO candidates (group_id, data, created_at, updated_at) VALUES (?,?,?,?)",
-                             (group_id, json.dumps(data, ensure_ascii=False), now_str(), now_str()))
+                             (None, json.dumps(data, ensure_ascii=False), now_str(), now_str()))
             row = db.execute("SELECT * FROM candidates WHERE id=?", (cur.lastrowid,)).fetchone()
             by_name[data["name"]] = row
             if data.get("phone"):
                 by_phone[data["phone"]] = row
             created += 1
 
-    gname = group_name_map().get(group_id, "")
     stage_label = get_stage_meta(stage)["label"]
     add_log(g.user, "import",
-            f"{g.user['display_name']} 通过Excel向「{gname}」{stage_label}导入：新增{created}人，更新{updated}人"
-            + (f"，跳过{skipped}行" if skipped else ""),
-            None, None, group_id)
+            f"{g.user['display_name']} 通过Excel向{stage_label}导入：新增{created}人，更新{updated}人"
+            + (f"，跳过{skipped}行" if skipped else ""))
     db.commit()
-    log.info("Excel导入 %s group=%s stage=%s 新增%d 更新%d 跳过%d",
-             who(g.user), gname, stage, created, updated, skipped)
+    log.info("Excel导入 %s stage=%s 新增%d 更新%d 跳过%d",
+             who(g.user), stage, created, updated, skipped)
     return jsonify({"ok": True, "created": created, "updated": updated, "skipped": skipped})
 
 
@@ -268,14 +254,9 @@ def api_master_import_refresh():
         return jsonify({"error": "请先上传 Application*.xlsx 与 候选人管理*.xlsx"}), 400
 
     db = get_db()
-    groups_list = [{"id": r["id"], "name": r["name"]}
-                   for r in db.execute("SELECT id, name FROM groups ORDER BY id").fetchall()]
-    if not groups_list:
-        return jsonify({"error": "系统中暂无分组，无法刷新"}), 400
-
     try:
         created, updated, skipped, stats = run_dual_master_refresh(
-            db, cfg, can_edit_group, g.user, groups_list)
+            db, cfg, can_edit_group, g.user)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
@@ -316,22 +297,20 @@ def api_candidates_export():
     placeholders = ",".join("?" * len(ids))
     rows = db.execute(f"SELECT * FROM candidates WHERE id IN ({placeholders})", ids).fetchall()
 
-    group_id = None if g.user["role"] in GLOBAL_VIEW_ROLES else g.user["group_id"]
-    fields = [f for f in load_stage_fields(stage, group_id) if f.get("visible", True)]
-    names = group_name_map()
+    fields = [f for f in load_stage_fields(stage) if f.get("visible", True)]
     stage_label = get_stage_meta(stage)["label"]
 
     wb = Workbook()
     ws = wb.active
     ws.title = stage_label
-    headers = ["二层部门"] + [f["label"] for f in fields]
+    headers = [f["label"] for f in fields]
     ws.append(headers)
     exported = 0
     for row in rows:
-        if not can_view_group(g.user, row["group_id"]):
+        if not can_view_group(g.user):
             continue
         data = json.loads(row["data"])
-        ws.append([names.get(row["group_id"], "")] + [data.get(f["key"], "") for f in fields])
+        ws.append([data.get(f["key"], "") for f in fields])
         exported += 1
     if exported == 0:
         return jsonify({"error": "选中的候选人均无导出权限"}), 403

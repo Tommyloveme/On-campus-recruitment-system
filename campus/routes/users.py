@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """用户管理接口。"""
+import json
 import sqlite3
 
 from flask import Blueprint, g, jsonify, request
@@ -9,26 +10,32 @@ from campus.auth.decorators import admin_required, login_required
 from campus.auth.permissions import VALID_ROLES
 from campus.db.connection import get_db, now_str
 from campus.services.audit import add_log
+from campus.services.users import normalize_job_roles, parse_job_roles
 from campus.settings import APP_CONFIG
 
 bp = Blueprint("users", __name__)
 
 
+def _user_row_dict(row):
+    d = dict(row)
+    d["job_roles"] = parse_job_roles(d.get("job_roles"))
+    return d
+
+
 @bp.get("/api/users")
 @login_required
 def api_users():
-    sql = ("SELECT u.id, u.username, u.display_name, u.role, u.group_id, g.name AS group_name "
-           "FROM users u LEFT JOIN groups g ON g.id=u.group_id")
-    params = []
-    if g.user["role"] == "admin":
-        pass
-    elif g.user["role"] == "group_admin":
-        sql += " WHERE u.group_id=?"
-        params.append(g.user["group_id"])
-    else:
+    sql = ("SELECT u.id, u.username, u.display_name, u.role, u.supervisor, u.department, u.job_roles "
+           "FROM users u")
+    if g.user["role"] not in ("admin", "group_admin"):
         return jsonify({"error": "无用户管理权限"}), 403
-    rows = get_db().execute(sql + " ORDER BY u.id", params).fetchall()
-    return jsonify([dict(r) for r in rows])
+    rows = get_db().execute(sql + " ORDER BY u.id").fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["job_roles"] = parse_job_roles(d.get("job_roles"))
+        out.append(d)
+    return jsonify(out)
 
 
 @bp.post("/api/users")
@@ -40,7 +47,9 @@ def api_user_create():
         return jsonify({"error": "用户名不能为空"}), 400
     password = b.get("password") or APP_CONFIG["security"]["default_password"]
     role = b.get("role", "editor")
-    group_id = b.get("group_id")
+    supervisor = (b.get("supervisor") or "").strip()
+    department = (b.get("department") or "").strip()
+    job_roles = normalize_job_roles(b.get("job_roles") or [])
 
     if g.user["role"] == "admin":
         if role not in VALID_ROLES:
@@ -48,21 +57,21 @@ def api_user_create():
     elif g.user["role"] == "group_admin":
         if role not in ("editor", "viewer"):
             return jsonify({"error": "组管理员只能添加组成员或只读账号"}), 403
-        group_id = g.user["group_id"]
     else:
         return jsonify({"error": "无添加用户权限"}), 403
 
     db = get_db()
     try:
         db.execute(
-            "INSERT INTO users (username, display_name, password_hash, role, group_id, created_at) VALUES (?,?,?,?,?,?)",
+            "INSERT INTO users (username, display_name, password_hash, role, group_id, supervisor, department, job_roles, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
             (username, b.get("display_name") or username, generate_password_hash(password),
-             role, group_id, now_str()),
+             role, None, supervisor, department,
+             json.dumps(job_roles, ensure_ascii=False), now_str()),
         )
     except sqlite3.IntegrityError:
         return jsonify({"error": "用户名已存在"}), 400
-    add_log(g.user, "user", f"{g.user['display_name']} 创建了用户「{b.get('display_name') or username}」",
-            group_id=group_id)
+    add_log(g.user, "user", f"{g.user['display_name']} 创建了用户「{b.get('display_name') or username}」")
     db.commit()
     return jsonify({"ok": True})
 
@@ -78,9 +87,13 @@ def api_user_update(uid):
     role = b.get("role", user["role"])
     if role not in VALID_ROLES:
         return jsonify({"error": "角色不合法"}), 400
+    job_roles = normalize_job_roles(b.get("job_roles", parse_job_roles(user["job_roles"])))
     db.execute(
-        "UPDATE users SET display_name=?, role=?, group_id=? WHERE id=?",
-        (b.get("display_name", user["display_name"]), role, b.get("group_id", user["group_id"]), uid),
+        "UPDATE users SET display_name=?, role=?, supervisor=?, department=?, job_roles=? WHERE id=?",
+        (b.get("display_name", user["display_name"]), role,
+         (b.get("supervisor") or user["supervisor"] or "").strip(),
+         (b.get("department") or user["department"] or "").strip(),
+         json.dumps(job_roles, ensure_ascii=False), uid),
     )
     if b.get("password"):
         db.execute("UPDATE users SET password_hash=? WHERE id=?", (generate_password_hash(b["password"]), uid))

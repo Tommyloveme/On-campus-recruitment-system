@@ -33,6 +33,10 @@ body {
 .login-card h1 { font-size: 20px; text-align: center; margin-top: 8px; }
 .login-sub { text-align: center; color: var(--muted); font-size: 12px; margin: 4px 0 24px; }
 .login-error { color: var(--danger); font-size: 13px; margin-bottom: 12px; text-align: center; }
+.login-switch { text-align: center; margin-top: 16px; font-size: 13px; color: var(--muted); }
+.login-switch a { color: var(--primary); text-decoration: none; }
+.checkbox-group { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 6px; }
+.checkbox-item { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
 
 /* ---------- 应用布局：顶栏 + 左侧导航 ---------- */
 .app-shell {

@@ -9,7 +9,17 @@
       "options": ["校园宣讲", "线上投递", "内推", "猎头", "其他"],
       "visible": true,
       "editable": true,
-      "importable": true
+      "importable": true,
+      "required": true
+    },
+    {
+      "key": "registration_source_custom",
+      "label": "自定义简历来源",
+      "excel_column": "自定义简历来源",
+      "type": "text",
+      "visible": false,
+      "editable": true,
+      "importable": false
     },
     {
       "key": "registration_status",
