@@ -7,7 +7,6 @@
   "sheet_name": "Sheet",
   "sheet_index": 0,
   "columns": [
-    { "excel_column": "简历编号", "field_key": "resume_id", "required": true, "match_patterns": ["*简历*编号*"] },
     { "excel_column": "三层部门", "field_key": "dept_level3", "excel_aliases": ["入职三层"], "match_patterns": ["*三层*"] },
     { "excel_column": "二层部门", "field_key": "_group_name", "match_patterns": ["*二层*", "*部门*"] },
     { "excel_column": "拓源人", "field_key": "sourcer" },

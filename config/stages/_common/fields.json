@@ -1,6 +1,16 @@
 {
-  "comment": "各流程标签页共用的候选人身份字段（登记阶段可编辑；三层部门仅在入职管理阶段配置中展示）",
+  "comment": "各流程标签页共用的候选人身份字段（登记阶段可编辑；简历编号在登记界面第一列展示）",
   "fields": [
+    {
+      "key": "resume_id",
+      "label": "简历编号",
+      "excel_column": "简历编号",
+      "excel_aliases": ["简历ID"],
+      "type": "text",
+      "visible": false,
+      "editable": true,
+      "importable": true
+    },
     {
       "key": "name",
       "label": "候选人",
@@ -89,16 +99,6 @@
       "editable": true,
       "importable": true,
       "required": true
-    },
-    {
-      "key": "resume_id",
-      "label": "简历编号",
-      "excel_column": "简历编号",
-      "excel_aliases": ["简历ID"],
-      "type": "text",
-      "visible": false,
-      "editable": true,
-      "importable": true
     },
     {
       "key": "work_location",

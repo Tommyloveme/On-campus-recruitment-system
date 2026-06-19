@@ -10,7 +10,7 @@
     "education": true,
     "school": true,
     "major": true,
-    "resume_id": false,
+    "resume_id": true,
     "work_location": false,
     "graduation_time": false,
     "current_stage": false,

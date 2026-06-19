@@ -1,0 +1,6 @@
+{
+  "comment": "候选人登记界面：覆盖公共字段的显示配置（列顺序见 _common/fields.json）",
+  "visible": {
+    "resume_id": true
+  }
+}

@@ -53,6 +53,14 @@ def group_config_path(stage_key, group_id):
     return os.path.join(STAGES_DIR, stage_key, f"fields_group_{group_id}.json")
 
 
+def _load_stage_display_overrides(stage_key):
+    path = os.path.join(STAGES_DIR, stage_key, "display.json")
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
 def load_stage_fields(stage_key, group_id=None):
     """加载某阶段的完整字段列表 = 公共字段 + 阶段字段，并应用分组 visible 覆盖。"""
     validate_stage(stage_key)
@@ -65,6 +73,11 @@ def load_stage_fields(stage_key, group_id=None):
         for f in fields:
             if f["key"] in {x["key"] for x in common}:
                 f["editable"] = False
+
+    display = _load_stage_display_overrides(stage_key)
+    for field in fields:
+        if field["key"] in display.get("visible", {}):
+            field["visible"] = bool(display["visible"][field["key"]])
 
     if group_id:
         path = group_config_path(stage_key, group_id)

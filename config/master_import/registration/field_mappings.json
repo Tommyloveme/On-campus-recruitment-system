@@ -1,6 +1,18 @@
 {
-  "comment": "网页登记字段与主数据 Excel 列映射。ui_label 为界面显示名；excel_column 为表头首选名（可与界面不一致）；match_patterns 用于模糊匹配实际表头。lock_on_import 为 true 时，自 Application/候选人管理导入后该字段不可在界面修改。",
+  "comment": "网页字段与 Application*.xlsx 列映射（均来自 Application 表）。lock_on_import 为 true 时导入后不可在界面修改。",
   "fields": [
+    {
+      "field_key": "resume_id",
+      "ui_label": "简历编号",
+      "lock_on_import": true,
+      "sources": {
+        "application": {
+          "excel_column": "简历编号",
+          "required": true,
+          "match_patterns": ["*简历*编号*"]
+        }
+      }
+    },
     {
       "field_key": "name",
       "ui_label": "候选人",
@@ -9,10 +21,6 @@
         "application": {
           "excel_column": "候选人",
           "required": true,
-          "match_patterns": ["*候选人*", "*姓名*"]
-        },
-        "candidate_mgmt": {
-          "excel_column": "候选人",
           "match_patterns": ["*候选人*", "*姓名*"]
         }
       }
@@ -23,10 +31,6 @@
       "lock_on_import": true,
       "sources": {
         "application": {
-          "excel_column": "电话",
-          "match_patterns": ["*电话*", "*手机*"]
-        },
-        "candidate_mgmt": {
           "excel_column": "电话",
           "match_patterns": ["*电话*", "*手机*"]
         }

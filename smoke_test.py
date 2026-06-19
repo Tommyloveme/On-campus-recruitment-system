@@ -104,16 +104,16 @@ reg_fields = cfg["stage_fields"]["registration"]
 reg_keys = [f["key"] for f in reg_fields if f["visible"]]
 check("登记阶段不含三层部门", "dept_level3" not in reg_keys)
 check("登记阶段列顺序正确",
-      reg_keys[:10] == ["name", "phone", "sourcer", "sourcer_dept", "interface_person",
+      reg_keys[:11] == ["resume_id", "name", "phone", "sourcer", "sourcer_dept", "interface_person",
                         "interface_dept", "education", "school", "major",
-                        "registration_source"] and reg_keys[10] == "registration_status")
+                        "registration_source"] and reg_keys[11] == "registration_status")
 onb_fields = cfg["stage_fields"]["onboarding"]
 check("入职阶段含三层部门", any(f["key"] == "dept_level3" and f["visible"] for f in onb_fields))
 from openpyxl import load_workbook
 req = urllib.request.Request(BASE + "/api/import/template?stage=registration")
 with opener.open(req) as r:
     tpl_headers = [c.value for c in load_workbook(io.BytesIO(r.read())).active[1]]
-check("登记导入模板首列为候选人", tpl_headers[0] == "候选人" and "三层部门" not in tpl_headers)
+check("登记导入模板首列为简历编号", tpl_headers[0] == "简历编号" and "三层部门" not in tpl_headers)
 
 # 3. 候选人 CRUD（清理可能残留的测试数据）
 for n in ("测试员", "导入甲", "导入乙", "三层部门测试"):
@@ -412,7 +412,7 @@ s, content, headers = call_raw("POST", "/api/candidates/export",
                                ctype="application/json")
 check("选中数据导出Excel", s == 200 and content[:2] == b"PK" and headers.get("X-Export-Count") == "6")
 exp_headers = [c.value for c in load_workbook(io.BytesIO(content)).active[1]]
-check("导出Excel首列为候选人", exp_headers[0] == "候选人")
+check("导出Excel首列为简历编号", exp_headers[0] == "简历编号")
 
 s, _ = call("DELETE", f"/api/candidates/{cid}/resume")
 check("删除简历", s == 200)
