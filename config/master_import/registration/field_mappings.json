@@ -1,0 +1,69 @@
+{
+  "comment": "网页登记字段与主数据 Excel 列映射。ui_label 为界面显示名；excel_column 为表头首选名（可与界面不一致）；match_patterns 用于模糊匹配实际表头。lock_on_import 为 true 时，自 Application/候选人管理导入后该字段不可在界面修改。",
+  "fields": [
+    {
+      "field_key": "name",
+      "ui_label": "候选人",
+      "lock_on_import": true,
+      "sources": {
+        "application": {
+          "excel_column": "候选人",
+          "required": true,
+          "match_patterns": ["*候选人*", "*姓名*"]
+        },
+        "candidate_mgmt": {
+          "excel_column": "候选人",
+          "match_patterns": ["*候选人*", "*姓名*"]
+        }
+      }
+    },
+    {
+      "field_key": "phone",
+      "ui_label": "电话",
+      "lock_on_import": true,
+      "sources": {
+        "application": {
+          "excel_column": "电话",
+          "match_patterns": ["*电话*", "*手机*"]
+        },
+        "candidate_mgmt": {
+          "excel_column": "电话",
+          "match_patterns": ["*电话*", "*手机*"]
+        }
+      }
+    },
+    {
+      "field_key": "education",
+      "ui_label": "学历",
+      "lock_on_import": true,
+      "sources": {
+        "application": {
+          "excel_column": "学历",
+          "match_patterns": ["*学历*"]
+        }
+      }
+    },
+    {
+      "field_key": "school",
+      "ui_label": "毕业院校",
+      "lock_on_import": true,
+      "sources": {
+        "application": {
+          "excel_column": "毕业院校",
+          "match_patterns": ["*毕业*院校*", "*毕业学校*", "*学校*"]
+        }
+      }
+    },
+    {
+      "field_key": "major",
+      "ui_label": "专业",
+      "lock_on_import": true,
+      "sources": {
+        "application": {
+          "excel_column": "专业",
+          "match_patterns": ["*专业*"]
+        }
+      }
+    }
+  ]
+}

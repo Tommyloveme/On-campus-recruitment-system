@@ -11,6 +11,51 @@ from campus.settings import BASE_DIR
 MASTER_IMPORT_DIR = os.path.join(BASE_DIR, "config", "master_import")
 
 
+def load_field_mappings(page_dir, index):
+    """加载网页字段与 Excel 列映射配置。"""
+    fname = index.get("field_mappings_file", "field_mappings.json")
+    path = os.path.join(page_dir, fname)
+    if not os.path.exists(path):
+        return {"fields": []}
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _mapping_columns_for_source(field_mappings, source_key):
+    """将 field_mappings 中属于某数据源的列定义转为 columns 条目。"""
+    cols = []
+    for fm in field_mappings.get("fields", []):
+        src_col = (fm.get("sources") or {}).get(source_key)
+        if not src_col:
+            continue
+        col = dict(src_col)
+        col["field_key"] = fm["field_key"]
+        if not col.get("excel_column"):
+            col["excel_column"] = fm.get("ui_label") or fm["field_key"]
+        cols.append(col)
+    return cols
+
+
+def apply_field_mappings_to_sources(sources, field_mappings):
+    """合并 field_mappings 与 sources/*.json 中的 columns（映射优先，避免重复 field_key）。"""
+    for src in sources:
+        src_key = src.get("key")
+        mapped = _mapping_columns_for_source(field_mappings, src_key)
+        mapped_keys = {c["field_key"] for c in mapped}
+        extra = [c for c in src.get("columns", []) if c.get("field_key") not in mapped_keys]
+        src["columns"] = mapped + extra
+    return sources
+
+
+def locked_fields_from_mappings(field_mappings):
+    """导入后不可编辑的网页字段（field_key 列表）。"""
+    locked = []
+    for fm in field_mappings.get("fields", []):
+        if fm.get("lock_on_import") and fm.get("field_key"):
+            locked.append(fm["field_key"])
+    return locked
+
+
 def load_master_import_config(page="registration"):
     """按页面目录加载拆分后的主数据导入配置。"""
     page_dir = os.path.join(MASTER_IMPORT_DIR, page)
@@ -21,11 +66,14 @@ def load_master_import_config(page="registration"):
     with open(index_path, encoding="utf-8") as f:
         index = json.load(f)
 
+    field_mappings = load_field_mappings(page_dir, index)
+
     sources = []
     for key in index.get("source_keys", []):
         src_path = os.path.join(page_dir, "sources", f"{key}.json")
         with open(src_path, encoding="utf-8") as f:
             sources.append(json.load(f))
+    apply_field_mappings_to_sources(sources, field_mappings)
 
     rules_path = os.path.join(page_dir, "stage_rules.json")
     with open(rules_path, encoding="utf-8") as f:
@@ -34,6 +82,10 @@ def load_master_import_config(page="registration"):
     cfg = dict(index)
     cfg["sources"] = sources
     cfg["stage_rules"] = stage_rules
+    cfg["field_mappings"] = field_mappings
+    cfg["registration_locked_fields"] = (
+        index.get("registration_locked_fields") or locked_fields_from_mappings(field_mappings)
+    )
     return cfg
 
 
@@ -170,7 +222,36 @@ def merge_candidate_data(old, incoming, overwrite_empty_only=False):
 def registration_locked_fields(cfg=None):
     cfg = cfg or load_master_import_config()
     return list(cfg.get("registration_locked_fields") or
-                ["name", "phone", "education", "school", "major"])
+                locked_fields_from_mappings(cfg.get("field_mappings") or {}))
+
+
+def _select_workbook_sheet(wb, source_cfg, source_label=""):
+    label = source_label or source_cfg.get("label") or source_cfg.get("key") or "Excel"
+    name = (source_cfg.get("sheet_name") or "").strip()
+    if name:
+        if name not in wb.sheetnames:
+            raise ValueError(
+                f"「{label}」中未找到工作表「{name}」，当前工作表：{', '.join(wb.sheetnames)}"
+            )
+        return wb[name]
+    idx = int(source_cfg.get("sheet_index", 0))
+    if idx < 0 or idx >= len(wb.sheetnames):
+        raise ValueError(
+            f"「{label}」工作表索引 {idx} 无效，当前共 {len(wb.sheetnames)} 个工作表"
+        )
+    return wb[wb.sheetnames[idx]]
+
+
+def parse_excel_file(path, source_cfg):
+    """读取 Excel 指定工作表并解析为行数据列表（列映射见 sources + field_mappings.json）。"""
+    from openpyxl import load_workbook
+    wb = load_workbook(path, data_only=True)
+    sheet = _select_workbook_sheet(wb, source_cfg)
+    rows = list(sheet.iter_rows(values_only=True))
+    if not rows:
+        return []
+    col_map = parse_master_header(source_cfg, rows[0])
+    return [row_to_data(source_cfg, col_map, raw) for raw in rows[1:]]
 
 
 def merge_master_import_data(old, incoming, cfg=None):
@@ -244,17 +325,6 @@ def build_global_candidate_index(db):
         if data.get("name") and data["name"] not in by_name:
             by_name[data["name"]] = row
     return by_resume_id, by_phone, by_name
-
-
-def parse_excel_file(path, source_cfg):
-    """读取 Excel 文件并解析为行数据列表。"""
-    from openpyxl import load_workbook
-    wb = load_workbook(path, data_only=True)
-    rows = list(wb.active.iter_rows(values_only=True))
-    if not rows:
-        return []
-    col_map = parse_master_header(source_cfg, rows[0])
-    return [row_to_data(source_cfg, col_map, raw) for raw in rows[1:]]
 
 
 def join_master_rows(app_rows, mgmt_rows, join_key="resume_id"):

@@ -165,10 +165,18 @@ def build_config_response(group_id=None):
             "import_mode": master.get("import_mode", "dual_file"),
             "join_key": master.get("join_key", "resume_id"),
             "match_keys": master.get("match_keys", ["phone"]),
-            "registration_locked_fields": master.get(
-                "registration_locked_fields",
-                ["name", "phone", "education", "school", "major"],
-            ),
+        "registration_locked_fields": master.get("registration_locked_fields", []),
+        "field_mappings": {
+            "fields": [
+                {
+                    "field_key": f.get("field_key"),
+                    "ui_label": f.get("ui_label"),
+                    "lock_on_import": f.get("lock_on_import", False),
+                    "sources": list((f.get("sources") or {}).keys()),
+                }
+                for f in (master.get("field_mappings") or {}).get("fields", [])
+            ],
+        },
             "file_patterns": master.get("file_patterns", {}),
             "sources": [{
                 "key": s["key"],

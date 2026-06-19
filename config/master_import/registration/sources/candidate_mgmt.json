@@ -1,13 +1,13 @@
 {
-  "comment": "候选人管理*.xlsx：补充状态表，通过简历编号与 Application 表关联",
+  "comment": "候选人管理*.xlsx：补充状态表。登记五字段中候选人/电话列映射见 field_mappings.json。",
   "key": "candidate_mgmt",
   "label": "候选人管理表",
   "description": "文件名须匹配 候选人管理*.xlsx",
   "storage_name": "candidate_mgmt.xlsx",
+  "sheet_name": "Sheet",
+  "sheet_index": 0,
   "columns": [
     { "excel_column": "简历编号", "field_key": "resume_id", "required": true, "match_patterns": ["*简历*编号*"] },
-    { "excel_column": "候选人", "field_key": "name", "match_patterns": ["*候选人*", "*姓名*"] },
-    { "excel_column": "电话", "field_key": "phone", "match_patterns": ["*电话*", "*手机*"] },
     { "excel_column": "技术面结果", "field_key": "tech_interview_result" },
     { "excel_column": "主管面结果", "field_key": "manager_interview_result" },
     { "excel_column": "Offer发放时间", "field_key": "offer_send_time", "match_patterns": ["*Offer*时间*"] },

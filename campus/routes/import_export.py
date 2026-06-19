@@ -158,16 +158,29 @@ def api_master_import_config():
         "import_mode": cfg.get("import_mode", "dual_file"),
         "join_key": cfg.get("join_key", "resume_id"),
         "match_keys": cfg.get("match_keys", ["phone"]),
-        "registration_locked_fields": cfg.get(
-            "registration_locked_fields",
-            ["name", "phone", "education", "school", "major"],
-        ),
+        "registration_locked_fields": cfg.get("registration_locked_fields", []),
+        "field_mappings": {
+            "fields": [
+                {
+                    "field_key": f.get("field_key"),
+                    "ui_label": f.get("ui_label"),
+                    "lock_on_import": f.get("lock_on_import", False),
+                    "excel_columns": {
+                        sk: (f.get("sources") or {}).get(sk, {}).get("excel_column")
+                        for sk in (f.get("sources") or {})
+                    },
+                }
+                for f in (cfg.get("field_mappings") or {}).get("fields", [])
+            ],
+        },
         "file_patterns": cfg.get("file_patterns", {}),
         "sources": [{
             "key": s["key"],
             "label": s["label"],
             "description": s.get("description", ""),
             "pattern": (cfg.get("file_patterns") or {}).get(s["key"], "*"),
+            "sheet_name": s.get("sheet_name"),
+            "sheet_index": s.get("sheet_index", 0),
             "ready": files.get(s["key"], {}).get("ready", False),
             "original_name": files.get(s["key"], {}).get("original_name"),
             "uploaded_at": files.get(s["key"], {}).get("uploaded_at"),
