@@ -51,51 +51,112 @@ body {
   display: flex; flex: 1; min-height: 0; align-items: stretch;
 }
 
-/* ---------- 左侧导航（层级折叠） ---------- */
+/* ---------- 左侧导航（统一对齐 + 现代层级样式） ---------- */
 .sidebar {
-  width: 220px; flex-shrink: 0;
-  background: #fff; border-right: 1px solid var(--border);
-  padding: 8px 0 16px; overflow-y: auto;
+  --nav-pad-x: 10px;
+  --nav-slot: 18px;
+  --nav-gap: 8px;
+  --nav-text-x: calc(var(--nav-pad-x) + var(--nav-slot) + var(--nav-gap));
+  width: 236px; flex-shrink: 0;
+  background: linear-gradient(180deg, #fafbfc 0%, #f4f6f9 100%);
+  border-right: 1px solid var(--border);
+  padding: 14px var(--nav-pad-x) 20px;
+  overflow-y: auto;
   position: sticky; top: 52px; height: calc(100vh - 52px);
 }
-.nav-root-item { padding: 0 8px; margin-bottom: 4px; }
-.nav-group { margin-bottom: 2px; }
-.nav-group-toggle {
-  display: flex; align-items: center; gap: 8px;
-  width: 100%; padding: 10px 12px 10px 16px; border: none; background: none;
-  cursor: pointer; text-align: left; font-size: 13px; font-weight: 600;
-  color: var(--text); border-radius: 0;
-  transition: background .15s;
+
+.nav-entry { margin-bottom: 3px; }
+
+.nav-row {
+  display: flex; align-items: center; gap: var(--nav-gap);
+  width: 100%; min-height: 38px; padding: 0 10px;
+  border: none; background: transparent; border-radius: 8px;
+  cursor: pointer; text-align: left; color: #475569;
+  font-size: 13px; font-weight: 500; line-height: 1.35;
+  transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+  position: relative;
 }
-.nav-group-toggle:hover { background: var(--bg); }
-.nav-group.has-active > .nav-group-toggle { color: var(--primary-dark); }
+.nav-row:hover { background: rgba(37, 99, 235, 0.07); color: var(--text); }
+
+.nav-row.active {
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.14) 0%, rgba(37, 99, 235, 0.06) 100%);
+  color: var(--primary-dark); font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.12);
+}
+
+/* 左侧指示条仅用于顶级叶子项，子项用 nav-dot 避免 ::before 冲突 */
+.nav-leaf.active::before {
+  content: ""; position: absolute; left: 0; top: 7px; bottom: 7px;
+  width: 3px; border-radius: 0 3px 3px 0; background: var(--primary);
+}
+
+.nav-slot {
+  width: var(--nav-slot); height: var(--nav-slot); flex-shrink: 0;
+}
+
+.nav-label {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* 分组父级：与叶子项共用 slot 列，文字左缘对齐 */
+.nav-parent { font-weight: 600; color: #334155; }
+.nav-group.has-active > .nav-parent { color: var(--primary-dark); }
+
 .nav-chevron {
-  width: 16px; height: 16px; flex-shrink: 0; position: relative;
+  display: flex; align-items: center; justify-content: center;
 }
 .nav-chevron::before {
-  content: ""; position: absolute; left: 4px; top: 50%;
-  border: 4px solid transparent; border-left-color: var(--muted);
-  transform: translateY(-50%); transition: transform .2s;
+  content: ""; display: block;
+  width: 6px; height: 6px;
+  border-right: 2px solid #94a3b8; border-bottom: 2px solid #94a3b8;
+  transform: rotate(-45deg) translateY(-1px);
+  transition: transform .2s ease, border-color .15s ease;
 }
-.nav-group.expanded > .nav-group-toggle .nav-chevron::before {
-  transform: translateY(-50%) rotate(90deg);
+.nav-group.expanded > .nav-parent .nav-chevron::before {
+  transform: rotate(45deg) translateY(-2px);
+  border-color: var(--primary);
 }
-.nav-group-label { flex: 1; line-height: 1.3; }
-.nav-group-items {
-  display: none; flex-direction: column; gap: 1px;
-  padding: 2px 8px 6px 12px;
-  border-left: 2px solid var(--border); margin-left: 22px;
+.nav-group.has-active > .nav-parent .nav-chevron::before { border-color: var(--primary); }
+
+/* 子级：独立圆点 + 选中背景不覆盖图标 */
+.nav-children {
+  display: none; flex-direction: column; gap: 2px;
+  margin: 2px 0 4px var(--nav-text-x);
+  padding: 2px 0 2px 10px;
+  border-left: 1px solid #e2e8f0;
 }
-.nav-group.expanded .nav-group-items { display: flex; }
-.nav-item {
-  display: block; width: 100%; padding: 8px 12px; border: none; background: none;
-  border-radius: 6px; cursor: pointer; text-align: left;
-  color: var(--text); font-size: 13px; font-weight: 400;
-  transition: background .15s;
+.nav-group.expanded .nav-children { display: flex; }
+
+.nav-child {
+  min-height: 34px;
+  padding: 0 8px 0 2px;
+  gap: 10px;
+  font-weight: 400; color: #64748b;
 }
-.nav-item.nav-sub { padding-left: 14px; font-size: 13px; }
-.nav-item:hover { background: var(--bg); }
-.nav-item.active { background: #dbeafe; color: var(--primary-dark); font-weight: 500; }
+
+.nav-dot {
+  width: 6px; height: 6px; flex-shrink: 0;
+  border-radius: 50%; background: #cbd5e1;
+  transition: background .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+
+.nav-child:hover .nav-dot { background: #94a3b8; }
+
+.nav-child.active {
+  color: var(--primary-dark); font-weight: 600;
+  /* 子项选中：浅背景 + 圆点高亮，不使用左侧竖条 */
+  background: rgba(37, 99, 235, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.1);
+}
+.nav-child.active .nav-dot {
+  background: var(--primary);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.22);
+  transform: scale(1.1);
+}
+
+/* 叶子顶级项：占位 slot 与分组 chevron 同宽，保证 label 对齐 */
+.nav-leaf { color: #334155; }
 
 .main {
   flex: 1; min-width: 0; padding: 20px 24px;
@@ -265,7 +326,7 @@ th.sortable:hover { color: var(--primary); }
 @media (max-width: 900px) {
   .admin-grid { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr 1fr; }
-  .sidebar { width: 200px; }
+  .sidebar { width: 216px; }
 }
 
 /* ---------- 面试日程日历 ---------- */

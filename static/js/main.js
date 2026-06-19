@@ -97,29 +97,35 @@ function buildSidebar() {
   const html = nav.map(section => {
     if (section.type === "item") {
       return `
-        <div class="nav-root-item">
-          <button class="nav-item" data-tab="${section.id}">${esc(section.label)}</button>
+        <div class="nav-entry">
+          <button class="nav-row nav-leaf" data-tab="${section.id}">
+            <span class="nav-slot" aria-hidden="true"></span>
+            <span class="nav-label">${esc(section.label)}</span>
+          </button>
         </div>`;
     }
     const expanded = navExpandedGroups.has(section.id);
     const children = section.items.map(it => `
-      <button class="nav-item nav-sub" data-tab="${it.id}">${esc(it.label)}</button>`).join("");
+      <button class="nav-row nav-child" data-tab="${it.id}">
+        <span class="nav-dot" aria-hidden="true"></span>
+        <span class="nav-label">${esc(it.label)}</span>
+      </button>`).join("");
     return `
-      <div class="nav-group${expanded ? " expanded" : ""}" data-group="${section.id}">
-        <button type="button" class="nav-group-toggle" data-group="${section.id}" aria-expanded="${expanded}">
-          <span class="nav-chevron"></span>
-          <span class="nav-group-label">${esc(section.label)}</span>
+      <div class="nav-entry nav-group${expanded ? " expanded" : ""}" data-group="${section.id}">
+        <button type="button" class="nav-row nav-parent" data-group="${section.id}" aria-expanded="${expanded}">
+          <span class="nav-slot nav-chevron" aria-hidden="true"></span>
+          <span class="nav-label">${esc(section.label)}</span>
         </button>
-        <div class="nav-group-items">${children}</div>
+        <div class="nav-children">${children}</div>
       </div>`;
   }).join("");
 
   $("#sidebar").innerHTML = html;
 
-  $("#sidebar").querySelectorAll(".nav-group-toggle").forEach(btn => {
+  $("#sidebar").querySelectorAll(".nav-parent").forEach(btn => {
     btn.addEventListener("click", () => toggleNavGroup(btn.dataset.group));
   });
-  $("#sidebar").querySelectorAll(".nav-item").forEach(btn => {
+  $("#sidebar").querySelectorAll(".nav-row[data-tab]").forEach(btn => {
     btn.addEventListener("click", () => switchTab(btn.dataset.tab));
   });
 }
@@ -130,12 +136,12 @@ function toggleNavGroup(groupId) {
   const el = $(`.nav-group[data-group="${groupId}"]`);
   if (el) {
     el.classList.toggle("expanded", navExpandedGroups.has(groupId));
-    el.querySelector(".nav-group-toggle")?.setAttribute("aria-expanded", navExpandedGroups.has(groupId));
+    el.querySelector(".nav-parent")?.setAttribute("aria-expanded", navExpandedGroups.has(groupId));
   }
 }
 
 function updateSidebarActive(tab) {
-  $("#sidebar").querySelectorAll(".nav-item").forEach(b =>
+  $("#sidebar").querySelectorAll(".nav-row[data-tab]").forEach(b =>
     b.classList.toggle("active", b.dataset.tab === tab));
   const gid = groupForTab(tab);
   $("#sidebar").querySelectorAll(".nav-group").forEach(g => {
@@ -151,7 +157,7 @@ function switchTab(tab) {
     const el = $(`.nav-group[data-group="${gid}"]`);
     if (el) {
       el.classList.add("expanded");
-      el.querySelector(".nav-group-toggle")?.setAttribute("aria-expanded", "true");
+      el.querySelector(".nav-parent")?.setAttribute("aria-expanded", "true");
     }
   }
   updateSidebarActive(tab);
