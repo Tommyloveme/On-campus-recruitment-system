@@ -19,6 +19,7 @@
     { "priority": 25, "stage": "qualification", "label": "资审通过待笔试", "fields": ["qualification_status", "written_test_status"], "values": ["通过", "待预约"] },
     { "priority": 20, "stage": "resume_screening", "label": "简历筛选", "fields": ["registration_status", "resume_screening_status"], "values": ["已登记", "待筛选"] },
     { "priority": 15, "stage": "resume_screening", "label": "简历筛选通过", "fields": ["registration_status", "resume_screening_status"], "values": ["已登记", "通过"] },
+    { "priority": 12, "stage": "registration", "label": "待投递", "fields": ["registration_status"], "values": ["待投递"] },
     { "priority": 10, "stage": "registration", "label": "登记阶段", "fields": ["registration_status", "resume_screening_status"], "values": ["待完善", "*"] },
     { "priority": 5, "stage": "registration", "label": "默认登记", "fields": ["registration_status"], "values": ["*"] }
   ]

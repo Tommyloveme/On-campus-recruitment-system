@@ -48,7 +48,7 @@ async function renderStageList(stageKey) {
   const meta = state.stages.find(s => s.key === stageKey);
   const ss = getStageState(stageKey);
   const fields = visibleFields(stageKey);
-  const showGroupCol = canSeeAll();
+  const showGroupCol = canSeeAll() && stageKey !== "registration";
   const showResume = stageKey === "registration";
   const canAdd = canCreate() && meta.can_create;
   const showMasterImport = stageKey === "registration" && canCreate();
@@ -224,7 +224,7 @@ function renderCandidateRows(stageKey) {
   if (!tbody) return;
   const ss = getStageState(stageKey);
   const fields = visibleFields(stageKey);
-  const showGroupCol = canSeeAll();
+  const showGroupCol = canSeeAll() && stageKey !== "registration";
   const showResume = stageKey === "registration";
   const list = filteredCandidates(stageKey);
   const colCount = 3 + fields.length + (showGroupCol ? 1 : 0) + (showResume ? 1 : 0);
@@ -389,8 +389,12 @@ function enableColumnResize() {
 }
 
 function openCandidateModal(cand, stageKey) {
-  const fields = fieldsForStage(stageKey).filter(f => f.editable);
+  const allEditable = fieldsForStage(stageKey).filter(f => f.editable);
   const isNew = !cand;
+  // 登记阶段手动新增：登记时间/状态由系统自动填写，不在表单中展示
+  const fields = isNew && stageKey === "registration"
+    ? allEditable.filter(f => f.key !== "registration_time" && f.key !== "registration_status")
+    : allEditable;
   const meta = state.stages.find(s => s.key === stageKey);
   const editableGroups = state.groups.filter(g => canEdit(g.id));
   const groupSelect = isNew ? `
@@ -423,8 +427,8 @@ function openCandidateModal(cand, stageKey) {
     try {
       if (isNew) {
         const gid = +$("#cand-modal-group").value;
-        await api("/api/candidates", { method: "POST", json: { group_id: gid, data, stage: stageKey } });
-        toast("候选人已新增");
+        const r = await api("/api/candidates", { method: "POST", json: { group_id: gid, data, stage: stageKey } });
+        toast(r.merged ? "已按电话合并到已有候选人" : "候选人已新增");
       } else {
         const r = await api(`/api/candidates/${cand.id}`, { method: "PUT", json: { data, stage: stageKey } });
         toast(r.changed ? `已保存，更新了 ${r.changed} 项信息` : "内容无变化");

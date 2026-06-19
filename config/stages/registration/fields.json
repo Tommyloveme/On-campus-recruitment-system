@@ -1,15 +1,6 @@
 {
-  "comment": "候选人登记阶段字段配置",
+  "comment": "候选人登记阶段字段配置（列顺序：来源渠道、登记状态；登记时间/状态在手动新增时由系统自动填写）",
   "fields": [
-    {
-      "key": "registration_time",
-      "label": "登记时间",
-      "excel_column": "登记时间",
-      "type": "date",
-      "visible": true,
-      "editable": true,
-      "importable": true
-    },
     {
       "key": "registration_source",
       "label": "来源渠道",
@@ -25,10 +16,19 @@
       "label": "登记状态",
       "excel_column": "登记状态",
       "type": "select",
-      "options": ["待完善", "已登记", "已放弃"],
-      "colors": { "待完善": "yellow", "已登记": "green", "已放弃": "red" },
+      "options": ["待投递", "待完善", "已登记", "已放弃"],
+      "colors": { "待投递": "blue", "待完善": "yellow", "已登记": "green", "已放弃": "red" },
       "visible": true,
       "editable": true,
+      "importable": true
+    },
+    {
+      "key": "registration_time",
+      "label": "登记时间",
+      "excel_column": "登记时间",
+      "type": "date",
+      "visible": false,
+      "editable": false,
       "importable": true
     },
     {

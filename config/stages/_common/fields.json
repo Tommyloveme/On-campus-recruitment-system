@@ -1,16 +1,6 @@
 {
-  "comment": "各流程标签页共用的候选人身份字段（在登记阶段可编辑，其他阶段默认只读展示）",
+  "comment": "各流程标签页共用的候选人身份字段（登记阶段可编辑；三层部门仅在入职管理阶段配置中展示）",
   "fields": [
-    {
-      "key": "dept_level3",
-      "label": "三层部门",
-      "excel_column": "三层部门",
-      "excel_aliases": ["入职三层"],
-      "type": "text",
-      "visible": true,
-      "editable": true,
-      "importable": true
-    },
     {
       "key": "name",
       "label": "候选人",
@@ -22,16 +12,6 @@
       "required": true
     },
     {
-      "key": "resume_id",
-      "label": "简历编号",
-      "excel_column": "简历编号",
-      "excel_aliases": ["简历ID"],
-      "type": "text",
-      "visible": true,
-      "editable": true,
-      "importable": true
-    },
-    {
       "key": "phone",
       "label": "电话",
       "excel_column": "电话",
@@ -41,30 +21,20 @@
       "importable": true
     },
     {
-      "key": "education",
-      "label": "学历",
-      "excel_column": "学历",
-      "type": "select",
-      "options": ["大专", "本科", "硕士", "博士"],
-      "visible": false,
+      "key": "sourcer",
+      "label": "拓源人",
+      "excel_column": "拓源人",
+      "type": "text",
+      "visible": true,
       "editable": true,
       "importable": true
     },
     {
-      "key": "school",
-      "label": "毕业院校",
-      "excel_column": "毕业院校",
+      "key": "sourcer_dept",
+      "label": "拓源人部门",
+      "excel_column": "拓源人部门",
       "type": "text",
-      "visible": false,
-      "editable": true,
-      "importable": true
-    },
-    {
-      "key": "major",
-      "label": "专业",
-      "excel_column": "专业",
-      "type": "text",
-      "visible": false,
+      "visible": true,
       "editable": true,
       "importable": true
     },
@@ -78,11 +48,58 @@
       "importable": true
     },
     {
+      "key": "interface_dept",
+      "label": "接口人部门",
+      "excel_column": "接口人部门",
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "education",
+      "label": "学历",
+      "excel_column": "学历",
+      "type": "select",
+      "options": ["大专", "本科", "硕士", "博士"],
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "school",
+      "label": "毕业院校",
+      "excel_column": "毕业院校",
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "major",
+      "label": "专业",
+      "excel_column": "专业",
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "resume_id",
+      "label": "简历编号",
+      "excel_column": "简历编号",
+      "excel_aliases": ["简历ID"],
+      "type": "text",
+      "visible": false,
+      "editable": true,
+      "importable": true
+    },
+    {
       "key": "work_location",
       "label": "工作地",
       "excel_column": "拟录取工作地",
       "type": "text",
-      "visible": true,
+      "visible": false,
       "editable": true,
       "importable": true
     },
@@ -111,7 +128,7 @@
         "written_test": "blue", "tech_interview": "yellow", "manager_interview": "yellow",
         "approval": "yellow", "salary": "yellow", "offer": "green", "onboarding": "green"
       },
-      "visible": true,
+      "visible": false,
       "editable": false,
       "importable": false,
       "computed": true

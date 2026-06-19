@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """候选人 CRUD 与批量操作。"""
 import json
+from datetime import datetime
 
 from flask import Blueprint, g, jsonify, request
 
@@ -16,7 +17,7 @@ from campus.logging_util import log, who
 from campus.services.audit import add_log
 from campus.services.candidates import candidate_dict, group_name_map
 from campus.services.resumes import remove_resume_file
-from campus.stage_engine import compute_current_stage
+from campus.stage_engine import compute_current_stage, merge_candidate_data, build_global_candidate_index
 
 bp = Blueprint("candidates", __name__)
 
@@ -73,8 +74,43 @@ def api_candidate_create():
     data = {f["key"]: str(b.get("data", {}).get(f["key"], "") or "").strip() for f in fields}
     if not data.get("name"):
         return jsonify({"error": "候选人姓名不能为空"}), 400
-    compute_current_stage(data)
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    if stage == "registration":
+        if not data.get("registration_time"):
+            data["registration_time"] = today
+        if not data.get("registration_status"):
+            data["registration_status"] = "待投递"
+
+    phone = data.get("phone", "").strip()
     db = get_db()
+
+    # 登记阶段：电话与已有候选人（含主数据导入）匹配则合并为一条
+    if stage == "registration" and phone:
+        _, by_phone, _ = build_global_candidate_index(db)
+        match = by_phone.get(phone)
+        if match and can_edit_group(g.user, match["group_id"]):
+            old = json.loads(match["data"])
+            merged = merge_candidate_data(old, data)
+            merged["registration_time"] = data.get("registration_time") or today
+            if not str(old.get("registration_status") or "").strip():
+                merged["registration_status"] = data.get("registration_status", "待投递")
+            compute_current_stage(merged)
+            if merged != old:
+                db.execute(
+                    "UPDATE candidates SET data=?, updated_at=? WHERE id=?",
+                    (json.dumps(merged, ensure_ascii=False), now_str(), match["id"]),
+                )
+                name = merged.get("name") or old.get("name", "")
+                gname = group_name_map().get(match["group_id"], "")
+                add_log(g.user, "update",
+                        f"{g.user['display_name']} 登记合并了候选人「{name}」（电话 {phone}，{gname}）",
+                        match["id"], name, match["group_id"])
+                db.commit()
+                log.info("登记合并 %s id=%d phone=%s", who(g.user), match["id"], phone)
+            return jsonify({"ok": True, "id": match["id"], "merged": True})
+
+    compute_current_stage(data)
     cur = db.execute(
         "INSERT INTO candidates (group_id, data, created_at, updated_at) VALUES (?,?,?,?)",
         (group_id, json.dumps(data, ensure_ascii=False), now_str(), now_str()),

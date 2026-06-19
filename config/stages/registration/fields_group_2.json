@@ -1,19 +1,22 @@
 {
   "comment": "阶段「registration」分组 2 的字段显示配置",
   "visible": {
-    "dept_level3": true,
     "name": true,
     "phone": true,
-    "education": false,
-    "school": false,
-    "major": false,
+    "sourcer": true,
+    "sourcer_dept": true,
     "interface_person": true,
-    "work_location": true,
+    "interface_dept": true,
+    "education": true,
+    "school": true,
+    "major": true,
+    "resume_id": false,
+    "work_location": false,
     "graduation_time": false,
-    "current_stage": true,
-    "registration_time": true,
+    "current_stage": false,
     "registration_source": true,
     "registration_status": true,
+    "registration_time": false,
     "registration_remark": false
   }
 }

@@ -2,6 +2,16 @@
   "comment": "候选人入职管理阶段字段配置（原系统核心功能）",
   "fields": [
     {
+      "key": "dept_level3",
+      "label": "三层部门",
+      "excel_column": "三层部门",
+      "excel_aliases": ["入职三层"],
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
       "key": "sign_status",
       "label": "签约状态",
       "excel_column": "签约状态",

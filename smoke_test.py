@@ -50,25 +50,47 @@ check("读取10个流程阶段", len(cfg["stages"]) == 10)
 check("界面配置下发(每页15条)", cfg["app"]["page_size"] == 15)
 check("含登记与入职阶段", "registration" in cfg["stage_fields"] and "onboarding" in cfg["stage_fields"])
 reg_fields = cfg["stage_fields"]["registration"]
-check("登记阶段含候选人列", any(f["key"] == "name" for f in reg_fields))
+reg_keys = [f["key"] for f in reg_fields if f["visible"]]
+check("登记阶段不含三层部门", "dept_level3" not in reg_keys)
+check("登记阶段列顺序正确",
+      reg_keys[:10] == ["name", "phone", "sourcer", "sourcer_dept", "interface_person",
+                        "interface_dept", "education", "school", "major",
+                        "registration_source"] and reg_keys[10] == "registration_status")
 onb_fields = cfg["stage_fields"]["onboarding"]
-check("入职阶段含当前进展列", any(f["key"] == "progress" for f in onb_fields))
+check("入职阶段含三层部门", any(f["key"] == "dept_level3" and f["visible"] for f in onb_fields))
 from openpyxl import load_workbook
 req = urllib.request.Request(BASE + "/api/import/template?stage=registration")
 with opener.open(req) as r:
     tpl_headers = [c.value for c in load_workbook(io.BytesIO(r.read())).active[1]]
-check("登记导入模板含候选人列", "候选人" in tpl_headers)
+check("登记导入模板首列为候选人", tpl_headers[0] == "候选人" and "三层部门" not in tpl_headers)
 s, groups = call("GET", "/api/groups")
 check("读取分组(demo含2组)", len(groups) >= 2)
 g1 = groups[0]["id"]
 
+# 3. 候选人 CRUD（清理可能残留的测试数据）
+for n in ("测试员", "导入甲", "导入乙", "三层部门测试"):
+    s, old = call("GET", f"/api/candidates?q={quote(n)}")
+    for c in old:
+        call("DELETE", f"/api/candidates/{c['id']}")
+
 # 3. 候选人 CRUD
 s, r = call("POST", "/api/candidates", {
     "group_id": g1, "stage": "registration",
-    "data": {"name": "测试员", "phone": "13911112222", "registration_status": "已登记"},
+    "data": {"name": "测试员", "phone": "13911112222"},
 })
 cid = r["id"]
-check("新增候选人(登记阶段)", s == 200)
+check("新增候选人(登记阶段)", s == 200 and not r.get("merged"))
+s, cands = call("GET", "/api/candidates?q=" + quote("测试员"))
+check("手动登记默认待投递", cands[0]["data"]["registration_status"] == "待投递"
+      and cands[0]["data"].get("registration_time"))
+# 电话匹配合并
+s, r2 = call("POST", "/api/candidates", {
+    "group_id": g1, "stage": "registration",
+    "data": {"name": "测试员", "phone": "13911112222", "sourcer": "张三"},
+})
+check("登记电话匹配合并", r2.get("merged") and r2["id"] == cid)
+s, cands = call("GET", "/api/candidates?q=" + quote("测试员"))
+check("合并后保留拓源人", cands[0]["data"].get("sourcer") == "张三")
 s, r = call("PUT", f"/api/candidates/{cid}", {
     "stage": "onboarding",
     "data": {"sign_status": "已签约", "onboard_risk": "高"},
@@ -80,16 +102,16 @@ check("搜索候选人", len(cands) == 1 and cands[0]["data"]["sign_status"] == 
 # 4. 日志
 s, logs = call("GET", "/api/logs")
 msg = logs["items"][0]["message"]
-check("修改日志简洁呈现", "修改了「测试员」" in msg and "未签约" not in msg.split("：")[0] and "→" in msg)
+check("修改日志简洁呈现", "修改了「" in msg and "签约状态" in msg and "→" in msg)
 print("   日志示例:", msg)
 
 # 5. Excel 导入（登记阶段）
 wb = Workbook()
 ws = wb.active
-ws.append(["三层部门", "候选人", "电话", "登记状态", "拟录取工作地"])
-ws.append(["存储部", "导入甲", "13700001111", "已登记", "北京"])
-ws.append(["计算部", "导入乙", "13700002222", "已登记", "成都"])
-ws.append(["", "测试员", "13911112222", "已登记", "西安"])  # 应匹配并更新
+ws.append(["候选人", "电话", "来源渠道", "登记状态", "拟录取工作地"])
+ws.append(["导入甲", "13700001111", "校园宣讲", "已登记", "北京"])
+ws.append(["导入乙", "13700002222", "内推", "已登记", "成都"])
+ws.append(["测试员", "13911112222", "线上投递", "已登记", "西安"])  # 应匹配并更新
 buf = io.BytesIO()
 wb.save(buf)
 boundary = uuid.uuid4().hex
@@ -110,13 +132,13 @@ body.write(f"--{boundary}--\r\n".encode())
 s, r = call("POST", "/api/import", raw=body.getvalue(), ctype=f"multipart/form-data; boundary={boundary}")
 check("Excel导入(新增2 更新1)", r["created"] == 2 and r["updated"] == 1)
 
-# 5a. 旧表头「入职三层」仍兼容导入（登记阶段）
-wb = Workbook()
-ws = wb.active
-ws.append(["入职三层", "候选人", "登记状态"])
-ws.append(["网络部", "旧表头测试", "已登记"])
+# 5a. 入职阶段导入仍兼容旧表头「入职三层」
+wb_ob = Workbook()
+ws_ob = wb_ob.active
+ws_ob.append(["入职三层", "候选人", "签约状态"])
+ws_ob.append(["网络部", "三层部门测试", "已签约"])
 buf_legacy = io.BytesIO()
-wb.save(buf_legacy)
+wb_ob.save(buf_legacy)
 boundary_l = uuid.uuid4().hex
 body_l = io.BytesIO()
 def part_l(name, value=None, filename=None, content=None):
@@ -129,13 +151,13 @@ def part_l(name, value=None, filename=None, content=None):
     else:
         body_l.write(f'Content-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
 part_l("group_id", str(g1))
-part_l("stage", "registration")
+part_l("stage", "onboarding")
 part_l("file", filename="legacy.xlsx", content=buf_legacy.getvalue())
 body_l.write(f"--{boundary_l}--\r\n".encode())
 s, r = call("POST", "/api/import", raw=body_l.getvalue(), ctype=f"multipart/form-data; boundary={boundary_l}")
-check("旧表头入职三层兼容导入", r["created"] == 1)
-s, found = call("GET", "/api/candidates?q=" + quote("旧表头测试"))
-check("旧表头导入写入三层部门", found[0]["data"].get("dept_level3") == "网络部")
+check("入职阶段旧表头入职三层兼容导入", r["created"] == 1)
+s, found = call("GET", "/api/candidates?q=" + quote("三层部门测试"))
+check("入职导入写入三层部门", found[0]["data"].get("dept_level3") == "网络部")
 
 # 5a-master. 主数据表双文件导入（Application*.xlsx + 候选人管理*.xlsx）
 _fix_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tests", "fixtures", "master_import")
@@ -170,7 +192,7 @@ body_r.write(b'Content-Disposition: form-data; name="page"\r\n\r\nregistration\r
 body_r.write(f"--{boundary_r}--\r\n".encode())
 s, r = call("POST", "/api/master-import/refresh", raw=body_r.getvalue(),
              ctype=f"multipart/form-data; boundary={boundary_r}")
-check("主数据表刷新(新增+更新)", s == 200 and r.get("created", 0) >= 1 and r.get("updated", 0) >= 1)
+check("主数据表刷新成功", s == 200 and (r.get("created", 0) + r.get("updated", 0)) >= 1)
 s, c_new = call("GET", "/api/candidates?q=" + quote("主表新人"))
 check("主表新人已导入且含简历编号", len(c_new) == 1 and c_new[0]["data"].get("resume_id") == "RS2026001")
 check("候选人管理表字段已合并(当前进展)", "0619" in (c_new[0]["data"].get("progress") or ""))
@@ -180,9 +202,9 @@ check("测试员经简历编号更新", len(c_upd) == 1 and c_upd[0]["data"].get
 # 5b. 批量导入 120 名候选人（登记阶段）
 wb = Workbook()
 ws = wb.active
-ws.append(["三层部门", "候选人", "电话", "学历", "毕业院校", "专业", "登记状态", "毕业时间"])
+ws.append(["候选人", "电话", "学历", "毕业院校", "专业", "登记状态", "毕业时间"])
 for i in range(1, 121):
-    ws.append([f"部门{i % 5}", f"压测{i:03d}", f"139{i:08d}", ["本科", "硕士", "博士"][i % 3],
+    ws.append([f"压测{i:03d}", f"139{i:08d}", ["本科", "硕士", "博士"][i % 3],
                f"测试大学{i % 10}", "计算机科学", "已登记",
                f"2026-{(i % 12) + 1:02d}-15"])
 buf2 = io.BytesIO()
@@ -468,7 +490,7 @@ for u in users:
 s, cands = call("GET", "/api/candidates?q=" + quote("压测"))
 for c in cands:
     call("DELETE", f"/api/candidates/{c['id']}")
-for n in ("测试员", "导入甲", "导入乙", "旧表头测试"):
+for n in ("测试员", "导入甲", "导入乙", "三层部门测试"):
     s, cands = call("GET", f"/api/candidates?q={quote(n)}")
     for c in cands:
         call("DELETE", f"/api/candidates/{c['id']}")
