@@ -14,8 +14,11 @@ from campus.services.audit import add_log
 from campus.services.candidates import candidate_dict, group_name_map
 from campus.services.users import (
     apply_registration_candidate_defaults,
+    apply_registration_employee_fields,
     validate_registration_manual_create,
     validate_registration_user_refs,
+    user_dept_display,
+    lookup_employee_by_username,
 )
 from campus.services.resumes import remove_resume_file
 from campus.stage_engine import compute_current_stage, merge_candidate_data, build_global_candidate_index
@@ -76,6 +79,7 @@ def api_candidate_create():
         ref_err = validate_registration_user_refs(db, data.get("sourcer"), data.get("interface_person"))
         if ref_err:
             return jsonify({"error": ref_err, "code": "user_not_registered"}), 400
+        data = apply_registration_employee_fields(db, data)
 
     phone = data.get("phone", "").strip()
     confirm_overwrite = bool(b.get("confirm_overwrite"))
@@ -178,6 +182,7 @@ def api_candidate_update(cid):
         ref_err = validate_registration_user_refs(db, new.get("sourcer"), new.get("interface_person"))
         if ref_err:
             return jsonify({"error": ref_err, "code": "user_not_registered"}), 400
+        new = apply_registration_employee_fields(db, new)
     for k, v in old.items():
         if k not in new:
             new[k] = v

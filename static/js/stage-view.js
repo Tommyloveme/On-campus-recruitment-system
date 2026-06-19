@@ -389,6 +389,80 @@ function registrationCreateHiddenKeys() {
   ]);
 }
 
+function registrationDeptFieldHtml(deptKey, value) {
+  const f = fieldsForStage("registration").find(x => x.key === deptKey);
+  const label = f ? f.label : deptKey;
+  const v = (value || "").trim();
+  return `
+    <div class="form-item registration-dept-display">
+      <label>${esc(label)}</label>
+      <div class="dept-display-value" id="dept-display-${deptKey}">${esc(v || "—")}</div>
+      <input type="hidden" data-field="${deptKey}" value="${esc(v)}">
+    </div>`;
+}
+
+function registrationFieldExtraHtml(stageKey, f, cand) {
+  if (stageKey !== "registration") return "";
+  if (f.key === "sourcer") {
+    return registrationDeptFieldHtml("sourcer_dept", cand?.data?.sourcer_dept);
+  }
+  if (f.key === "interface_person") {
+    return registrationDeptFieldHtml("interface_dept", cand?.data?.interface_dept);
+  }
+  return "";
+}
+
+async function lookupEmployeeForRegistration(username) {
+  const emp = (username || "").trim();
+  if (!emp) return { found: false, department: "" };
+  const res = await fetch(`/api/users/lookup-employee?username=${encodeURIComponent(emp)}`);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok && !body.found) {
+    return { found: false, department: "", error: body.error || "查询失败" };
+  }
+  return body;
+}
+
+function bindRegistrationEmployeeLookup() {
+  const pairs = [
+    { emp: "sourcer", dept: "sourcer_dept" },
+    { emp: "interface_person", dept: "interface_dept" },
+  ];
+  const modal = $("#modal-body");
+  if (!modal) return;
+  pairs.forEach(({ emp, dept }) => {
+    const input = modal.querySelector(`[data-field='${emp}']`);
+    if (!input || input.disabled) return;
+    const displayEl = $("#dept-display-" + dept);
+    const hidden = modal.querySelector(`[data-field='${dept}']`);
+    const update = async () => {
+      const username = input.value.trim();
+      if (!username) {
+        if (displayEl) displayEl.textContent = "—";
+        if (hidden) hidden.value = "";
+        return;
+      }
+      try {
+        const body = await lookupEmployeeForRegistration(username);
+        if (body.found) {
+          const deptText = body.department || "—";
+          if (displayEl) displayEl.textContent = deptText;
+          if (hidden) hidden.value = body.department || "";
+        } else {
+          if (displayEl) displayEl.textContent = body.error || "工号未注册";
+          if (hidden) hidden.value = "";
+        }
+      } catch (_) {
+        if (displayEl) displayEl.textContent = "查询失败";
+        if (hidden) hidden.value = "";
+      }
+    };
+    input.addEventListener("blur", update);
+    input.addEventListener("input", debounce(update, 400));
+    if (input.value.trim()) update();
+  });
+}
+
 const REGISTRATION_CREATE_OPTIONAL = new Set(["registration_remark"]);
 
 function registrationCreateFields(stageKey) {
@@ -467,7 +541,7 @@ function registrationFieldHint(f) {
     return `<p class="field-hint">须为已在本系统注册的工号</p>`;
   }
   if (f.key === "interface_person") {
-    return `<p class="field-hint">须为已在本系统注册的姓名（与账号姓名一致）</p>`;
+    return `<p class="field-hint">须为已在本系统注册的工号</p>`;
   }
   return "";
 }
@@ -491,7 +565,8 @@ async function postCandidateCreate(data, stageKey, confirmOverwrite = false) {
 
 function openPhoneDuplicateModal(existing, data, stageKey, fields) {
   openModal("手机号已存在", `
-    <p style="margin-bottom:12px">已存在相同手机号的候选人，是否用当前表单信息覆盖？</p>
+    <p style="margin-bottom:12px">手机号已存在，当前修改的信息将覆盖已有候选人的登记信息。请确认是否继续保存？</p>
+    <p class="field-hint" style="margin-bottom:12px">覆盖后将以当前表单内容更新该手机号对应候选人的姓名、拓源人、接口人、学历等可编辑字段。</p>
     <div class="table-wrap">
       <table>
         <thead><tr><th>姓名</th><th>电话</th><th>拓源人</th><th>接口人</th></tr></thead>
@@ -537,6 +612,7 @@ function openCandidateModal(cand, stageKey) {
           <label>${esc(f.label)}${f.required ? " *" : ""}${lockedFields.has(f.key) ? "（主数据锁定）" : ""}</label>
           ${fieldInput(f, candidateFieldDefault(f, cand, isRegCreate), { locked: lockedFields.has(f.key) })}
           ${(isRegCreate || stageKey === "registration") && !lockedFields.has(f.key) ? registrationFieldHint(f) : ""}
+          ${registrationFieldExtraHtml(stageKey, f, cand)}
         </div>`).join("")}
       ${sourceCustomField}
     </div>`,
@@ -544,6 +620,7 @@ function openCandidateModal(cand, stageKey) {
      <button class="btn btn-primary" id="cand-save">保存</button>`);
 
   if (isRegCreate) bindRegistrationSourceCustom();
+  if (stageKey === "registration") bindRegistrationEmployeeLookup();
 
   $("#cand-save").addEventListener("click", async () => {
     const data = collectCandidateFormData(fields);

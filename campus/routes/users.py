@@ -10,7 +10,15 @@ from campus.auth.decorators import admin_required, login_required
 from campus.auth.permissions import VALID_ROLES
 from campus.db.connection import get_db, now_str
 from campus.services.audit import add_log
-from campus.services.users import normalize_job_roles, parse_job_roles, parse_user_profile_body, user_dict, validate_registration_user_refs
+from campus.services.users import (
+    lookup_employee_by_username,
+    normalize_job_roles,
+    parse_job_roles,
+    parse_user_profile_body,
+    user_dict,
+    user_dept_display,
+    validate_registration_user_refs,
+)
 from campus.settings import APP_CONFIG
 
 bp = Blueprint("users", __name__)
@@ -34,11 +42,33 @@ def api_users():
 @bp.get("/api/users/check-registration-refs")
 @login_required
 def api_check_registration_refs():
-    """校验拓源人工号、接口人姓名是否已在系统注册。"""
+    """校验拓源人、接口人工号是否已在系统注册。"""
     sourcer = (request.args.get("sourcer") or "").strip()
     interface_person = (request.args.get("interface_person") or "").strip()
     err = validate_registration_user_refs(get_db(), sourcer, interface_person)
     return jsonify({"ok": not err, "error": err or ""})
+
+
+@bp.get("/api/users/lookup-employee")
+@login_required
+def api_lookup_employee():
+    """按工号查询用户姓名与部门（登记页部门展示）。"""
+    username = (request.args.get("username") or "").strip()
+    if not username:
+        return jsonify({"error": "工号不能为空"}), 400
+    row = lookup_employee_by_username(get_db(), username)
+    if not row:
+        return jsonify({
+            "found": False,
+            "error": f"工号「{username}」未在本系统注册，请先完成账号注册",
+        })
+    d = user_dict(row)
+    return jsonify({
+        "found": True,
+        "username": d["username"],
+        "display_name": d["display_name"],
+        "department": user_dept_display(row),
+    })
 
 
 @bp.post("/api/users")

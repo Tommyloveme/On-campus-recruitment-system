@@ -189,18 +189,44 @@ def resolve_group_id_for_user(department, explicit_group_id=None):
     return row["id"] if row else None
 
 
-def apply_registration_candidate_defaults(data, user):
-    """登记阶段新增：仅自动带入拓源人部门（二层部门，手填项不覆盖）。"""
-    keys = user.keys() if hasattr(user, "keys") else []
-    dept_level2 = user["dept_level2"] if "dept_level2" in keys else ""
-    department = user["department"] if "department" in keys else ""
+def user_dept_display(user_row):
+    """用户二层/三层部门展示文本（用于登记拓源人/接口人部门）。"""
+    keys = user_row.keys() if hasattr(user_row, "keys") else []
+    dept_level2 = user_row["dept_level2"] if "dept_level2" in keys else ""
+    dept_level3 = user_row["dept_level3"] if "dept_level3" in keys else ""
+    department = user_row["department"] if "department" in keys else ""
     if not dept_level2 and department:
-        dept_level2, _ = split_department_field(department)
-    dept = (dept_level2 or department or "").strip()
-    if dept and not str(data.get("sourcer_dept") or "").strip():
-        data["sourcer_dept"] = dept
+        dept_level2, dept_level3 = split_department_field(department)
+    return format_user_department(dept_level2, dept_level3) or (department or "").strip()
+
+
+def lookup_employee_by_username(db, username):
+    emp = (username or "").strip()
+    if not emp:
+        return None
+    return db.execute("SELECT * FROM users WHERE username=?", (emp,)).fetchone()
+
+
+def apply_registration_employee_fields(db, data):
+    """根据拓源人/接口人工号写入部门（只读字段，不信任前端提交）。"""
+    sourcer = (data.get("sourcer") or "").strip()
+    if sourcer:
+        row = lookup_employee_by_username(db, sourcer)
+        if row:
+            data["sourcer_dept"] = user_dept_display(row)
+    iface = (data.get("interface_person") or "").strip()
+    if iface:
+        row = lookup_employee_by_username(db, iface)
+        if row:
+            data["interface_dept"] = user_dept_display(row)
+    return data
+
+
+def apply_registration_candidate_defaults(data, user):
+    """登记阶段新增：隐藏主数据/手填项，部门由工号在保存时解析。"""
     data.pop("resume_id", None)
     data.pop("work_location", None)
+    data.pop("sourcer_dept", None)
     data.pop("interface_dept", None)
     return data
 
@@ -209,7 +235,7 @@ def validate_registration_manual_create(data):
     """登记阶段手动新增：除登记备注外必填；来源为「其他」须填自定义来源。"""
     labels = {
         "name": "候选人", "phone": "电话", "sourcer": "拓源人（填写工号）",
-        "interface_person": "接口人（填写姓名）",
+        "interface_person": "接口人（填写工号）",
         "education": "学历", "school": "毕业院校", "major": "专业",
         "registration_source": "来源渠道",
     }
@@ -222,14 +248,14 @@ def validate_registration_manual_create(data):
 
 
 def validate_registration_user_refs(db, sourcer, interface_person):
-    """拓源人须为已注册工号，接口人须为已注册姓名。"""
+    """拓源人、接口人均须为已注册工号。"""
     errors = []
     emp = (sourcer or "").strip()
     if emp:
-        if not db.execute("SELECT id FROM users WHERE username=?", (emp,)).fetchone():
+        if not lookup_employee_by_username(db, emp):
             errors.append(f"拓源人工号「{emp}」未在本系统注册，请先完成账号注册")
-    name = (interface_person or "").strip()
-    if name:
-        if not db.execute("SELECT id FROM users WHERE display_name=?", (name,)).fetchone():
-            errors.append(f"接口人「{name}」未在本系统注册，请先完成账号注册")
+    iface = (interface_person or "").strip()
+    if iface:
+        if not lookup_employee_by_username(db, iface):
+            errors.append(f"接口人工号「{iface}」未在本系统注册，请先完成账号注册")
     return "；".join(errors) if errors else None

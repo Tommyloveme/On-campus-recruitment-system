@@ -21,7 +21,7 @@ def sample_reg_data(name, phone=None, **extra):
     d = {
         "name": name,
         "phone": phone or f"139{uuid.uuid4().int % 100000000:08d}",
-        "sourcer": "hr01", "interface_person": "招聘专员小王",
+        "sourcer": "hr01", "interface_person": "hr02",
         "education": "本科", "school": "测试大学", "major": "计算机",
         "registration_source": "校园宣讲",
     }
@@ -116,7 +116,7 @@ with opener.open(req) as r:
 check("登记导入模板首列为简历编号", tpl_headers[0] == "简历编号" and "三层部门" not in tpl_headers)
 
 # 3. 候选人 CRUD（清理可能残留的测试数据）
-for n in ("测试员", "导入甲", "导入乙", "三层部门测试"):
+for n in ("测试员", "导入甲", "导入乙", "三层部门测试", "自动带入测试", "无效接口人"):
     s, old = call("GET", f"/api/candidates?q={quote(n)}")
     for c in old:
         call("DELETE", f"/api/candidates/{c['id']}")
@@ -126,7 +126,7 @@ s, r = call("POST", "/api/candidates", {
     "stage": "registration",
     "data": {
         "name": "测试员", "phone": "13911112222",
-        "sourcer": "hr01", "interface_person": "招聘专员小王",
+        "sourcer": "hr01", "interface_person": "hr02",
         "education": "本科", "school": "测试大学", "major": "计算机",
         "registration_source": "校园宣讲",
     },
@@ -141,12 +141,18 @@ if hr01:
         "display_name": "招聘专员小王", "role": hr01["role"],
         "supervisor": "李主管", "dept_level2": "存储部", "job_roles": ["拓源人", "接口人"],
     })
+hr02 = next((u for u in users if u["username"] == "hr02"), None)
+if hr02:
+    call("PUT", f"/api/users/{hr02['id']}", {
+        "display_name": "招聘专员小李", "role": hr02["role"],
+        "supervisor": "王主管", "dept_level2": "软件部", "job_roles": ["拓源人", "接口人"],
+    })
 call("POST", "/api/login", {"username": "hr01", "password": "123456"})
 s, r_auto = call("POST", "/api/candidates", {
     "stage": "registration",
     "data": {
         "name": "自动带入测试", "phone": "13922223333",
-        "sourcer": "hr01", "interface_person": "招聘专员小王",
+        "sourcer": "hr01", "interface_person": "hr02",
         "education": "硕士", "school": "测试大学", "major": "软件工程",
         "registration_source": "内推",
     },
@@ -156,6 +162,15 @@ s, auto_cands = call("GET", "/api/candidates?q=" + quote("自动带入测试"))
 auto_data = auto_cands[0]["data"]
 check("登记自动带入拓源人部门", auto_data.get("sourcer_dept") == "存储部")
 check("登记保存拓源人工号", auto_data.get("sourcer") == "hr01")
+check("登记保存接口人工号", auto_data.get("interface_person") == "hr02")
+check("登记接口人部门由工号解析", auto_data.get("interface_dept") == "软件部")
+s, lookup = call("GET", "/api/users/lookup-employee?username=hr02")
+check("工号查询接口人部门", lookup.get("found") and lookup.get("department") == "软件部")
+s, bad_iface = call("POST", "/api/candidates", {
+    "stage": "registration",
+    "data": sample_reg_data("无效接口人", interface_person="notexist99"),
+}, expect_error=True)
+check("未注册接口人工号拒绝保存", s == 400 and bad_iface.get("code") == "user_not_registered")
 check("登记不手填简历编号", not auto_data.get("resume_id"))
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 call("DELETE", f"/api/candidates/{auto_id}")
@@ -168,7 +183,7 @@ dup_status, dup_body = call("POST", "/api/candidates", {
     "stage": "registration",
     "data": {
         "name": "测试员", "phone": "13911112222", "sourcer": "hr01",
-        "interface_person": "招聘专员小王", "education": "本科",
+        "interface_person": "hr02", "education": "本科",
         "school": "测试大学", "major": "计算机", "registration_source": "校园宣讲",
     },
 }, expect_error=True)
@@ -178,7 +193,7 @@ s, r2 = call("POST", "/api/candidates", {
     "confirm_overwrite": True,
     "data": {
         "name": "测试员", "phone": "13911112222", "sourcer": "hr01",
-        "interface_person": "招聘专员小王", "education": "本科",
+        "interface_person": "hr02", "education": "本科",
         "school": "测试大学", "major": "计算机", "registration_source": "校园宣讲",
     },
 })
