@@ -192,12 +192,11 @@ function openCancelBookModal(bid, cname) {
 
 function openMasterImportModal() {
   const sources = state.masterImport?.sources || [];
-  const editableGroups = state.groups.filter(g => canEdit(g.id));
-  if (!editableGroups.length) { toast("无导入权限", true); return; }
+  if (!sources.length) { toast("主数据导入配置未加载", true); return; }
   openModal("主数据表导入（驱动全流程）", `
     <p style="font-size:12px;color:#64748b;line-height:1.8;margin-bottom:12px">
-      导入 1~2 张完整 Excel 主进度表，系统自动合并字段并按
-      <code>config/master_import.json</code> 中的字段组合规则判定「当前流程」。
+      导入完整 Excel 主进度表，系统<strong>全局</strong>按电话/姓名匹配候选人，自动合并字段并按
+      <code>config/master_import/registration/</code> 中的规则判定「当前流程」。表头支持 <code>*</code> 通配符匹配。
     </p>
     <div class="form-item">
       <label>数据源</label>
@@ -206,30 +205,18 @@ function openMasterImportModal() {
       </select>
     </div>
     <div class="form-item">
-      <label>导入到分组</label>
-      <select id="master-group">
-        ${editableGroups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join("")}
-      </select>
-    </div>
-    <div class="form-item">
       <label>.xlsx 文件</label>
       <input type="file" id="master-file" accept=".xlsx">
-    </div>
-    <div class="toolbar" style="margin-top:8px">
-      <button class="btn btn-sm" id="master-tpl-primary">下载主进度表模板</button>
-      <button class="btn btn-sm" id="master-tpl-secondary">下载补充表模板</button>
     </div>`,
     `<button class="btn" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="master-go">开始导入</button>`);
-  $("#master-tpl-primary").addEventListener("click", () => { location.href = "/api/master-import/template?source=primary"; });
-  $("#master-tpl-secondary").addEventListener("click", () => { location.href = "/api/master-import/template?source=secondary"; });
   $("#master-go").addEventListener("click", async () => {
     const file = $("#master-file").files[0];
     if (!file) { toast("请选择文件", true); return; }
     const fd = new FormData();
     fd.append("file", file);
     fd.append("source", $("#master-source").value);
-    fd.append("group_id", $("#master-group").value);
+    fd.append("page", state.masterImport?.page || "registration");
     try {
       const r = await api("/api/master-import", { method: "POST", body: fd });
       toast(`主表导入完成：新增 ${r.created}，更新 ${r.updated}${r.skipped ? "，跳过 " + r.skipped : ""}`);

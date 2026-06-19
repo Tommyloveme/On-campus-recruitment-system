@@ -1,0 +1,16 @@
+{
+  "comment": "候选人登记页 - 主数据表导入总配置（列映射见 sources/，阶段规则见 stage_rules.json）",
+  "page": "registration",
+  "current_stage_field": "current_stage",
+  "global_import": true,
+  "source_keys": ["primary", "secondary"],
+  "match_keys": ["phone", "name"],
+  "group_mapping": {
+    "comment": "新建候选人时按 Excel 列解析二层部门；支持 match_patterns 通配符。fallback=first 表示使用第一个分组",
+    "excel_column": "二层部门",
+    "excel_aliases": ["入职二层", "二层部门"],
+    "match_patterns": ["*部门*"],
+    "field_key": "_group_name",
+    "fallback": "first"
+  }
+}

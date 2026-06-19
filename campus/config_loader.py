@@ -4,7 +4,8 @@ import copy
 import json
 import os
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from campus.settings import BASE_DIR
+
 CONFIG_DIR = os.path.join(BASE_DIR, "config")
 STAGES_PATH = os.path.join(CONFIG_DIR, "stages.json")
 STAGES_DIR = os.path.join(CONFIG_DIR, "stages")
@@ -152,14 +153,19 @@ def build_config_response(group_id=None):
     from campus.stage_engine import load_master_import_config
     stages = load_stages_meta()
     stage_fields = {s["key"]: load_stage_fields(s["key"], group_id) for s in stages}
-    master = load_master_import_config()
+    try:
+        master = load_master_import_config("registration")
+    except (ValueError, OSError, json.JSONDecodeError):
+        master = {"sources": [], "current_stage_field": "current_stage", "global_import": True}
     return {
         "stages": stages,
         "stage_fields": stage_fields,
         "group_id": group_id,
         "master_import": {
+            "page": master.get("page", "registration"),
             "sources": [{"key": s["key"], "label": s["label"], "description": s.get("description", "")}
                         for s in master.get("sources", [])],
             "current_stage_field": master.get("current_stage_field", "current_stage"),
+            "global_import": bool(master.get("global_import", True)),
         },
     }

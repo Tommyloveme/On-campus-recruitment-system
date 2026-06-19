@@ -1,0 +1,16 @@
+{
+  "comment": "校招补充状态表：按电话/姓名全局合并",
+  "key": "secondary",
+  "label": "校招补充状态表",
+  "description": "补充面试结果、Offer 细节等字段",
+  "columns": [
+    { "excel_column": "候选人", "field_key": "name", "required": true, "match_patterns": ["*候选人*", "*姓名*"] },
+    { "excel_column": "电话", "field_key": "phone", "match_patterns": ["*电话*", "*手机*"] },
+    { "excel_column": "技术面结果", "field_key": "tech_interview_result" },
+    { "excel_column": "主管面结果", "field_key": "manager_interview_result" },
+    { "excel_column": "Offer发放时间", "field_key": "offer_send_time", "match_patterns": ["*Offer*时间*"] },
+    { "excel_column": "预计入职时间", "field_key": "expected_onboard_time" },
+    { "excel_column": "入职风险", "field_key": "onboard_risk" },
+    { "excel_column": "当前进展", "field_key": "progress" }
+  ]
+}
