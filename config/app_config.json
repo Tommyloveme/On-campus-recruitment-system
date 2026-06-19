@@ -23,6 +23,11 @@
     "registerable_job_roles": ["拓源人", "接口人", "技术面试官", "主管面试官", "HR", "BA"],
     "default_register_job_roles": ["拓源人", "接口人"]
   },
+  "user_profile": {
+    "employee_id_digits": 8,
+    "dept_level2_options": ["存储部", "计算部", "网络部", "软件部"],
+    "dept_level3_options": ["块存储", "对象存储", "通用计算", "研发一组"]
+  },
   "resume": {
     "allowed_ext": [".pdf", ".docx"]
   },

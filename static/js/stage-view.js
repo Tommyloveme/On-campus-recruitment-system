@@ -493,6 +493,7 @@ function openCandidateModal(cand, stageKey) {
   const isRegCreate = isNew && stageKey === "registration";
   const fields = isRegCreate ? registrationCreateFields(stageKey) : allEditable;
   const meta = state.stages.find(s => s.key === stageKey);
+  const lockedFields = new Set(cand?.data?._master_locked_fields || []);
 
   const sourceCustomField = isRegCreate ? `
     <div id="reg-source-custom-wrap" class="form-item hidden" style="grid-column:1/-1">
@@ -505,8 +506,8 @@ function openCandidateModal(cand, stageKey) {
     <div class="form-grid">
       ${fields.map(f => `
         <div class="form-item">
-          <label>${esc(f.label)}${f.required ? " *" : ""}</label>
-          ${fieldInput(f, candidateFieldDefault(f, cand, isRegCreate))}
+          <label>${esc(f.label)}${f.required ? " *" : ""}${lockedFields.has(f.key) ? "（主数据锁定）" : ""}</label>
+          ${fieldInput(f, candidateFieldDefault(f, cand, isRegCreate), { locked: lockedFields.has(f.key) })}
         </div>`).join("")}
       ${sourceCustomField}
     </div>`,

@@ -10,32 +10,25 @@ from campus.auth.decorators import admin_required, login_required
 from campus.auth.permissions import VALID_ROLES
 from campus.db.connection import get_db, now_str
 from campus.services.audit import add_log
-from campus.services.users import normalize_job_roles, parse_job_roles
+from campus.services.users import normalize_job_roles, parse_job_roles, parse_user_profile_body, user_dict
 from campus.settings import APP_CONFIG
 
 bp = Blueprint("users", __name__)
 
 
 def _user_row_dict(row):
-    d = dict(row)
-    d["job_roles"] = parse_job_roles(d.get("job_roles"))
-    return d
+    return user_dict(row)
 
 
 @bp.get("/api/users")
 @login_required
 def api_users():
-    sql = ("SELECT u.id, u.username, u.display_name, u.role, u.supervisor, u.department, u.job_roles "
-           "FROM users u")
+    sql = ("SELECT u.id, u.username, u.display_name, u.role, u.supervisor, u.department, "
+           "u.dept_level2, u.dept_level3, u.job_roles FROM users u")
     if g.user["role"] not in ("admin", "group_admin"):
         return jsonify({"error": "无用户管理权限"}), 403
     rows = get_db().execute(sql + " ORDER BY u.id").fetchall()
-    out = []
-    for r in rows:
-        d = dict(r)
-        d["job_roles"] = parse_job_roles(d.get("job_roles"))
-        out.append(d)
-    return jsonify(out)
+    return jsonify([_user_row_dict(r) for r in rows])
 
 
 @bp.post("/api/users")
@@ -47,8 +40,6 @@ def api_user_create():
         return jsonify({"error": "用户名不能为空"}), 400
     password = b.get("password") or APP_CONFIG["security"]["default_password"]
     role = b.get("role", "editor")
-    supervisor = (b.get("supervisor") or "").strip()
-    department = (b.get("department") or "").strip()
     job_roles = normalize_job_roles(b.get("job_roles") or [])
 
     if g.user["role"] == "admin":
@@ -60,18 +51,31 @@ def api_user_create():
     else:
         return jsonify({"error": "无添加用户权限"}), 403
 
+    profile_body = {
+        "display_name": b.get("display_name") or username,
+        "supervisor": b.get("supervisor"),
+        "dept_level2": b.get("dept_level2"),
+        "dept_level3": b.get("dept_level3"),
+        "department": b.get("department"),
+    }
+    err, fields = parse_user_profile_body(profile_body)
+    if err:
+        return jsonify({"error": err}), 400
+
     db = get_db()
     try:
         db.execute(
-            "INSERT INTO users (username, display_name, password_hash, role, group_id, supervisor, department, job_roles, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?)",
-            (username, b.get("display_name") or username, generate_password_hash(password),
-             role, None, supervisor, department,
+            "INSERT INTO users (username, display_name, password_hash, role, group_id, "
+            "supervisor, department, dept_level2, dept_level3, job_roles, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (username, fields["display_name"], generate_password_hash(password),
+             role, None, fields["supervisor"], fields["department"],
+             fields["dept_level2"], fields["dept_level3"],
              json.dumps(job_roles, ensure_ascii=False), now_str()),
         )
     except sqlite3.IntegrityError:
         return jsonify({"error": "用户名已存在"}), 400
-    add_log(g.user, "user", f"{g.user['display_name']} 创建了用户「{b.get('display_name') or username}」")
+    add_log(g.user, "user", f"{g.user['display_name']} 创建了用户「{fields['display_name']}」")
     db.commit()
     return jsonify({"ok": True})
 
@@ -88,11 +92,23 @@ def api_user_update(uid):
     if role not in VALID_ROLES:
         return jsonify({"error": "角色不合法"}), 400
     job_roles = normalize_job_roles(b.get("job_roles", parse_job_roles(user["job_roles"])))
+
+    profile_body = {
+        "display_name": b.get("display_name", user["display_name"]),
+        "supervisor": b.get("supervisor", user["supervisor"]),
+        "dept_level2": b.get("dept_level2", user["dept_level2"] if "dept_level2" in user.keys() else ""),
+        "dept_level3": b.get("dept_level3", user["dept_level3"] if "dept_level3" in user.keys() else ""),
+        "department": b.get("department", user["department"]),
+    }
+    err, fields = parse_user_profile_body(profile_body)
+    if err:
+        return jsonify({"error": err}), 400
+
     db.execute(
-        "UPDATE users SET display_name=?, role=?, supervisor=?, department=?, job_roles=? WHERE id=?",
-        (b.get("display_name", user["display_name"]), role,
-         (b.get("supervisor") or user["supervisor"] or "").strip(),
-         (b.get("department") or user["department"] or "").strip(),
+        "UPDATE users SET display_name=?, role=?, supervisor=?, department=?, "
+        "dept_level2=?, dept_level3=?, job_roles=? WHERE id=?",
+        (fields["display_name"], role, fields["supervisor"], fields["department"],
+         fields["dept_level2"], fields["dept_level3"],
          json.dumps(job_roles, ensure_ascii=False), uid),
     )
     if b.get("password"):

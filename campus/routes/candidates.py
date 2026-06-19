@@ -141,16 +141,28 @@ def api_candidate_update(cid):
     fields = editable_fields(stage)
     labels = field_labels(stage)
     new = dict(old)
+    locked = set(old.get("_master_locked_fields") or [])
     changes = []
+    blocked = []
     for f in fields:
         if f["key"] not in incoming:
             continue
         k = f["key"]
         nv = str(incoming[k] or "").strip()
         ov = str(old.get(k, "") or "")
-        if nv != ov:
-            new[k] = nv
-            changes.append(f"{labels[k]}：{ov or '空'} → {nv or '空'}")
+        if nv == ov:
+            continue
+        if k in locked:
+            blocked.append(labels.get(k, k))
+            continue
+        new[k] = nv
+        changes.append(f"{labels[k]}：{ov or '空'} → {nv or '空'}")
+    if blocked:
+        return jsonify({
+            "error": f"以下字段已由主数据表锁定，不可修改：{'、'.join(blocked)}",
+            "code": "master_locked",
+            "locked_fields": list(locked),
+        }), 400
     if not changes:
         return jsonify({"ok": True, "changed": 0})
     if not new.get("name"):

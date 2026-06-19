@@ -1,12 +1,13 @@
 {
-  "comment": "候选人登记页 - 双表主数据导入：Application*.xlsx + 候选人管理*.xlsx，按简历编号关联",
+  "comment": "候选人登记页 - 双表主数据导入。与登记候选人按手机号匹配；登记五字段以主表为准且导入后锁定。Application 与候选人管理按简历编号关联。",
   "page": "registration",
   "import_mode": "dual_file",
   "current_stage_field": "current_stage",
   "global_import": true,
   "join_key": "resume_id",
   "source_keys": ["application", "candidate_mgmt"],
-  "match_keys": ["resume_id", "phone", "name"],
+  "match_keys": ["phone"],
+  "registration_locked_fields": ["name", "phone", "education", "school", "major"],
   "file_patterns": {
     "application": "Application*.xlsx",
     "candidate_mgmt": "候选人管理*.xlsx"

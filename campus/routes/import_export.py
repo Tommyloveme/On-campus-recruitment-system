@@ -157,6 +157,11 @@ def api_master_import_config():
         "page": cfg.get("page", page),
         "import_mode": cfg.get("import_mode", "dual_file"),
         "join_key": cfg.get("join_key", "resume_id"),
+        "match_keys": cfg.get("match_keys", ["phone"]),
+        "registration_locked_fields": cfg.get(
+            "registration_locked_fields",
+            ["name", "phone", "education", "school", "major"],
+        ),
         "file_patterns": cfg.get("file_patterns", {}),
         "sources": [{
             "key": s["key"],

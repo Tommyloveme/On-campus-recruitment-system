@@ -63,24 +63,36 @@ req = urllib.request.Request(BASE + "/api/register/options")
 with opener.open(req) as r:
     reg_opts = json.loads(r.read().decode())
 check("注册可选业务角色", "拓源人" in reg_opts["job_roles"] and "接口人" in reg_opts["default_job_roles"])
+check("注册下发部门配置", "存储部" in reg_opts.get("dept_level2_options", []))
 s, _ = call("POST", "/api/register", {
-    "employee_id": "admin", "display_name": "假管理员", "supervisor": "X",
-    "department": "Y", "password": "123456", "job_roles": ["拓源人"],
+    "employee_id": "abc12345", "display_name": "注册测试", "supervisor": "张主管",
+    "dept_level2": "存储部", "password": "123456", "job_roles": ["拓源人"],
+}, expect_error=True)
+check("工号须8位数字", s == 400)
+s, _ = call("POST", "/api/register", {
+    "employee_id": "12345678", "display_name": "Test", "supervisor": "张主管",
+    "dept_level2": "存储部", "password": "123456", "job_roles": ["拓源人"],
+}, expect_error=True)
+check("姓名须中文", s == 400)
+s, _ = call("POST", "/api/register", {
+    "employee_id": "admin", "display_name": "假管理员", "supervisor": "张主管",
+    "dept_level2": "存储部", "password": "123456", "job_roles": ["拓源人"],
 }, expect_error=True)
 check("固定管理员账号不可注册", s == 403)
-test_emp = "emp" + uuid.uuid4().hex[:8]
+test_emp = f"{uuid.uuid4().int % 100000000:08d}"
 s, reg_r = call("POST", "/api/register", {
     "employee_id": test_emp, "display_name": "注册测试", "supervisor": "张主管",
-    "department": "存储部", "password": "123456", "job_roles": ["拓源人", "接口人"],
+    "dept_level2": "存储部", "password": "123456", "job_roles": ["拓源人", "接口人"],
 })
 check("用户自助注册成功", s == 200 and reg_r.get("ok"))
 s, me_reg = call("POST", "/api/login", {"username": test_emp, "password": "123456"})
 check("注册用户可登录", s == 200 and me_reg["display_name"] == "注册测试")
 s, me_up = call("PUT", "/api/profile", {
-    "display_name": "注册测试改", "supervisor": "王主管", "department": "存储部",
+    "display_name": "注册测试改", "supervisor": "王主管", "dept_level2": "存储部",
     "job_roles": ["拓源人", "HR"],
 })
-check("用户可更新个人资料", me_up["display_name"] == "注册测试改" and "HR" in me_up["job_roles"])
+check("用户可更新个人资料", me_up["display_name"] == "注册测试改")
+check("普通用户不可在账户页改业务角色", "HR" not in me_up.get("job_roles", []))
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 
 # 2. 配置与分组
@@ -126,8 +138,8 @@ s, users = call("GET", "/api/users")
 hr01 = next((u for u in users if u["username"] == "hr01"), None)
 if hr01:
     call("PUT", f"/api/users/{hr01['id']}", {
-        "display_name": hr01["display_name"], "role": hr01["role"],
-        "supervisor": "李主管", "department": "存储部", "job_roles": ["拓源人", "接口人"],
+        "display_name": "招聘专员小王", "role": hr01["role"],
+        "supervisor": "李主管", "dept_level2": "存储部", "job_roles": ["拓源人", "接口人"],
     })
 call("POST", "/api/login", {"username": "hr01", "password": "123456"})
 s, r_auto = call("POST", "/api/candidates", {
@@ -265,6 +277,7 @@ s, r = call("POST", "/api/master-import/upload", raw=body_m.getvalue(),
 check("主数据表双文件上传成功", s == 200 and r.get("both_ready"))
 s, cfg_mi = call("GET", "/api/master-import/config?page=registration")
 check("主数据表配置含双数据源", len(cfg_mi.get("sources", [])) == 2 and cfg_mi.get("join_key") == "resume_id")
+check("主数据匹配键为手机号", cfg_mi.get("match_keys") == ["phone"])
 boundary_r = uuid.uuid4().hex
 body_r = io.BytesIO()
 body_r.write(f"--{boundary_r}\r\n".encode())
@@ -275,11 +288,19 @@ s, r = call("POST", "/api/master-import/refresh", raw=body_r.getvalue(),
 check("主数据表刷新成功", s == 200 and (r.get("created", 0) + r.get("updated", 0)) >= 1)
 s, c_new = call("GET", "/api/candidates?q=" + quote("主表新人"))
 check("主表新人已导入且含简历编号", len(c_new) == 1 and c_new[0]["data"].get("resume_id") == "RS2026001")
+check("主表导入锁定登记字段", "name" in c_new[0]["data"].get("_master_locked_fields", []))
+s, _ = call("PUT", f"/api/candidates/{c_new[0]['id']}", {
+    "stage": "registration", "data": {"name": "改名测试"},
+}, expect_error=True)
+check("主表锁定字段不可编辑", s == 400)
 check("候选人管理表字段已合并(当前进展)", "0619" in (c_new[0]["data"].get("progress") or ""))
 s, c_upd = call("GET", "/api/candidates?q=" + quote("测试员"))
-check("测试员经简历编号更新", len(c_upd) == 1 and c_upd[0]["data"].get("onboard_risk") == "高")
+check("测试员经手机号更新", len(c_upd) == 1 and c_upd[0]["data"].get("onboard_risk") == "高")
 
 # 5b. 批量导入 120 名候选人（登记阶段）
+s, bulk_old = call("GET", "/api/candidates?q=" + quote("压测"))
+for c in bulk_old:
+    call("DELETE", f"/api/candidates/{c['id']}")
 wb = Workbook()
 ws = wb.active
 ws.append(["候选人", "电话", "学历", "毕业院校", "专业", "登记状态", "毕业时间"])
@@ -406,7 +427,7 @@ check("简历操作已记录日志", any("简历" in m for m in resume_logs))
 call("POST", "/api/login", {"username": "hr02", "password": "123456"})
 s, cands = call("GET", "/api/candidates")
 check("组成员可见全部候选人", len(cands) >= 1)
-s, r = call("PUT", f"/api/candidates/{cid}", {"stage": "registration", "data": {"phone": "13911112223"}})
+s, r = call("PUT", f"/api/candidates/{cid}", {"stage": "registration", "data": {"sourcer": "hr02edit"}})
 check("组成员可修改候选人", s == 200 and r.get("changed") == 1)
 s, _ = call("GET", "/api/overview", expect_error=True)
 check("组成员无法访问管理员总览", s == 403)
@@ -415,10 +436,11 @@ check("组成员无法访问管理员总览", s == 403)
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 s, users = call("GET", "/api/users")
 for u in users:
-    if u["username"] in ("t_lead", "t_member"):
+    if u["username"] in ("t_lead", "t_member", "t_admin2"):
         call("DELETE", f"/api/users/{u['id']}")
 s, _ = call("POST", "/api/users", {"username": "t_lead", "display_name": "测试组管",
-                                   "password": "pw123", "role": "group_admin"})
+                                   "password": "pw123", "role": "group_admin",
+                                   "supervisor": "张主管", "dept_level2": "存储部"})
 check("管理员创建组管理员", s == 200)
 
 call("POST", "/api/login", {"username": "t_lead", "password": "pw123"})
@@ -426,9 +448,10 @@ s, r = call("POST", "/api/candidates", {"stage": "registration", "data": sample_
 check("组管理员新增候选人", s == 200)
 lead_cid = r["id"]
 s, _ = call("POST", "/api/users", {"username": "t_member", "display_name": "测试组员",
-                                   "role": "editor"})  # 不传密码 -> 默认123456
+                                   "role": "editor", "supervisor": "张主管", "dept_level2": "存储部"})
 check("组管理员添加成员", s == 200)
-s, _ = call("POST", "/api/users", {"username": "t_admin2", "password": "pw123", "role": "admin"},
+s, _ = call("POST", "/api/users", {"username": "t_admin2", "password": "pw123", "role": "admin",
+            "supervisor": "张主管", "dept_level2": "存储部"},
             expect_error=True)
 check("组管理员不能创建管理员", s == 403)
 s, members = call("GET", "/api/users")
@@ -457,7 +480,7 @@ for u in users:
     if u["username"] == "t_gv":
         call("DELETE", f"/api/users/{u['id']}")
 s, _ = call("POST", "/api/users", {"username": "t_gv", "display_name": "测试查看员",
-                                   "role": "global_viewer"})
+                                   "role": "global_viewer", "supervisor": "张主管", "dept_level2": "存储部"})
 check("管理员创建全局查看员", s == 200)
 
 call("POST", "/api/login", {"username": "t_gv", "password": "123456"})

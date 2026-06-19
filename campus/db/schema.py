@@ -83,6 +83,20 @@ def migrate(db):
         db.execute("ALTER TABLE users ADD COLUMN department TEXT DEFAULT ''")
     if "job_roles" not in user_cols:
         db.execute("ALTER TABLE users ADD COLUMN job_roles TEXT DEFAULT '[]'")
+    if "dept_level2" not in user_cols:
+        db.execute("ALTER TABLE users ADD COLUMN dept_level2 TEXT DEFAULT ''")
+        db.execute("ALTER TABLE users ADD COLUMN dept_level3 TEXT DEFAULT ''")
+        for row in db.execute("SELECT id, department FROM users").fetchall():
+            dept = (row["department"] or "").strip()
+            if "/" in dept:
+                l2, l3 = dept.split("/", 1)
+                l2, l3 = l2.strip(), l3.strip()
+            else:
+                l2, l3 = dept, ""
+            db.execute(
+                "UPDATE users SET dept_level2=?, dept_level3=? WHERE id=?",
+                (l2, l3, row["id"]),
+            )
     db.executescript("""
     CREATE TABLE IF NOT EXISTS interviewer_availability (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,22 +146,25 @@ def seed_demo(db):
         print("已存在用户数据，跳过示例数据。")
         return
     db.execute(
-        "INSERT INTO users (username, display_name, password_hash, role, group_id, supervisor, department, job_roles, created_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?)",
-        ("lead01", "组管理员-老张", generate_password_hash("123456"), "group_admin", None,
-         "李主管", "研发一组", json.dumps(["接口人", "HR"], ensure_ascii=False), now_str()),
+        "INSERT INTO users (username, display_name, password_hash, role, group_id, supervisor, department, dept_level2, dept_level3, job_roles, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        ("lead01", "组管理员老张", generate_password_hash("123456"), "group_admin", None,
+         "李主管", "软件部/研发一组", "软件部", "研发一组",
+         json.dumps(["接口人", "HR"], ensure_ascii=False), now_str()),
     )
     db.execute(
-        "INSERT INTO users (username, display_name, password_hash, role, group_id, supervisor, department, job_roles, created_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?)",
-        ("hr01", "招聘专员-小王", generate_password_hash("123456"), "editor", None,
-         "李主管", "存储部", json.dumps(["拓源人", "接口人"], ensure_ascii=False), now_str()),
+        "INSERT INTO users (username, display_name, password_hash, role, group_id, supervisor, department, dept_level2, dept_level3, job_roles, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        ("hr01", "招聘专员小王", generate_password_hash("123456"), "editor", None,
+         "李主管", "存储部", "存储部", "",
+         json.dumps(["拓源人", "接口人"], ensure_ascii=False), now_str()),
     )
     db.execute(
-        "INSERT INTO users (username, display_name, password_hash, role, group_id, supervisor, department, job_roles, created_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?)",
-        ("hr02", "招聘专员-小李", generate_password_hash("123456"), "editor", None,
-         "王主管", "软件部", json.dumps(["拓源人"], ensure_ascii=False), now_str()),
+        "INSERT INTO users (username, display_name, password_hash, role, group_id, supervisor, department, dept_level2, dept_level3, job_roles, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        ("hr02", "招聘专员小李", generate_password_hash("123456"), "editor", None,
+         "王主管", "软件部", "软件部", "",
+         json.dumps(["拓源人"], ensure_ascii=False), now_str()),
     )
     samples = [
         {"name": "张伟", "phone": "13800000001", "interface_person": "刘洋",

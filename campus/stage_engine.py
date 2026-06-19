@@ -167,6 +167,43 @@ def merge_candidate_data(old, incoming, overwrite_empty_only=False):
     return merged
 
 
+def registration_locked_fields(cfg=None):
+    cfg = cfg or load_master_import_config()
+    return list(cfg.get("registration_locked_fields") or
+                ["name", "phone", "education", "school", "major"])
+
+
+def merge_master_import_data(old, incoming, cfg=None):
+    """主数据表合并：登记五字段以主表为准并锁定；其余字段常规覆盖合并。"""
+    cfg = cfg or load_master_import_config()
+    reg_locked = registration_locked_fields(cfg)
+    merged = dict(old)
+    locked = list(old.get("_master_locked_fields") or [])
+
+    for k in reg_locked:
+        val = incoming.get(k)
+        if val and str(val).strip():
+            merged[k] = str(val).strip()
+            if k not in locked:
+                locked.append(k)
+
+    for k, v in incoming.items():
+        if k.startswith("_") or k in reg_locked:
+            continue
+        if not v:
+            continue
+        nv = str(v).strip() if not isinstance(v, str) else v.strip()
+        if not nv:
+            continue
+        if str(merged.get(k, "") or "") != nv:
+            merged[k] = nv
+
+    if locked:
+        merged["_master_locked_fields"] = locked
+        merged["_master_imported"] = True
+    return merged
+
+
 def _strip_internal_fields(data):
     return {k: v for k, v in data.items() if not k.startswith("_")}
 
@@ -310,7 +347,7 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user):
                 skipped += 1
                 continue
             old = json.loads(match["data"])
-            merged = merge_candidate_data(old, data)
+            merged = merge_master_import_data(old, data, cfg)
             compute_current_stage(merged, cfg)
             if merged != old:
                 db.execute(
@@ -334,6 +371,7 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user):
                 skipped += 1
                 continue
             payload = _strip_internal_fields(data)
+            payload = merge_master_import_data({}, data, cfg)
             cur = db.execute(
                 "INSERT INTO candidates (group_id, data, created_at, updated_at) VALUES (?,?,?,?)",
                 (None, json.dumps(payload, ensure_ascii=False), now, now),

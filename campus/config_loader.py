@@ -164,6 +164,11 @@ def build_config_response(group_id=None):
             "page": master.get("page", "registration"),
             "import_mode": master.get("import_mode", "dual_file"),
             "join_key": master.get("join_key", "resume_id"),
+            "match_keys": master.get("match_keys", ["phone"]),
+            "registration_locked_fields": master.get(
+                "registration_locked_fields",
+                ["name", "phone", "education", "school", "major"],
+            ),
             "file_patterns": master.get("file_patterns", {}),
             "sources": [{
                 "key": s["key"],

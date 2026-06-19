@@ -31,8 +31,10 @@ async function openMasterImportModal() {
 
   openModal("主数据表导入", `
     <p style="font-size:12px;color:#64748b;line-height:1.8;margin-bottom:12px">
-      默认导入两张 Excel：<strong>${esc(appPat)}</strong> 与 <strong>${esc(mgmtPat)}</strong>，
-      通过<strong>简历编号</strong>关联合并。上传完成后点击<strong>刷新</strong>，系统将全局更新全部候选人。
+      默认导入两张 Excel：<strong>${esc(appPat)}</strong> 与 <strong>${esc(mgmtPat)}</strong>。
+      两张表通过<strong>简历编号</strong>关联；与系统中已有候选人通过<strong>手机号</strong>匹配合并。
+      主数据表中的候选人、电话、学历、毕业院校、专业以主表为准，刷新后这些字段不可再编辑。
+      若登记手机号与主表不一致，请先在登记页编辑改为主表手机号后再刷新。
     </p>
     <div class="master-status card" style="padding:12px;margin-bottom:12px;background:#f8fafc">
       <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:#475569">当前文件状态</div>

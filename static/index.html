@@ -36,27 +36,38 @@
     <p class="login-sub">工号将作为登录账号；系统管理员固定账号不可注册</p>
     <div class="form-item">
       <label>工号 *</label>
-      <input id="reg-employee-id" type="text" placeholder="请输入工号" autocomplete="username">
+      <input id="reg-employee-id" type="text" placeholder="8位数字工号" autocomplete="username" maxlength="8" pattern="\d{8}">
+      <p class="field-hint">工号须为8位数字，将作为登录账号</p>
     </div>
     <div class="form-item">
       <label>姓名 *</label>
-      <input id="reg-display-name" type="text" placeholder="请输入姓名">
+      <input id="reg-display-name" type="text" placeholder="请输入中文姓名">
+      <p class="field-hint">姓名须为中文</p>
     </div>
     <div class="form-item">
       <label>主管 *</label>
       <input id="reg-supervisor" type="text" placeholder="请输入主管姓名">
+      <p class="field-hint">主管须为中文</p>
     </div>
     <div class="form-item">
-      <label>部门 *</label>
-      <input id="reg-department" type="text" placeholder="请输入部门">
+      <label>二层部门 *</label>
+      <select id="reg-dept-level2"><option value="">请选择</option></select>
+    </div>
+    <div class="form-item">
+      <label>三层部门</label>
+      <select id="reg-dept-level3"><option value="">（可选）</option></select>
     </div>
     <div class="form-item">
       <label>密码 *</label>
-      <input id="reg-password" type="password" placeholder="登录密码" autocomplete="new-password">
+      <p class="field-hint">建议使用默认密码（123456）或简单密码，请勿使用公司统一密码</p>
+      <div class="password-wrap">
+        <input id="reg-password" type="password" placeholder="登录密码" autocomplete="new-password">
+        <button type="button" class="btn btn-ghost btn-sm pwd-toggle" data-target="reg-password" aria-label="显示密码">显示</button>
+      </div>
     </div>
     <div class="form-item">
-      <label>业务角色 *（可多选，默认拓源人、接口人）</label>
-      <div id="reg-job-roles" class="checkbox-group"></div>
+      <label>默认业务角色</label>
+      <p class="field-hint">注册后默认拥有：拓源人、接口人（可在「我的账户」中调整）</p>
     </div>
     <div id="register-error" class="login-error hidden"></div>
     <button id="register-btn" class="btn btn-primary btn-block">注 册</button>

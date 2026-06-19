@@ -119,8 +119,13 @@ function cellHtml(field, value) {
   return `<span class="clip" title="${esc(display)}">${esc(display)}</span>`;
 }
 
-function fieldInput(f, value) {
+function fieldInput(f, value, opts) {
+  opts = opts || {};
   const v = esc(value ?? "");
+  if (opts.locked) {
+    return `<input type="text" data-field="${f.key}" value="${v}" disabled
+      title="该字段已由主数据表导入，不可修改">`;
+  }
   if (f.type === "select") {
     const opts = ["", ...(f.options || [])].map(o =>
       `<option value="${esc(o)}" ${o === (value ?? "") ? "selected" : ""}>${o === "" ? "（未填写）" : esc(o)}</option>`).join("");
