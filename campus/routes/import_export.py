@@ -20,12 +20,13 @@ from campus.db.connection import get_db, now_str
 from campus.logging_util import log, who
 from campus.services.audit import add_log
 from campus.services.candidates import group_name_map
-from campus.stage_engine import (
-    apply_master_rows,
-    compute_current_stage,
-    load_master_import_config,
-    parse_master_header,
-    row_to_data,
+from campus.stage_engine import compute_current_stage, load_master_import_config, run_dual_master_refresh
+from campus.services.master_import_store import (
+    both_files_ready,
+    detect_source_key,
+    get_stored_files,
+    load_meta,
+    save_upload,
 )
 
 bp = Blueprint("import_export", __name__)
@@ -164,63 +165,139 @@ def api_master_import_config():
         cfg = load_master_import_config(page)
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
+    files = get_stored_files(page, cfg)
+    meta = load_meta(page)
     return jsonify({
         "page": cfg.get("page", page),
-        "sources": [{"key": s["key"], "label": s["label"], "description": s.get("description", "")}
-                    for s in cfg.get("sources", [])],
-        "stage_rules": cfg.get("stage_rules", {}),
+        "import_mode": cfg.get("import_mode", "dual_file"),
+        "join_key": cfg.get("join_key", "resume_id"),
+        "file_patterns": cfg.get("file_patterns", {}),
+        "sources": [{
+            "key": s["key"],
+            "label": s["label"],
+            "description": s.get("description", ""),
+            "pattern": (cfg.get("file_patterns") or {}).get(s["key"], "*"),
+            "ready": files.get(s["key"], {}).get("ready", False),
+            "original_name": files.get(s["key"], {}).get("original_name"),
+            "uploaded_at": files.get(s["key"], {}).get("uploaded_at"),
+        } for s in cfg.get("sources", [])],
+        "both_ready": both_files_ready(page, cfg),
+        "last_refresh": meta.get("last_refresh"),
+        "last_refresh_stats": meta.get("last_refresh_stats"),
         "current_stage_field": cfg.get("current_stage_field", "current_stage"),
         "global_import": bool(cfg.get("global_import", True)),
     })
 
 
-@bp.post("/api/master-import")
+@bp.post("/api/master-import/upload")
 @login_required
-def api_master_import():
-    if "file" not in request.files:
-        return jsonify({"error": "请选择Excel文件"}), 400
-    source_key = request.form.get("source", "primary")
+def api_master_import_upload():
+    """上传 Application*.xlsx 或 候选人管理*.xlsx（可一次上传一个或两个）。"""
     page = request.form.get("page", "registration")
+    try:
+        cfg = load_master_import_config(page)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    uploaded = []
+    errors = []
+    for key in cfg.get("source_keys", []):
+        f = request.files.get(key) or request.files.get(f"file_{key}")
+        if not f or not f.filename:
+            continue
+        try:
+            save_upload(page, key, f, f.filename, cfg)
+            uploaded.append({"key": key, "filename": f.filename})
+        except ValueError as e:
+            errors.append(str(e))
+
+    # 兼容单文件字段 file + 自动识别文件名
+    f = request.files.get("file")
+    if f and f.filename:
+        detected = detect_source_key(f.filename, cfg)
+        if detected and detected not in [u["key"] for u in uploaded]:
+            try:
+                save_upload(page, detected, f, f.filename, cfg)
+                uploaded.append({"key": detected, "filename": f.filename})
+            except ValueError as e:
+                errors.append(str(e))
+        elif not detected:
+            errors.append(f"无法识别文件「{f.filename}」，请使用 Application*.xlsx 或 候选人管理*.xlsx")
+
+    if not uploaded and errors:
+        return jsonify({"error": "；".join(errors)}), 400
+    if not uploaded:
+        return jsonify({"error": "请选择要上传的 Excel 文件"}), 400
+
+    files = get_stored_files(page, cfg)
+    meta = load_meta(page)
+    add_log(g.user, "import",
+            f"{g.user['display_name']} 上传主数据表："
+            + "、".join(u["filename"] for u in uploaded))
+    get_db().commit()
+    log.info("主数据表上传 %s page=%s files=%s", who(g.user), page, uploaded)
+    return jsonify({
+        "ok": True,
+        "uploaded": uploaded,
+        "errors": errors or None,
+        "both_ready": both_files_ready(page, cfg),
+        "sources": [{
+            "key": s["key"],
+            "ready": files.get(s["key"], {}).get("ready", False),
+            "original_name": files.get(s["key"], {}).get("original_name"),
+            "uploaded_at": files.get(s["key"], {}).get("uploaded_at"),
+        } for s in cfg.get("sources", [])],
+        "last_refresh": meta.get("last_refresh"),
+    })
+
+
+@bp.post("/api/master-import/refresh")
+@login_required
+def api_master_import_refresh():
+    """读取已上传双表，按简历编号关联后全局刷新全部候选人。"""
+    page = request.form.get("page", "registration")
+    if not request.form and request.is_json:
+        page = (request.get_json(silent=True) or {}).get("page", page)
 
     try:
         cfg = load_master_import_config(page)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
-    source = next((s for s in cfg.get("sources", []) if s["key"] == source_key), None)
-    if not source:
-        return jsonify({"error": f"未知数据源: {source_key}"}), 400
-
-    try:
-        wb = load_workbook(request.files["file"], data_only=True)
-    except Exception:
-        return jsonify({"error": "文件解析失败，请上传 .xlsx 格式文件"}), 400
-    rows = list(wb.active.iter_rows(values_only=True))
-    if not rows:
-        return jsonify({"error": "Excel内容为空"}), 400
-
-    try:
-        col_map = parse_master_header(source, rows[0])
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-
-    rows_data = [row_to_data(source, col_map, raw) for raw in rows[1:]]
+    if not both_files_ready(page, cfg):
+        return jsonify({"error": "请先上传 Application*.xlsx 与 候选人管理*.xlsx"}), 400
 
     db = get_db()
     groups_list = [{"id": r["id"], "name": r["name"]}
                    for r in db.execute("SELECT id, name FROM groups ORDER BY id").fetchall()]
     if not groups_list:
-        return jsonify({"error": "系统中暂无分组，无法导入"}), 400
+        return jsonify({"error": "系统中暂无分组，无法刷新"}), 400
 
-    created, updated, skipped = apply_master_rows(
-        rows_data, db, cfg, can_edit_group, g.user, groups_list)
+    try:
+        created, updated, skipped, stats = run_dual_master_refresh(
+            db, cfg, can_edit_group, g.user, groups_list)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
     add_log(g.user, "import",
-            f"{g.user['display_name']} 通过主数据表「{source['label']}」全局导入："
-            f"新增{created}人，更新{updated}人" + (f"，跳过{skipped}行" if skipped else ""))
+            f"{g.user['display_name']} 主数据表刷新：新增{created}人，更新{updated}人"
+            + (f"，跳过{skipped}行" if skipped else ""))
     db.commit()
-    log.info("主数据导入 %s source=%s page=%s +%d ~%d skip%d",
-             who(g.user), source_key, page, created, updated, skipped)
-    return jsonify({"ok": True, "created": created, "updated": updated, "skipped": skipped})
+    log.info("主数据刷新 %s page=%s +%d ~%d skip%d", who(g.user), page, created, updated, skipped)
+    return jsonify({
+        "ok": True,
+        "created": created,
+        "updated": updated,
+        "skipped": skipped,
+        "stats": stats,
+    })
+
+
+@bp.post("/api/master-import")
+@login_required
+def api_master_import_legacy():
+    """兼容旧接口：单文件上传并立即刷新（建议使用 upload + refresh）。"""
+    return jsonify({"error": "请使用 /api/master-import/upload 上传文件，再调用 /api/master-import/refresh 刷新"}), 400
 
 
 @bp.post("/api/candidates/export")

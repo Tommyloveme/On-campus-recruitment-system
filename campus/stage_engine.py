@@ -196,34 +196,114 @@ def resolve_group_id(data, cfg, groups_list):
 
 
 def build_global_candidate_index(db):
-    """全局索引：电话 / 姓名 -> 候选人记录（跨分组）。"""
-    by_phone, by_name = {}, {}
+    """全局索引：简历编号 / 电话 / 姓名 -> 候选人记录（跨分组）。"""
+    by_resume_id, by_phone, by_name = {}, {}, {}
     for row in db.execute("SELECT * FROM candidates").fetchall():
         data = json.loads(row["data"])
+        if data.get("resume_id") and data["resume_id"] not in by_resume_id:
+            by_resume_id[data["resume_id"]] = row
         if data.get("phone") and data["phone"] not in by_phone:
             by_phone[data["phone"]] = row
         if data.get("name") and data["name"] not in by_name:
             by_name[data["name"]] = row
-    return by_phone, by_name
+    return by_resume_id, by_phone, by_name
+
+
+def parse_excel_file(path, source_cfg):
+    """读取 Excel 文件并解析为行数据列表。"""
+    from openpyxl import load_workbook
+    wb = load_workbook(path, data_only=True)
+    rows = list(wb.active.iter_rows(values_only=True))
+    if not rows:
+        return []
+    col_map = parse_master_header(source_cfg, rows[0])
+    return [row_to_data(source_cfg, col_map, raw) for raw in rows[1:]]
+
+
+def join_master_rows(app_rows, mgmt_rows, join_key="resume_id"):
+    """按 join_key 合并 Application 与候选人管理两张表。"""
+    mgmt_by_key = {}
+    for row in mgmt_rows:
+        key = str(row.get(join_key, "") or "").strip()
+        if key:
+            mgmt_by_key[key] = row
+
+    merged, seen = [], set()
+    for app_row in app_rows:
+        key = str(app_row.get(join_key, "") or "").strip()
+        if not key:
+            continue
+        combined = dict(app_row)
+        if key in mgmt_by_key:
+            combined = merge_candidate_data(combined, mgmt_by_key[key])
+        merged.append(combined)
+        seen.add(key)
+
+    for key, mgmt_row in mgmt_by_key.items():
+        if key in seen:
+            continue
+        if mgmt_row.get("name") or mgmt_row.get("phone"):
+            merged.append(dict(mgmt_row))
+    return merged
+
+
+def run_dual_master_refresh(db, cfg, can_edit_fn, user, groups_list):
+    """从已上传的双表文件读取、关联、全局刷新全部候选人。"""
+    from campus.services.master_import_store import both_files_ready, get_stored_files
+
+    page = cfg.get("page", "registration")
+    if not both_files_ready(page, cfg):
+        raise ValueError("请先上传 Application*.xlsx 与 候选人管理*.xlsx 两个文件")
+
+    files = get_stored_files(page, cfg)
+    join_key = cfg.get("join_key", "resume_id")
+    source_map = {s["key"]: s for s in cfg["sources"]}
+
+    app_rows = parse_excel_file(files["application"]["path"], source_map["application"])
+    mgmt_rows = parse_excel_file(files["candidate_mgmt"]["path"], source_map["candidate_mgmt"])
+    rows_data = join_master_rows(app_rows, mgmt_rows, join_key)
+
+    created, updated, skipped = apply_master_rows(
+        rows_data, db, cfg, can_edit_fn, user, groups_list)
+
+    from campus.services.master_import_store import load_meta, save_meta
+    meta = load_meta(page)
+    meta["last_refresh"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    meta["last_refresh_stats"] = {
+        "created": created, "updated": updated, "skipped": skipped,
+        "application_rows": len(app_rows), "candidate_mgmt_rows": len(mgmt_rows),
+        "merged_rows": len(rows_data),
+    }
+    save_meta(page, meta)
+    return created, updated, skipped, meta["last_refresh_stats"]
 
 
 def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, groups_list):
     """全局主表导入：跨分组匹配，按权限更新/新建。"""
     created = updated = skipped = 0
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    by_phone, by_name = build_global_candidate_index(db)
+    by_resume_id, by_phone, by_name = build_global_candidate_index(db)
+    match_keys = cfg.get("match_keys") or ["resume_id", "phone", "name"]
 
     for data in rows_data:
-        if not data.get("name"):
+        if not data.get("name") and not data.get("resume_id"):
             skipped += 1
             continue
 
         compute_current_stage(data, cfg)
         match = None
-        if data.get("phone"):
-            match = by_phone.get(data["phone"])
-        if not match:
-            match = by_name.get(data["name"])
+        for mk in match_keys:
+            val = str(data.get(mk, "") or "").strip()
+            if not val:
+                continue
+            if mk == "resume_id":
+                match = by_resume_id.get(val)
+            elif mk == "phone":
+                match = by_phone.get(val)
+            elif mk == "name":
+                match = by_name.get(val)
+            if match:
+                break
 
         if match:
             group_id = match["group_id"]
@@ -241,11 +321,16 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, groups_list):
                 updated += 1
                 match = db.execute("SELECT * FROM candidates WHERE id=?", (match["id"],)).fetchone()
                 d = json.loads(match["data"])
+                if d.get("resume_id"):
+                    by_resume_id[d["resume_id"]] = match
                 if d.get("phone"):
                     by_phone[d["phone"]] = match
                 if d.get("name"):
                     by_name[d["name"]] = match
         else:
+            if not data.get("name"):
+                skipped += 1
+                continue
             group_id = resolve_group_id(data, cfg, groups_list)
             if not group_id or not can_edit_fn(user, group_id):
                 skipped += 1
@@ -256,9 +341,12 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, groups_list):
                 (group_id, json.dumps(payload, ensure_ascii=False), now, now),
             )
             row = db.execute("SELECT * FROM candidates WHERE id=?", (cur.lastrowid,)).fetchone()
-            if payload.get("phone"):
-                by_phone[payload["phone"]] = row
-            if payload.get("name"):
-                by_name[payload["name"]] = row
+            d = json.loads(row["data"])
+            if d.get("resume_id"):
+                by_resume_id[d["resume_id"]] = row
+            if d.get("phone"):
+                by_phone[d["phone"]] = row
+            if d.get("name"):
+                by_name[d["name"]] = row
             created += 1
     return created, updated, skipped

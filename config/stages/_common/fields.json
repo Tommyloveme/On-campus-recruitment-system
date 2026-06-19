@@ -22,6 +22,16 @@
       "required": true
     },
     {
+      "key": "resume_id",
+      "label": "简历编号",
+      "excel_column": "简历编号",
+      "excel_aliases": ["简历ID"],
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
       "key": "phone",
       "label": "电话",
       "excel_column": "电话",

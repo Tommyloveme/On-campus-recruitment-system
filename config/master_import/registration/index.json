@@ -1,12 +1,18 @@
 {
-  "comment": "候选人登记页 - 主数据表导入总配置（列映射见 sources/，阶段规则见 stage_rules.json）",
+  "comment": "候选人登记页 - 双表主数据导入：Application*.xlsx + 候选人管理*.xlsx，按简历编号关联",
   "page": "registration",
+  "import_mode": "dual_file",
   "current_stage_field": "current_stage",
   "global_import": true,
-  "source_keys": ["primary", "secondary"],
-  "match_keys": ["phone", "name"],
+  "join_key": "resume_id",
+  "source_keys": ["application", "candidate_mgmt"],
+  "match_keys": ["resume_id", "phone", "name"],
+  "file_patterns": {
+    "application": "Application*.xlsx",
+    "candidate_mgmt": "候选人管理*.xlsx"
+  },
   "group_mapping": {
-    "comment": "新建候选人时按 Excel 列解析二层部门；支持 match_patterns 通配符。fallback=first 表示使用第一个分组",
+    "comment": "新建候选人时按 Excel 列解析二层部门",
     "excel_column": "二层部门",
     "excel_aliases": ["入职二层", "二层部门"],
     "match_patterns": ["*部门*"],

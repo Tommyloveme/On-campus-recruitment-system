@@ -2,6 +2,7 @@
 """一次性冒烟测试脚本：覆盖登录/权限/CRUD/Excel导入/简历/分组配置/并发/日志/总览。"""
 import io
 import json
+import os
 import threading
 import urllib.request
 from urllib.parse import quote
@@ -135,6 +136,46 @@ s, r = call("POST", "/api/import", raw=body_l.getvalue(), ctype=f"multipart/form
 check("旧表头入职三层兼容导入", r["created"] == 1)
 s, found = call("GET", "/api/candidates?q=" + quote("旧表头测试"))
 check("旧表头导入写入三层部门", found[0]["data"].get("dept_level3") == "网络部")
+
+# 5a-master. 主数据表双文件导入（Application*.xlsx + 候选人管理*.xlsx）
+_fix_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tests", "fixtures", "master_import")
+with open(os.path.join(_fix_dir, "Application_test.xlsx"), "rb") as _f:
+    _app_xlsx = _f.read()
+with open(os.path.join(_fix_dir, "候选人管理_test.xlsx"), "rb") as _f:
+    _mgmt_xlsx = _f.read()
+boundary_m = uuid.uuid4().hex
+body_m = io.BytesIO()
+def part_m(name, value=None, filename=None, content=None):
+    body_m.write(f"--{boundary_m}\r\n".encode())
+    if filename:
+        body_m.write(f'Content-Disposition: form-data; name="{name}"; filename="{filename}"\r\n'.encode())
+        body_m.write(b"Content-Type: application/octet-stream\r\n\r\n")
+        body_m.write(content)
+        body_m.write(b"\r\n")
+    else:
+        body_m.write(f'Content-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
+part_m("page", "registration")
+part_m("application", filename="Application_test.xlsx", content=_app_xlsx)
+part_m("candidate_mgmt", filename="候选人管理_test.xlsx", content=_mgmt_xlsx)
+body_m.write(f"--{boundary_m}--\r\n".encode())
+s, r = call("POST", "/api/master-import/upload", raw=body_m.getvalue(),
+             ctype=f"multipart/form-data; boundary={boundary_m}")
+check("主数据表双文件上传成功", s == 200 and r.get("both_ready"))
+s, cfg_mi = call("GET", "/api/master-import/config?page=registration")
+check("主数据表配置含双数据源", len(cfg_mi.get("sources", [])) == 2 and cfg_mi.get("join_key") == "resume_id")
+boundary_r = uuid.uuid4().hex
+body_r = io.BytesIO()
+body_r.write(f"--{boundary_r}\r\n".encode())
+body_r.write(b'Content-Disposition: form-data; name="page"\r\n\r\nregistration\r\n')
+body_r.write(f"--{boundary_r}--\r\n".encode())
+s, r = call("POST", "/api/master-import/refresh", raw=body_r.getvalue(),
+             ctype=f"multipart/form-data; boundary={boundary_r}")
+check("主数据表刷新(新增+更新)", s == 200 and r.get("created", 0) >= 1 and r.get("updated", 0) >= 1)
+s, c_new = call("GET", "/api/candidates?q=" + quote("主表新人"))
+check("主表新人已导入且含简历编号", len(c_new) == 1 and c_new[0]["data"].get("resume_id") == "RS2026001")
+check("候选人管理表字段已合并(当前进展)", "0619" in (c_new[0]["data"].get("progress") or ""))
+s, c_upd = call("GET", "/api/candidates?q=" + quote("测试员"))
+check("测试员经简历编号更新", len(c_upd) == 1 and c_upd[0]["data"].get("onboard_risk") == "高")
 
 # 5b. 批量导入 120 名候选人（登记阶段）
 wb = Workbook()

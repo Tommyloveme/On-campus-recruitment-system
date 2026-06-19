@@ -163,8 +163,15 @@ def build_config_response(group_id=None):
         "group_id": group_id,
         "master_import": {
             "page": master.get("page", "registration"),
-            "sources": [{"key": s["key"], "label": s["label"], "description": s.get("description", "")}
-                        for s in master.get("sources", [])],
+            "import_mode": master.get("import_mode", "dual_file"),
+            "join_key": master.get("join_key", "resume_id"),
+            "file_patterns": master.get("file_patterns", {}),
+            "sources": [{
+                "key": s["key"],
+                "label": s["label"],
+                "description": s.get("description", ""),
+                "pattern": (master.get("file_patterns") or {}).get(s["key"], "*"),
+            } for s in master.get("sources", [])],
             "current_stage_field": master.get("current_stage_field", "current_stage"),
             "global_import": bool(master.get("global_import", True)),
         },
