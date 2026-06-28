@@ -2,8 +2,8 @@
 
 /* 权限管理：单一 Excel 式 用户×模块 权限矩阵页，仅系统管理员。
  * 行=用户(工号唯一)；列=附属信息(由 config/user_fields.json 配置) + 各模块的 V/R/W/M 四勾选。
- * 每列支持模糊搜索/筛选；内联勾选即时保存；多选用户后批量填充某模块权限。
- * 操作日志 / 数据备份 / 字段配置 已剥离为「管理看板」同级标签页。
+ * 每列支持模糊搜索/筛选；内联勾选即时保存；多选用户后批量填充某模块权限；列宽可拖拽调整。
+ * 操作日志 / 数据备份 已剥离为「管理看板」同级标签页；附属信息字段配置置于本页顶部。
  */
 let permOptions = { users: [], user_fields: [], modules: [], settings: {} };
 let permAclMap = {};        // `${uid}|${moduleKey}` -> {v,r,w,m}
@@ -43,6 +43,7 @@ async function renderPermissions() {
     return;
   }
   permFilters = {};
+  permLoadColWidths();
   $("#main").innerHTML = `
     <div class="card perm-card">
       <div class="perm-head">
@@ -57,6 +58,8 @@ async function renderPermissions() {
           <button class="btn btn-sm" id="perm-export">导出矩阵</button>
         </div>
       </div>
+
+      <div id="perm-field-config" class="perm-embed perm-embed-top"></div>
 
       <div class="perm-batch-bar">
         <span class="perm-batch-label">批量授权</span>
@@ -77,7 +80,6 @@ async function renderPermissions() {
       </div>
 
       <div id="perm-roles" class="perm-embed"></div>
-      <div id="perm-field-config" class="perm-embed"></div>
     </div>`;
 
   $("#perm-add-user").addEventListener("click", () => openUserModal(null));
@@ -156,6 +158,122 @@ function rowPassesFilter(u, cols) {
 
 /* ---------- 渲染（左表冻结：勾选/工号/姓名；右表横向滚动） ---------- */
 const PERM_FROZEN_COUNT = 3;
+const PERM_COL_WIDTH_KEY = "perm_col_widths_v1";
+let permColWidths = {};
+let _permMeasureEl;
+
+function permLoadColWidths() {
+  try {
+    const raw = localStorage.getItem(PERM_COL_WIDTH_KEY);
+    if (raw) permColWidths = JSON.parse(raw);
+  } catch (_) { permColWidths = {}; }
+}
+
+function permSaveColWidths() {
+  try { localStorage.setItem(PERM_COL_WIDTH_KEY, JSON.stringify(permColWidths)); } catch (_) {}
+}
+
+function permMeasureText(text, mono) {
+  if (!_permMeasureEl) {
+    _permMeasureEl = document.createElement("span");
+    _permMeasureEl.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap;font-size:12px;padding:0;";
+    document.body.appendChild(_permMeasureEl);
+  }
+  _permMeasureEl.className = mono ? "mono" : "";
+  _permMeasureEl.textContent = text;
+  return _permMeasureEl.offsetWidth;
+}
+
+function permDefaultColWidth(col) {
+  const pad = 8;
+  if (col.kind === "check") return 34;
+  if (col.id === "username") return permMeasureText("0123456789", true) + pad;
+  if (col.id === "display_name") return permMeasureText("一二三四", false) + pad;
+  if (col.kind === "actions") return 96;
+  if (col.kind === "role") return 72;
+  if (col.kind === "field") return Math.max(56, permMeasureText(col.label || "字段", false) + pad + 12);
+  if (col.kind === "module") return Math.max(64, permMeasureText(col.label || "模块", false) + pad);
+  return 72;
+}
+
+function permColWidth(col) {
+  const w = permColWidths[col.id];
+  return (w != null && w > 0) ? w : permDefaultColWidth(col);
+}
+
+function permBuildColgroup(cols) {
+  return `<colgroup>${cols.map(c =>
+    `<col data-col-id="${c.id}" style="width:${permColWidth(c)}px">`).join("")}</colgroup>`;
+}
+
+function permUpdateLeftLayout(frozen) {
+  const total = frozen.reduce((s, c) => s + permColWidth(c), 0);
+  const left = $("#perm-grid-left");
+  const wrap = document.querySelector(".perm-grid-left-wrap");
+  if (left) {
+    left.style.width = total + "px";
+    left.style.minWidth = total + "px";
+    left.style.maxWidth = total + "px";
+  }
+  if (wrap) {
+    wrap.style.width = total + "px";
+    wrap.style.maxWidth = total + "px";
+    wrap.style.flex = `0 0 ${total}px`;
+  }
+}
+
+function applyPermColWidths(cols) {
+  const { frozen, scroll } = permSplitCols(cols);
+  permUpdateLeftLayout(frozen);
+  for (const [table, partCols] of [[$("#perm-grid-left"), frozen], [$("#perm-grid-right"), scroll]]) {
+    if (!table) continue;
+    table.querySelectorAll("colgroup col").forEach((colEl, i) => {
+      if (partCols[i]) colEl.style.width = permColWidth(partCols[i]) + "px";
+    });
+    const total = partCols.reduce((s, c) => s + permColWidth(c), 0);
+    if (table.id === "perm-grid-right") {
+      table.style.width = Math.max(total, table.parentElement?.clientWidth || 0) + "px";
+    }
+  }
+}
+
+function bindPermColResize(cols) {
+  const { frozen, scroll } = permSplitCols(cols);
+  [[$("#perm-grid-left"), frozen], [$("#perm-grid-right"), scroll]].forEach(([table, partCols]) => {
+    if (!table) return;
+    table.querySelectorAll("thead tr:first-child th").forEach((th, idx) => {
+      const col = partCols[idx];
+      if (!col) return;
+      let handle = th.querySelector(".th-resize");
+      if (!handle) {
+        handle = document.createElement("span");
+        handle.className = "th-resize";
+        handle.title = "拖动调整列宽";
+        th.appendChild(handle);
+      }
+      handle.onclick = e => e.stopPropagation();
+      handle.onmousedown = e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.pageX, startW = permColWidth(col);
+        const onMove = ev => {
+          permColWidths[col.id] = Math.max(32, startW + ev.pageX - startX);
+          applyPermColWidths(cols);
+        };
+        const onUp = () => {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          document.body.style.cursor = "";
+          permSaveColWidths();
+          requestAnimationFrame(() => syncPermGridLayout());
+        };
+        document.body.style.cursor = "col-resize";
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      };
+    });
+  });
+}
 
 function permSplitCols(cols) {
   return { frozen: cols.slice(0, PERM_FROZEN_COUNT), scroll: cols.slice(PERM_FROZEN_COUNT) };
@@ -227,10 +345,6 @@ function permBuildThead(cols) {
   return `<thead><tr>${permLabelRow(cols)}</tr><tr class="perm-filter-row">${permFilterRow(cols)}</tr></thead>`;
 }
 
-function permLeftColgroup() {
-  return `<colgroup><col span="1" style="width:34px"><col span="1" style="width:56px"><col span="1" style="width:78px"></colgroup>`;
-}
-
 function bindPermColFilters(cols) {
   document.querySelectorAll("#perm-grid-left .perm-col-filter, #perm-grid-right .perm-col-filter").forEach(el => {
     const col = el.dataset.col;
@@ -256,11 +370,14 @@ function renderPermGrid() {
   const cols = permColumns();
   const { frozen, scroll } = permSplitCols(cols);
   const left = $("#perm-grid-left");
-  left.innerHTML = permLeftColgroup() + permBuildThead(frozen) + "<tbody></tbody>";
-  left.style.width = "168px";
+  left.innerHTML = permBuildColgroup(frozen) + permBuildThead(frozen) + "<tbody></tbody>";
   left.style.tableLayout = "fixed";
-  $("#perm-grid-right").innerHTML = permBuildThead(scroll) + "<tbody></tbody>";
+  const right = $("#perm-grid-right");
+  right.innerHTML = permBuildColgroup(scroll) + permBuildThead(scroll) + "<tbody></tbody>";
+  right.style.tableLayout = "fixed";
+  applyPermColWidths(cols);
   bindPermColFilters(cols);
+  bindPermColResize(cols);
   const checkAll = $("#perm-check-all");
   if (checkAll) checkAll.addEventListener("change", e => {
     document.querySelectorAll(".perm-row-check").forEach(cb => cb.checked = e.target.checked);

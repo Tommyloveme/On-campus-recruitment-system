@@ -95,7 +95,7 @@ async function renderBackups() {
   });
 }
 
-/* ---------- 字段配置（嵌入权限管理页底部） ---------- */
+/* ---------- 字段配置（嵌入权限管理页顶部） ---------- */
 async function renderFieldConfigInto(container) {
   if (!container) return;
   container.innerHTML = `<div class="perm-embed-title">附属信息字段配置</div><div id="fc-body">加载中…</div>`;

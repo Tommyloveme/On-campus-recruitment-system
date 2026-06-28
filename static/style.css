@@ -460,23 +460,23 @@ th.sortable:hover { color: var(--primary); }
   background: #fff;
 }
 .perm-grid-left-wrap {
-  flex: 0 0 168px; width: 168px; max-width: 168px; overflow: hidden;
+  flex: 0 0 auto; width: auto; max-width: none; overflow: hidden;
   position: sticky; left: 0; z-index: 5;
   background: #fff; box-shadow: 2px 0 6px -2px rgba(15, 23, 42, .12);
 }
 .perm-grid-right-wrap { flex: 1; min-width: 0; overflow-x: auto; overflow-y: visible; }
-.perm-grid { border-collapse: separate; border-spacing: 0; font-size: 12px; background: #fff; }
-.perm-grid-left {
-  table-layout: fixed !important; width: 168px !important;
-  min-width: 168px !important; max-width: 168px !important;
-}
-.perm-grid-left .col-check { width: 34px !important; min-width: 34px !important; max-width: 34px !important; text-align: center; }
-.perm-grid-left .col-username { width: 56px !important; min-width: 56px !important; max-width: 56px !important; overflow: hidden; text-overflow: ellipsis; }
-.perm-grid-left .col-name { width: 78px !important; min-width: 78px !important; max-width: 78px !important; overflow: hidden; text-overflow: ellipsis; }
+.perm-grid { border-collapse: separate; border-spacing: 0; font-size: 12px; background: #fff; table-layout: fixed; }
+.perm-grid-left { width: auto; min-width: 0; max-width: none; }
+.perm-grid-left .col-check { text-align: center; }
+.perm-grid-left .col-username, .perm-grid-left .col-name { overflow: hidden; text-overflow: ellipsis; }
 .perm-grid-left thead .perm-col-filter { padding: 1px 2px; font-size: 10px; min-width: 0 !important; }
-.perm-grid-right { table-layout: auto; width: max-content; min-width: 100%; }
-.perm-grid th, .perm-grid td { white-space: nowrap; box-sizing: border-box; }
-.perm-grid-right th, .perm-grid-right td { width: 1%; }
+.perm-grid-right { width: max-content; min-width: 100%; }
+.perm-grid th, .perm-grid td { white-space: nowrap; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; }
+.perm-grid thead th .th-resize {
+  position: absolute; top: 0; right: -3px; bottom: 0; width: 7px;
+  cursor: col-resize; z-index: 4;
+}
+.perm-grid thead th .th-resize:hover { background: rgba(37, 99, 235, .25); border-radius: 2px; }
 .perm-grid thead th {
   position: sticky; top: 0; background: #f1f5f9; z-index: 2; padding: 5px 4px;
   border-bottom: 1px solid var(--border); color: #1e293b; font-weight: 600;
@@ -512,7 +512,7 @@ th.sortable:hover { color: var(--primary); }
   width: 13px; height: 13px; cursor: pointer; margin: 0; accent-color: var(--flag-color, #2563eb);
   border-radius: 3px;
 }
-.perm-info-cell { color: #334155; max-width: 9em; overflow: hidden; text-overflow: ellipsis; }
+.perm-info-cell { color: #334155; overflow: hidden; text-overflow: ellipsis; }
 .perm-dash { color: #cbd5e1; }
 .perm-actions { display: flex; gap: 3px; flex-wrap: nowrap; }
 .perm-actions-col { width: 1%; }
@@ -521,8 +521,9 @@ th.sortable:hover { color: var(--primary); }
 .perm-card .mono, .fc-table .mono, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 #perm-row-count { font-size: 12px; color: #64748b; white-space: nowrap; }
 
-/* 字段配置（嵌入权限页底部） */
+/* 字段配置 / 角色管理（嵌入权限页） */
 .perm-embed { margin-top: 16px; border-top: 1px dashed var(--border); padding-top: 12px; }
+.perm-embed-top { margin-top: 0; border-top: 0; padding-top: 0; margin-bottom: 14px; }
 .perm-embed-title { font-weight: 600; color: #1e293b; margin-bottom: 4px; }
 .perm-embed-sub { font-size: 12px; color: #64748b; margin: 0 0 10px; line-height: 1.6; }
 .perm-embed-sub code { background: #eef2ff; padding: 0 4px; border-radius: 4px; color: #3730a3; }
