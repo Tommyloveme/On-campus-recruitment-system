@@ -149,7 +149,6 @@ function fieldInput(f, value, opts) {
 function showLogin() {
   state.me = null;
   $("#app-view").classList.add("hidden");
-  $("#register-view")?.classList.add("hidden");
   $("#login-view").classList.remove("hidden");
 }
 

@@ -20,8 +20,16 @@
   "security": {
     "default_password": "123456",
     "reserved_accounts": ["admin"],
-    "registerable_job_roles": ["拓源人", "接口人", "技术面试官", "主管面试官", "HR", "BA"],
-    "default_register_job_roles": ["拓源人", "接口人"]
+    "job_roles": ["拓源人", "接口人", "技术面试官", "主管面试官", "HR", "BA"],
+    "default_new_user_job_roles": ["拓源人", "接口人"]
+  },
+  "permissions": {
+    "merge_mode": "union",
+    "inherit_user_group": true,
+    "inherit_resource_group": true,
+    "admin_bypass": true,
+    "global_viewer_sees_all": true,
+    "unassigned_fallback_to_role": true
   },
   "user_profile": {
     "employee_id_digits": 8,

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """注册所有 Blueprint 路由。"""
+from campus.routes.acl import bp as acl_bp
 from campus.routes.auth import bp as auth_bp
 from campus.routes.backups import bp as backups_bp
 from campus.routes.candidates import bp as candidates_bp
@@ -26,5 +27,6 @@ def register_routes(app):
         overview_bp,
         backups_bp,
         pages_bp,
+        acl_bp,
     ):
         app.register_blueprint(bp)

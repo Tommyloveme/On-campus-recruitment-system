@@ -195,6 +195,16 @@ function toggleSort(stageKey, key) {
   renderCandidateRows(stageKey);
 }
 
+function candidateCellValue(c, f) {
+  if (f.key === "sourcer") {
+    return c.sourcer_display || c.data.sourcer || "";
+  }
+  if (f.key === "interface_person") {
+    return c.interface_person_display || c.data.interface_person || "";
+  }
+  return c.data[f.key];
+}
+
 function resumeCellHtml(c) {
   const editable = canEdit();
   if (c.resume_name) {
@@ -247,7 +257,7 @@ function renderCandidateRows(stageKey) {
             const custom = (c.data.registration_source_custom || "").trim();
             inner = cellHtml(f, custom ? `其他：${custom}` : "其他");
           } else {
-            inner = cellHtml(f, c.data[f.key]);
+            inner = cellHtml(f, candidateCellValue(c, f));
           }
           return `<td>${inner}</td>`;
         }).join("")}
@@ -389,27 +399,46 @@ function registrationCreateHiddenKeys() {
   ]);
 }
 
+const REGISTRATION_CREATE_FIELD_ORDER = [
+  "name", "phone", "sourcer", "interface_person",
+  "education", "school", "major", "registration_source", "registration_remark",
+];
+
 function registrationDeptFieldHtml(deptKey, value) {
   const f = fieldsForStage("registration").find(x => x.key === deptKey);
   const label = f ? f.label : deptKey;
   const v = (value || "").trim();
   return `
-    <div class="form-item registration-dept-display">
-      <label>${esc(label)}</label>
-      <div class="dept-display-value" id="dept-display-${deptKey}">${esc(v || "—")}</div>
+    <div class="emp-dept-row">
+      <span class="emp-dept-label">${esc(label)}</span>
+      <span class="dept-display-value emp-dept-value" id="dept-display-${deptKey}">${esc(v || "—")}</span>
       <input type="hidden" data-field="${deptKey}" value="${esc(v)}">
     </div>`;
 }
 
-function registrationFieldExtraHtml(stageKey, f, cand) {
-  if (stageKey !== "registration") return "";
-  if (f.key === "sourcer") {
-    return registrationDeptFieldHtml("sourcer_dept", cand?.data?.sourcer_dept);
-  }
-  if (f.key === "interface_person") {
-    return registrationDeptFieldHtml("interface_dept", cand?.data?.interface_dept);
-  }
-  return "";
+function registrationEmployeeFieldHtml(f, cand, locked, isRegCreate) {
+  const empKey = f.key;
+  const deptKey = empKey === "sourcer" ? "sourcer_dept" : "interface_dept";
+  const empVal = cand ? (cand.data[empKey] || "") : "";
+  const deptVal = cand ? (cand.data[deptKey] || "") : "";
+  const nameVal = cand
+    ? (empKey === "sourcer" ? cand.sourcer_display : cand.interface_person_display) || ""
+    : "";
+  const ve = esc(empVal);
+  const hint = !locked ? registrationFieldHint(f) : "";
+  const inputHtml = locked
+    ? `<input type="text" data-field="${empKey}" class="master-locked-field" value="${ve}" disabled title="该字段已由主数据表导入，不可修改">`
+    : `<input type="text" data-field="${empKey}" value="${ve}" placeholder="填写工号" autocomplete="off">`;
+  return `
+    <div class="form-item registration-emp-block${locked ? " is-master-locked" : ""}">
+      <label>${esc(f.label)}${f.required ? " *" : ""}${locked ? "（主数据锁定）" : ""}</label>
+      <div class="emp-input-row">
+        ${inputHtml}
+        <span class="emp-name-display" id="emp-name-${empKey}">${esc(nameVal || "—")}</span>
+      </div>
+      ${registrationDeptFieldHtml(deptKey, deptVal)}
+      ${hint}
+    </div>`;
 }
 
 async function lookupEmployeeForRegistration(username) {
@@ -434,11 +463,13 @@ function bindRegistrationEmployeeLookup() {
     const input = modal.querySelector(`[data-field='${emp}']`);
     if (!input || input.disabled) return;
     const displayEl = $("#dept-display-" + dept);
+    const nameEl = $("#emp-name-" + emp);
     const hidden = modal.querySelector(`[data-field='${dept}']`);
     const update = async () => {
       const username = input.value.trim();
       if (!username) {
         if (displayEl) displayEl.textContent = "—";
+        if (nameEl) nameEl.textContent = "—";
         if (hidden) hidden.value = "";
         return;
       }
@@ -447,13 +478,16 @@ function bindRegistrationEmployeeLookup() {
         if (body.found) {
           const deptText = body.department || "—";
           if (displayEl) displayEl.textContent = deptText;
+          if (nameEl) nameEl.textContent = body.display_name || "—";
           if (hidden) hidden.value = body.department || "";
         } else {
-          if (displayEl) displayEl.textContent = body.error || "工号未注册";
+          if (displayEl) displayEl.textContent = "—";
+          if (nameEl) nameEl.textContent = body.error || "工号未注册";
           if (hidden) hidden.value = "";
         }
       } catch (_) {
         if (displayEl) displayEl.textContent = "查询失败";
+        if (nameEl) nameEl.textContent = "—";
         if (hidden) hidden.value = "";
       }
     };
@@ -467,15 +501,51 @@ const REGISTRATION_CREATE_OPTIONAL = new Set(["registration_remark"]);
 
 function registrationCreateFields(stageKey) {
   const hide = registrationCreateHiddenKeys();
-  const fromEditable = fieldsForStage(stageKey).filter(f => f.editable && !hide.has(f.key));
+  const pool = fieldsForStage(stageKey).filter(f => f.editable && !hide.has(f.key));
   const remark = fieldsForStage(stageKey).find(f => f.key === "registration_remark");
-  if (remark && !fromEditable.some(f => f.key === "registration_remark")) {
-    fromEditable.push(remark);
+  if (remark && !pool.some(f => f.key === "registration_remark")) pool.push(remark);
+  const ordered = [];
+  for (const key of REGISTRATION_CREATE_FIELD_ORDER) {
+    const f = pool.find(x => x.key === key);
+    if (f) {
+      ordered.push({
+        ...f,
+        required: !REGISTRATION_CREATE_OPTIONAL.has(f.key),
+      });
+    }
   }
-  return fromEditable.map(f => ({
-    ...f,
-    required: !REGISTRATION_CREATE_OPTIONAL.has(f.key),
-  }));
+  return ordered;
+}
+
+const REGISTRATION_EDIT_FIELD_ORDER = [
+  ...REGISTRATION_CREATE_FIELD_ORDER,
+  "registration_status", "resume_id", "work_location", "graduation_time",
+];
+
+function registrationEditFields(stageKey) {
+  const pool = fieldsForStage(stageKey).filter(f => f.editable);
+  const ordered = [];
+  for (const key of REGISTRATION_EDIT_FIELD_ORDER) {
+    const f = pool.find(x => x.key === key);
+    if (f) ordered.push(f);
+  }
+  pool.forEach(f => {
+    if (!ordered.some(x => x.key === f.key)) ordered.push(f);
+  });
+  return ordered;
+}
+
+function registrationFormFieldHtml(f, cand, stageKey, isRegCreate, lockedFields) {
+  const locked = lockedFields.has(f.key);
+  if (stageKey === "registration" && (f.key === "sourcer" || f.key === "interface_person")) {
+    return registrationEmployeeFieldHtml(f, cand, locked, isRegCreate);
+  }
+  return `
+    <div class="form-item${locked ? " is-master-locked" : ""}${f.key === "registration_remark" ? " form-item-full" : ""}">
+      <label>${esc(f.label)}${f.required ? " *" : ""}${locked ? "（主数据锁定）" : ""}</label>
+      ${fieldInput(f, candidateFieldDefault(f, cand, isRegCreate), { locked })}
+      ${(isRegCreate || stageKey === "registration") && !locked ? registrationFieldHint(f) : ""}
+    </div>`;
 }
 
 function candidateFieldDefault(f, cand, isRegCreate) {
@@ -537,11 +607,8 @@ async function validateRegistrationUserRefs(data) {
 }
 
 function registrationFieldHint(f) {
-  if (f.key === "sourcer") {
-    return `<p class="field-hint">须为已在本系统注册的工号</p>`;
-  }
-  if (f.key === "interface_person") {
-    return `<p class="field-hint">须为已在本系统注册的工号</p>`;
+  if (f.key === "sourcer" || f.key === "interface_person") {
+    return `<p class="field-hint">填写工号，系统将自动匹配姓名与部门</p>`;
   }
   return "";
 }
@@ -573,8 +640,8 @@ function openPhoneDuplicateModal(existing, data, stageKey, fields) {
         <tbody><tr>
           <td>${esc(existing.name || "—")}</td>
           <td>${esc(existing.phone || "—")}</td>
-          <td>${esc(existing.sourcer || "—")}</td>
-          <td>${esc(existing.interface_person || "—")}</td>
+          <td>${esc(existing.sourcer_display || existing.sourcer || "—")}</td>
+          <td>${esc(existing.interface_person_display || existing.interface_person || "—")}</td>
         </tr></tbody>
       </table>
     </div>`,
@@ -594,27 +661,26 @@ function openCandidateModal(cand, stageKey) {
   const allEditable = fieldsForStage(stageKey).filter(f => f.editable);
   const isNew = !cand;
   const isRegCreate = isNew && stageKey === "registration";
-  const fields = isRegCreate ? registrationCreateFields(stageKey) : allEditable;
+  const fields = isRegCreate
+    ? registrationCreateFields(stageKey)
+    : (stageKey === "registration" ? registrationEditFields(stageKey) : allEditable);
   const meta = state.stages.find(s => s.key === stageKey);
   const lockedFields = new Set(cand?.data?._master_locked_fields || []);
 
   const sourceCustomField = isRegCreate ? `
-    <div id="reg-source-custom-wrap" class="form-item hidden" style="grid-column:1/-1">
+    <div id="reg-source-custom-wrap" class="form-item form-item-full hidden">
       <label>自定义简历来源 *</label>
       <input type="text" id="reg-source-custom" data-field="registration_source_custom"
              placeholder="请填写具体简历来源">
     </div>` : "";
 
   openModal(isNew ? `新增候选人 - ${meta.label}` : `编辑 - ${esc(cand.data.name || "")}（${meta.label}）`, `
-    <div class="form-grid">
-      ${fields.map(f => `
-        <div class="form-item${lockedFields.has(f.key) ? " is-master-locked" : ""}">
-          <label>${esc(f.label)}${f.required ? " *" : ""}${lockedFields.has(f.key) ? "（主数据锁定）" : ""}</label>
-          ${fieldInput(f, candidateFieldDefault(f, cand, isRegCreate), { locked: lockedFields.has(f.key) })}
-          ${(isRegCreate || stageKey === "registration") && !lockedFields.has(f.key) ? registrationFieldHint(f) : ""}
-          ${registrationFieldExtraHtml(stageKey, f, cand)}
-        </div>`).join("")}
-      ${sourceCustomField}
+    <div class="form-grid registration-form-grid">
+      ${fields.map(f => {
+        let html = registrationFormFieldHtml(f, cand, stageKey, isRegCreate, lockedFields);
+        if (isRegCreate && f.key === "registration_source") html += sourceCustomField;
+        return html;
+      }).join("")}
     </div>`,
     `<button class="btn" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="cand-save">保存</button>`);

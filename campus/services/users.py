@@ -1,13 +1,17 @@
 # -*- coding: utf-8 -*-
-"""用户资料与注册相关业务逻辑。"""
+"""用户资料、可选业务角色与字段校验相关业务逻辑。
+
+本系统不提供用户自助注册：所有账号、角色与权限均由系统管理员统一创建与分配。
+本模块仅提供账号选项下发、个人资料校验与候选人引用工号的合法性校验。
+"""
 import json
 import re
 
 from campus.db.connection import get_db
 from campus.settings import load_app_config
 
-DEFAULT_REGISTERABLE_JOB_ROLES = ("拓源人", "接口人", "技术面试官", "主管面试官", "HR", "BA")
-DEFAULT_REGISTER_JOB_ROLES = ("拓源人", "接口人")
+DEFAULT_JOB_ROLES = ("拓源人", "接口人", "技术面试官", "主管面试官", "HR", "BA")
+DEFAULT_NEW_USER_JOB_ROLES = ("拓源人", "接口人")
 DEFAULT_DEPT_LEVEL2 = ("存储部", "计算部", "网络部", "软件部")
 DEFAULT_DEPT_LEVEL3 = ("块存储", "对象存储", "通用计算", "研发一组")
 CHINESE_NAME_RE = re.compile(r"^[\u4e00-\u9fff]+$")
@@ -24,15 +28,20 @@ def reserved_accounts():
     return accounts
 
 
-def registerable_job_roles():
+def job_role_options():
+    """可选业务角色集合（由系统管理员在创建/编辑用户时勾选）。"""
     sec = security_config()
-    roles = sec.get("registerable_job_roles", DEFAULT_REGISTERABLE_JOB_ROLES)
+    roles = sec.get("job_roles", sec.get("registerable_job_roles", DEFAULT_JOB_ROLES))
     return list(roles)
 
 
-def default_register_job_roles():
+def default_job_roles():
+    """新用户默认业务角色（个人资料缺失角色时回退使用）。"""
     sec = security_config()
-    roles = sec.get("default_register_job_roles", DEFAULT_REGISTER_JOB_ROLES)
+    roles = sec.get(
+        "default_new_user_job_roles",
+        sec.get("default_register_job_roles", DEFAULT_NEW_USER_JOB_ROLES),
+    )
     return list(roles)
 
 
@@ -45,10 +54,10 @@ def user_profile_config():
     }
 
 
-def register_options_payload():
+def account_options_payload():
     return {
-        "job_roles": registerable_job_roles(),
-        "default_job_roles": default_register_job_roles(),
+        "job_roles": job_role_options(),
+        "default_job_roles": default_job_roles(),
         **user_profile_config(),
     }
 
@@ -74,7 +83,7 @@ def split_department_field(department):
 
 
 def parse_user_profile_body(body, require_employee_id=False):
-    """校验并规范化注册/个人资料字段，返回 (error_message, fields_dict)。"""
+    """校验并规范化个人资料字段，返回 (error_message, fields_dict)。"""
     cfg = user_profile_config()
     digits = cfg["employee_id_digits"]
     employee_id = None
@@ -141,7 +150,7 @@ def parse_job_roles(raw):
 
 
 def normalize_job_roles(raw_roles):
-    allowed = set(registerable_job_roles())
+    allowed = set(job_role_options())
     roles = parse_job_roles(raw_roles)
     seen = set()
     out = []
@@ -248,14 +257,14 @@ def validate_registration_manual_create(data):
 
 
 def validate_registration_user_refs(db, sourcer, interface_person):
-    """拓源人、接口人均须为已注册工号。"""
+    """拓源人、接口人均须为系统已创建的工号。"""
     errors = []
     emp = (sourcer or "").strip()
     if emp:
         if not lookup_employee_by_username(db, emp):
-            errors.append(f"拓源人工号「{emp}」未在本系统注册，请先完成账号注册")
+            errors.append(f"拓源人工号「{emp}」尚未由系统管理员创建，请联系管理员添加账号")
     iface = (interface_person or "").strip()
     if iface:
         if not lookup_employee_by_username(db, iface):
-            errors.append(f"接口人工号「{iface}」未在本系统注册，请先完成账号注册")
+            errors.append(f"接口人工号「{iface}」尚未由系统管理员创建，请联系管理员添加账号")
     return "；".join(errors) if errors else None

@@ -42,7 +42,7 @@ def api_users():
 @bp.get("/api/users/check-registration-refs")
 @login_required
 def api_check_registration_refs():
-    """校验拓源人、接口人工号是否已在系统注册。"""
+    """校验拓源人、接口人工号是否已由系统管理员创建。"""
     sourcer = (request.args.get("sourcer") or "").strip()
     interface_person = (request.args.get("interface_person") or "").strip()
     err = validate_registration_user_refs(get_db(), sourcer, interface_person)
@@ -60,7 +60,7 @@ def api_lookup_employee():
     if not row:
         return jsonify({
             "found": False,
-            "error": f"工号「{username}」未在本系统注册，请先完成账号注册",
+            "error": f"工号「{username}」尚未由系统管理员创建，请联系管理员添加账号",
         })
     d = user_dict(row)
     return jsonify({

@@ -1,7 +1,7 @@
-/* 用户注册与个人资料 */
+/* 个人资料与账户选项（不提供用户自助注册，账号由系统管理员统一分配） */
 "use strict";
 
-let registerOptions = {
+let accountOptions = {
   job_roles: [],
   default_job_roles: ["拓源人", "接口人"],
   employee_id_digits: 8,
@@ -9,11 +9,11 @@ let registerOptions = {
   dept_level3_options: [],
 };
 
-async function loadRegisterOptions() {
+async function loadAccountOptions() {
   try {
-    registerOptions = await fetch("/api/register/options").then(r => r.json());
+    accountOptions = await fetch("/api/account/options").then(r => r.json());
   } catch (_) {
-    registerOptions = {
+    accountOptions = {
       job_roles: ["拓源人", "接口人", "技术面试官", "主管面试官", "HR", "BA"],
       default_job_roles: ["拓源人", "接口人"],
       employee_id_digits: 8,
@@ -21,12 +21,11 @@ async function loadRegisterOptions() {
       dept_level3_options: ["块存储", "对象存储", "通用计算", "研发一组"],
     };
   }
-  window.registerOptions = registerOptions;
-  applyRegisterFormConfig();
+  window.accountOptions = accountOptions;
 }
 
 function userProfileConfig() {
-  return window.registerOptions || registerOptions;
+  return window.accountOptions || accountOptions;
 }
 
 function renderDeptLevelSelects(l2El, l3El, l2Val, l3Val) {
@@ -40,33 +39,13 @@ function renderDeptLevelSelects(l2El, l3El, l2Val, l3Val) {
     l3Opts.map(o => `<option value="${esc(o)}"${o === l3Val ? " selected" : ""}>${esc(o)}</option>`).join("");
 }
 
-function collectUserProfilePayload(mode) {
-  if (mode === "reg") {
-    return {
-      display_name: $("#reg-display-name").value.trim(),
-      supervisor: $("#reg-supervisor").value.trim(),
-      dept_level2: $("#reg-dept-level2").value,
-      dept_level3: $("#reg-dept-level3").value.trim(),
-    };
-  }
+function collectUserProfilePayload() {
   return {
     display_name: $("#profile-display").value.trim(),
     supervisor: $("#profile-supervisor").value.trim(),
     dept_level2: $("#profile-dept-level2").value,
     dept_level3: $("#profile-dept-level3").value.trim(),
   };
-}
-
-function applyRegisterFormConfig() {
-  const cfg = userProfileConfig();
-  const digits = cfg.employee_id_digits || 8;
-  const emp = $("#reg-employee-id");
-  if (emp) {
-    emp.placeholder = `${digits}位数字工号`;
-    emp.maxLength = digits;
-    emp.pattern = `\\d{${digits}}`;
-  }
-  renderDeptLevelSelects($("#reg-dept-level2"), $("#reg-dept-level3"), "", "");
 }
 
 function bindPasswordToggles(root = document) {
@@ -84,20 +63,10 @@ function bindPasswordToggles(root = document) {
   });
 }
 
-function showRegisterView() {
-  $("#login-view").classList.add("hidden");
-  $("#register-view").classList.remove("hidden");
-  $("#app-view").classList.add("hidden");
-  const pwd = $("#reg-password");
-  if (pwd && !pwd.value) pwd.value = "123456";
-  applyRegisterFormConfig();
-  bindPasswordToggles($("#register-view"));
-}
-
 function openProfileModal() {
-  const roles = (window.registerOptions && window.registerOptions.job_roles) ||
+  const roles = (window.accountOptions && window.accountOptions.job_roles) ||
     ["拓源人", "接口人", "技术面试官", "主管面试官", "HR", "BA"];
-  window.registerOptions = { ...(window.registerOptions || {}), job_roles: roles };
+  window.accountOptions = { ...(window.accountOptions || {}), job_roles: roles };
   const showSysRole = isAdmin();
   const l2 = state.me.dept_level2 || "";
   const l3 = state.me.dept_level3 || "";
@@ -125,6 +94,7 @@ function openProfileModal() {
       <div class="form-item" style="grid-column:1/-1">
         <label>业务角色</label>
         <input value="${esc((state.me.job_roles || []).join("、") || "—")}" disabled>
+        <p class="field-hint">业务角色与系统权限由管理员统一分配，如需调整请联系管理员</p>
       </div>
     </div>`,
     `<button class="btn" onclick="closeModal()">取消</button>
@@ -133,7 +103,7 @@ function openProfileModal() {
   bindPasswordToggles($("#modal-body"));
   $("#profile-save").addEventListener("click", async () => {
     const payload = {
-      ...collectUserProfilePayload("profile"),
+      ...collectUserProfilePayload(),
       password: $("#profile-password").value,
     };
     try {
@@ -146,31 +116,6 @@ function openProfileModal() {
   });
 }
 
-async function doRegister() {
-  const errEl = $("#register-error");
-  errEl.classList.add("hidden");
-  const defaultRoles = registerOptions.default_job_roles || ["拓源人", "接口人"];
-  const payload = {
-    employee_id: $("#reg-employee-id").value.trim(),
-    ...collectUserProfilePayload("reg"),
-    password: $("#reg-password").value,
-    job_roles: defaultRoles,
-  };
-  try {
-    await api("/api/register", { method: "POST", json: payload });
-    toast("注册成功，请登录");
-    showLogin();
-    $("#login-username").value = payload.employee_id;
-    $("#login-password").value = payload.password;
-  } catch (e) {
-    errEl.textContent = e.message;
-    errEl.classList.remove("hidden");
-  }
-}
-
-$("#goto-register")?.addEventListener("click", e => { e.preventDefault(); showRegisterView(); });
-$("#goto-login")?.addEventListener("click", e => { e.preventDefault(); showLogin(); });
-$("#register-btn")?.addEventListener("click", doRegister);
 $("#profile-btn")?.addEventListener("click", () => openProfileModal());
 
-loadRegisterOptions();
+loadAccountOptions();

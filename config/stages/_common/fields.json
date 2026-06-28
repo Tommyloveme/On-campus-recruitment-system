@@ -33,7 +33,7 @@
     },
     {
       "key": "sourcer",
-      "label": "拓源人（填写工号）",
+      "label": "拓源人",
       "excel_column": "拓源人",
       "type": "text",
       "visible": true,
@@ -52,7 +52,7 @@
     },
     {
       "key": "interface_person",
-      "label": "接口人（填写工号）",
+      "label": "接口人",
       "excel_column": "接口人",
       "type": "text",
       "visible": true,

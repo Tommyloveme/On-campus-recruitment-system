@@ -10,8 +10,16 @@ from campus.auth.permissions import can_delete_group, can_edit_group
 from campus.config_loader import editable_fields, field_labels, get_stage_meta, validate_stage
 from campus.db.connection import get_db, now_str
 from campus.logging_util import log, who
+from campus.services.acl import (
+    RESOURCE_TYPE_GROUP,
+    accessible_resource_ids,
+    can_delete_candidate,
+    can_edit_candidate,
+    can_see_candidate,
+    effective_permissions,
+)
 from campus.services.audit import add_log
-from campus.services.candidates import candidate_dict, group_name_map
+from campus.services.candidates import candidate_dict, enrich_candidate_employee_displays, group_name_map
 from campus.services.users import (
     apply_registration_candidate_defaults,
     apply_registration_employee_fields,
@@ -31,6 +39,10 @@ bp = Blueprint("candidates", __name__)
 def api_candidates():
     db = get_db()
     rows = db.execute("SELECT * FROM candidates ORDER BY updated_at DESC").fetchall()
+    # ACL 过滤：仅保留当前用户可见的候选人（admin/global_viewer 不受限）
+    visible_ids = accessible_resource_ids(db, g.user, RESOURCE_TYPE_GROUP, "visibility")
+    if visible_ids is not None:
+        rows = [r for r in rows if can_see_candidate(db, g.user, r)]
     names = group_name_map()
     result = [candidate_dict(r, names) for r in rows]
     q = (request.args.get("q") or "").strip()
@@ -39,6 +51,7 @@ def api_candidates():
         result = [c for c in result if any(q in str(v) for v in c["data"].values())]
     if stage_filter:
         result = [c for c in result if c["data"].get("current_stage") == stage_filter]
+    enrich_candidate_employee_displays(db, result)
     log.debug("候选人列表 %s 返回%d条 q=%s group=%s stage=%s",
               who(g.user), len(result), q or "-", request.args.get("group_id", "-"), stage_filter or "-")
     return jsonify(result)
@@ -59,7 +72,16 @@ def api_candidate_create():
     if not can_edit_group(g.user):
         log.warning("新增候选人权限拒绝 %s", who(g.user))
         return jsonify({"error": "无新增候选人权限"}), 403
-    group_id = None
+    # 可选 group_id：将候选人归入指定资源分组（需具备该分组的 write/manage 权限）
+    group_id = b.get("group_id")
+    if group_id is not None:
+        group_id = int(group_id)
+        eff = effective_permissions(get_db(), g.user, RESOURCE_TYPE_GROUP, group_id)
+        if not (eff.get("write") or eff.get("manage")):
+            log.warning("新增候选人到资源分组权限拒绝 %s gid=%s", who(g.user), group_id)
+            return jsonify({"error": "无该资源分组的写入权限"}), 403
+    else:
+        group_id = None
     fields = editable_fields(stage)
     data = {f["key"]: str(b.get("data", {}).get(f["key"], "") or "").strip() for f in fields}
     if not data.get("name"):
@@ -91,6 +113,10 @@ def api_candidate_create():
         if match and can_edit_group(g.user):
             old = json.loads(match["data"])
             if not confirm_overwrite:
+                sourcer = (old.get("sourcer") or "").strip()
+                iface = (old.get("interface_person") or "").strip()
+                sourcer_row = lookup_employee_by_username(db, sourcer) if sourcer else None
+                iface_row = lookup_employee_by_username(db, iface) if iface else None
                 return jsonify({
                     "error": "该手机号已存在",
                     "code": "phone_duplicate",
@@ -98,8 +124,10 @@ def api_candidate_create():
                         "id": match["id"],
                         "name": old.get("name") or "",
                         "phone": phone,
-                        "sourcer": old.get("sourcer") or "",
-                        "interface_person": old.get("interface_person") or "",
+                        "sourcer": sourcer,
+                        "interface_person": iface,
+                        "sourcer_display": (sourcer_row["display_name"] if sourcer_row else sourcer) if sourcer else "",
+                        "interface_person_display": (iface_row["display_name"] if iface_row else iface) if iface else "",
                     },
                 }), 409
             merged = merge_candidate_data(old, data)
@@ -138,9 +166,9 @@ def api_candidate_update(cid):
     row = db.execute("SELECT * FROM candidates WHERE id=?", (cid,)).fetchone()
     if not row:
         return jsonify({"error": "候选人不存在"}), 404
-    if not can_edit_group(g.user, row["group_id"]):
+    if not can_edit_candidate(db, g.user, row):
         log.warning("修改候选人权限拒绝 %s cid=%d", who(g.user), cid)
-        return jsonify({"error": "无该分组的编辑权限"}), 403
+        return jsonify({"error": "无该候选人的编辑权限"}), 403
     b = request.get_json(force=True)
     old = json.loads(row["data"])
     incoming = b.get("data", {})
@@ -206,9 +234,9 @@ def api_candidate_delete(cid):
     row = db.execute("SELECT * FROM candidates WHERE id=?", (cid,)).fetchone()
     if not row:
         return jsonify({"error": "候选人不存在"}), 404
-    if not can_delete_group(g.user, row["group_id"]):
+    if not can_delete_candidate(db, g.user, row):
         log.warning("删除候选人权限拒绝 %s cid=%d", who(g.user), cid)
-        return jsonify({"error": "无删除权限（仅系统管理员和组管理员可删除）"}), 403
+        return jsonify({"error": "无删除权限（需对该候选人所属资源分组具备写/管理权限）"}), 403
     name = json.loads(row["data"]).get("name", "")
     remove_resume_file(row["resume_file"])
     db.execute("DELETE FROM candidates WHERE id=?", (cid,))
@@ -233,7 +261,7 @@ def api_candidates_batch_delete():
 
     deleted_names = []
     for row in rows:
-        if not can_delete_group(g.user, row["group_id"]):
+        if not can_delete_candidate(db, g.user, row):
             continue
         remove_resume_file(row["resume_file"])
         db.execute("DELETE FROM candidates WHERE id=?", (row["id"],))

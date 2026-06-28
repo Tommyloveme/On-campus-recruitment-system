@@ -18,6 +18,7 @@ from campus.config_loader import (
 )
 from campus.db.connection import get_db, now_str
 from campus.logging_util import log, who
+from campus.services.acl import can_see_candidate
 from campus.services.audit import add_log
 from campus.stage_engine import compute_current_stage, load_master_import_config, run_dual_master_refresh
 from campus.services.master_import_store import (
@@ -326,6 +327,8 @@ def api_candidates_export():
     exported = 0
     for row in rows:
         if not can_view_group(g.user):
+            continue
+        if not can_see_candidate(get_db(), g.user, row):
             continue
         data = json.loads(row["data"])
         ws.append([data.get(f["key"], "") for f in fields])

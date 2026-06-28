@@ -58,40 +58,50 @@ call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 
-# 1b. 用户注册与个人资料
-req = urllib.request.Request(BASE + "/api/register/options")
+# 1b. 账户选项与个人资料（不提供自助注册，账号由管理员统一创建）
+req = urllib.request.Request(BASE + "/api/account/options")
 with opener.open(req) as r:
-    reg_opts = json.loads(r.read().decode())
-check("注册可选业务角色", "拓源人" in reg_opts["job_roles"] and "接口人" in reg_opts["default_job_roles"])
-check("注册下发部门配置", "存储部" in reg_opts.get("dept_level2_options", []))
-s, _ = call("POST", "/api/register", {
-    "employee_id": "abc12345", "display_name": "注册测试", "supervisor": "张主管",
-    "dept_level2": "存储部", "password": "123456", "job_roles": ["拓源人"],
-}, expect_error=True)
-check("工号须8位数字", s == 400)
-s, _ = call("POST", "/api/register", {
-    "employee_id": "12345678", "display_name": "Test", "supervisor": "张主管",
-    "dept_level2": "存储部", "password": "123456", "job_roles": ["拓源人"],
-}, expect_error=True)
-check("姓名须中文", s == 400)
-s, _ = call("POST", "/api/register", {
-    "employee_id": "admin", "display_name": "假管理员", "supervisor": "张主管",
-    "dept_level2": "存储部", "password": "123456", "job_roles": ["拓源人"],
-}, expect_error=True)
-check("固定管理员账号不可注册", s == 403)
+    acct_opts = json.loads(r.read().decode())
+check("账户选项下发业务角色", "拓源人" in acct_opts["job_roles"] and "接口人" in acct_opts["default_job_roles"])
+check("账户选项下发部门配置", "存储部" in acct_opts.get("dept_level2_options", []))
+
+# 自助注册接口已移除
+req = urllib.request.Request(BASE + "/api/register", data=b"{}",
+                             headers={"Content-Type": "application/json"}, method="POST")
+try:
+    with opener.open(req) as r:
+        s = r.status
+except urllib.error.HTTPError as e:
+    s = e.code
+check("自助注册接口已关闭(404)", s == 404)
+
+# 管理员统一创建测试用户
 test_emp = f"{uuid.uuid4().int % 100000000:08d}"
-s, reg_r = call("POST", "/api/register", {
-    "employee_id": test_emp, "display_name": "注册测试", "supervisor": "张主管",
-    "dept_level2": "存储部", "password": "123456", "job_roles": ["拓源人", "接口人"],
+s, _ = call("POST", "/api/users", {
+    "username": test_emp, "display_name": "Test", "supervisor": "张主管",
+    "dept_level2": "存储部", "password": "123456", "role": "editor",
+    "job_roles": ["拓源人"],
+}, expect_error=True)
+check("管理员创建用户姓名须中文", s == 400)
+s, _ = call("POST", "/api/users", {
+    "username": "admin", "display_name": "假管理员", "supervisor": "张主管",
+    "dept_level2": "存储部", "password": "123456", "role": "editor",
+    "job_roles": ["拓源人"],
+}, expect_error=True)
+check("重复账号创建被拒", s == 400)
+s, crt = call("POST", "/api/users", {
+    "username": test_emp, "display_name": "管理员创建", "supervisor": "张主管",
+    "dept_level2": "存储部", "password": "123456", "role": "editor",
+    "job_roles": ["拓源人", "接口人"],
 })
-check("用户自助注册成功", s == 200 and reg_r.get("ok"))
+check("管理员创建用户成功", s == 200 and crt.get("ok"))
 s, me_reg = call("POST", "/api/login", {"username": test_emp, "password": "123456"})
-check("注册用户可登录", s == 200 and me_reg["display_name"] == "注册测试")
+check("管理员创建的用户可登录", s == 200 and me_reg["display_name"] == "管理员创建")
 s, me_up = call("PUT", "/api/profile", {
-    "display_name": "注册测试改", "supervisor": "王主管", "dept_level2": "存储部",
+    "display_name": "管理员创建改", "supervisor": "王主管", "dept_level2": "存储部",
     "job_roles": ["拓源人", "HR"],
 })
-check("用户可更新个人资料", me_up["display_name"] == "注册测试改")
+check("用户可更新个人资料", me_up["display_name"] == "管理员创建改")
 check("普通用户不可在账户页改业务角色", "HR" not in me_up.get("job_roles", []))
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 
@@ -578,6 +588,244 @@ for t in threads:
     t.join()
 elapsed = time.time() - t0
 check(f"并发60会话全部成功(耗时{elapsed:.1f}s)", len(conc_results) == 60 and all(conc_results))
+
+# 11. 权限管理：用户分组 / 资源分组 / ACL / 批量操作 / 模板
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+
+# 11a0. 预清理上一次运行可能残留的测试数据（确保可重复执行）
+s, cands = call("GET", "/api/candidates?q=" + quote("权限隔离甲"))
+for c in cands:
+    call("DELETE", f"/api/candidates/{c['id']}")
+s, ugs0 = call("GET", "/api/user-groups")
+# 先删子分组（有 parent_id 的）再删父分组，避免父子引用拦截
+stale_ugs = [ug for ug in ugs0 if ug["name"] in ("市场部", "市场部-华东", "市场部(套用)")]
+stale_ugs.sort(key=lambda u: 0 if u.get("parent_id") else 1)
+for ug in stale_ugs:
+    call("DELETE", f"/api/user-groups/{ug['id']}")
+s, rgs0 = call("GET", "/api/resource-groups")
+for rg in rgs0:
+    if rg["name"] in ("市场部资源", "市场部资源2"):
+        call("DELETE", f"/api/resource-groups/{rg['id']}")
+s, users0 = call("GET", "/api/users")
+for u in users0:
+    if u["username"] in ("perm_a", "perm_b"):
+        call("DELETE", f"/api/users/{u['id']}")
+
+# 11a. 权限选项下发与内置权限模板
+s, perm_opts = call("GET", "/api/permissions/options")
+check("权限选项下发", s == 200 and "settings" in perm_opts and len(perm_opts["permission_templates"]) >= 4)
+check("内置权限模板就绪", any(t["name"] == "协作编辑" and t["perm_write"] for t in perm_opts["permission_templates"]))
+
+# 11b. 资源分组 CRUD（仅清理本节自己创建的，避免破坏演示/既有分组）
+s, r = call("POST", "/api/resource-groups", {"name": "市场部资源", "description": "市场部候选人分区"})
+check("创建资源分组", s == 200 and r.get("ok"))
+s, rgs = call("GET", "/api/resource-groups")
+mkt_rg = next(g for g in rgs if g["name"] == "市场部资源")
+s, _ = call("PUT", f"/api/resource-groups/{mkt_rg['id']}", {"name": "市场部资源", "description": "已更新描述"})
+check("编辑资源分组", s == 200)
+
+# 11c. 用户分组 CRUD + 成员管理
+# 仅清理本节自建的用户分组
+s, ugs0 = call("GET", "/api/user-groups")
+for ug in ugs0:
+    if ug["name"] in ("市场部", "市场部-华东", "市场部(套用)"):
+        call("DELETE", f"/api/user-groups/{ug['id']}")
+s, r = call("POST", "/api/user-groups", {"name": "市场部", "description": "市场部用户集合"})
+check("创建用户分组", s == 200 and r.get("ok"))
+s, ugs = call("GET", "/api/user-groups")
+mkt_ug = next(g for g in ugs if g["name"] == "市场部")
+# 父子嵌套
+s, r = call("POST", "/api/user-groups", {"name": "市场部-华东", "parent_id": mkt_ug["id"]})
+check("创建子用户分组(嵌套)", s == 200 and r.get("ok"))
+s, ugs = call("GET", "/api/user-groups")
+mkt_sub = next(g for g in ugs if g["name"] == "市场部-华东")
+# 环引用检测
+s, _ = call("PUT", f"/api/user-groups/{mkt_ug['id']}", {"name": "市场部", "parent_id": mkt_sub["id"]}, expect_error=True)
+check("父分组环引用被拒", s == 400)
+
+# 准备测试用户
+s, users = call("GET", "/api/users")
+for u in users:
+    if u["username"] in ("perm_a", "perm_b"):
+        call("DELETE", f"/api/users/{u['id']}")
+call("POST", "/api/users", {"username": "perm_a", "display_name": "权限甲", "role": "editor",
+                            "supervisor": "张主管", "dept_level2": "存储部"})
+call("POST", "/api/users", {"username": "perm_b", "display_name": "权限乙", "role": "editor",
+                            "supervisor": "张主管", "dept_level2": "计算部"})
+s, users = call("GET", "/api/users")
+perm_a = next(u for u in users if u["username"] == "perm_a")
+perm_b = next(u for u in users if u["username"] == "perm_b")
+
+# 添加成员（按工号 + 按角色筛选）
+s, r = call("POST", f"/api/user-groups/{mkt_ug['id']}/members", {"usernames": ["perm_a"]})
+check("按工号添加成员", s == 200 and r["added"] == 1)
+s, r = call("POST", f"/api/user-groups/{mkt_sub['id']}/members", {"filter": {"role": "editor"}})
+check("按角色筛选添加成员", s == 200 and r["added"] >= 1)
+s, members = call("GET", f"/api/user-groups/{mkt_ug['id']}/members")
+check("成员列表正确", any(m["username"] == "perm_a" for m in members))
+
+# 11d. ACL 单条授权 + 服务端强制
+# perm_a 对「市场部资源」授予 读+写
+s, _ = call("PUT", "/api/acl", {
+    "subject_type": "user", "subject_id": perm_a["id"],
+    "resource_type": "group", "resource_id": mkt_rg["id"],
+    "perm_visibility": 1, "perm_read": 1, "perm_write": 1, "perm_manage": 0,
+})
+check("单条ACL授权", s == 200)
+s, eff = call("GET", f"/api/acl/effective?resource_type=group&resource_id={mkt_rg['id']}")
+check("有效权限解析(admin全权)", eff["effective"]["write"] == 1 and eff["effective"]["manage"] == 1)
+
+# perm_a 登录：对市场部资源可见可写；perm_b 不可见
+call("POST", "/api/login", {"username": "perm_a", "password": "123456"})
+s, eff_a = call("GET", f"/api/acl/effective?resource_type=group&resource_id={mkt_rg['id']}")
+check("perm_a 对市场部资源 read+write", eff_a["effective"]["read"] == 1 and eff_a["effective"]["write"] == 1
+      and eff_a["effective"]["manage"] == 0)
+call("POST", "/api/login", {"username": "perm_b", "password": "123456"})
+s, eff_b = call("GET", f"/api/acl/effective?resource_type=group&resource_id={mkt_rg['id']}")
+check("perm_b 对市场部资源不可见", eff_b["effective"]["visibility"] == 0 and eff_b["effective"]["read"] == 0)
+
+# 11e. 候选人按资源分组隔离：在市场部资源下新增候选人，perm_b 看不到
+call("POST", "/api/login", {"username": "perm_a", "password": "123456"})
+s, r = call("POST", "/api/candidates", {
+    "stage": "registration", "group_id": mkt_rg["id"],
+    "data": {"name": "权限隔离甲", "phone": "13955556666",
+             "sourcer": "hr01", "interface_person": "hr02",
+             "education": "本科", "school": "测试大学", "major": "计算机",
+             "registration_source": "校园宣讲"},
+})
+check("perm_a 在可见资源分组下新增候选人", s == 200 and r.get("ok"))
+perm_cid = r["id"]
+s, cands_a = call("GET", "/api/candidates?q=" + quote("权限隔离甲"))
+check("perm_a 可见该候选人", len(cands_a) == 1)
+call("POST", "/api/login", {"username": "perm_b", "password": "123456"})
+s, cands_b = call("GET", "/api/candidates?q=" + quote("权限隔离甲"))
+check("perm_b 不可见该候选人(ACL过滤)", len(cands_b) == 0)
+# perm_b 尝试越权编辑被拒
+s, _ = call("PUT", f"/api/candidates/{perm_cid}", {"stage": "registration", "data": {"name": "越权改名"}}, expect_error=True)
+check("perm_b 越权编辑被拒(403)", s == 403)
+
+# 11f. 用户分组继承：perm_b 属于子分组「市场部-华东」，父分组「市场部」授权读 → perm_b 应继承可见
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+call("PUT", "/api/acl", {
+    "subject_type": "user_group", "subject_id": mkt_ug["id"],
+    "resource_type": "group", "resource_id": mkt_rg["id"],
+    "perm_visibility": 1, "perm_read": 1, "perm_write": 0, "perm_manage": 0,
+})
+call("POST", "/api/login", {"username": "perm_b", "password": "123456"})
+s, eff_b2 = call("GET", f"/api/acl/effective?resource_type=group&resource_id={mkt_rg['id']}")
+check("子分组继承父分组读权限", eff_b2["effective"]["visibility"] == 1 and eff_b2["effective"]["read"] == 1
+      and eff_b2["effective"]["write"] == 0)
+s, cands_b2 = call("GET", "/api/candidates?q=" + quote("权限隔离甲"))
+check("perm_b 继承后可见候选人", len(cands_b2) == 1)
+# 只读：写操作被拒
+s, _ = call("PUT", f"/api/candidates/{perm_cid}", {"stage": "registration", "data": {"name": "越权改名"}}, expect_error=True)
+check("perm_b 只读不可写(403)", s == 403)
+
+# 11g. 批量授权 + 预览 + manage 二次确认
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+# 预览
+s, prev = call("POST", "/api/acl/batch", {
+    "entries": [{
+        "subject_type": "user", "subject_id": perm_b["id"],
+        "resource_type": "group", "resource_id": mkt_rg["id"],
+        "perm_visibility": 1, "perm_read": 1, "perm_write": 1, "perm_manage": 1,
+    }],
+    "mode": "set", "dry_run": True,
+})
+check("批量授权预览", s == 200 and prev["dry_run"] and prev["preview"]["entry_count"] == 1)
+# 不带 confirm 授 manage 应被拒
+s, _ = call("POST", "/api/acl/batch", {
+    "entries": [{
+        "subject_type": "user", "subject_id": perm_b["id"],
+        "resource_type": "group", "resource_id": mkt_rg["id"],
+        "perm_visibility": 1, "perm_read": 1, "perm_write": 1, "perm_manage": 1,
+    }],
+    "mode": "set",
+}, expect_error=True)
+check("批量授 manage 需二次确认", s == 400)
+# 带 confirm 后成功
+s, r = call("POST", "/api/acl/batch", {
+    "entries": [{
+        "subject_type": "user", "subject_id": perm_b["id"],
+        "resource_type": "group", "resource_id": mkt_rg["id"],
+        "perm_visibility": 1, "perm_read": 1, "perm_write": 1, "perm_manage": 1,
+    }],
+    "mode": "set", "confirm": True,
+})
+check("批量授权执行成功", s == 200 and r["affected"] == 1)
+call("POST", "/api/login", {"username": "perm_b", "password": "123456"})
+s, eff_b3 = call("GET", f"/api/acl/effective?resource_type=group&resource_id={mkt_rg['id']}")
+check("perm_b 批量授权后获得 manage", eff_b3["effective"]["manage"] == 1 and eff_b3["effective"]["write"] == 1)
+
+# 11h. 跨资源复制权限
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+call("POST", "/api/resource-groups", {"name": "市场部资源2"})
+s, rgs = call("GET", "/api/resource-groups")
+mkt_rg2 = next(g for g in rgs if g["name"] == "市场部资源2")
+s, prev = call("POST", "/api/acl/copy", {
+    "resource_type": "group", "source_resource_id": mkt_rg["id"],
+    "target_resource_ids": [mkt_rg2["id"]], "dry_run": True,
+})
+check("复制权限预览", s == 200 and prev["dry_run"] and prev["preview"]["acl_rows"] >= 1)
+s, r = call("POST", "/api/acl/copy", {
+    "resource_type": "group", "source_resource_id": mkt_rg["id"],
+    "target_resource_ids": [mkt_rg2["id"]], "confirm": True,
+})
+check("复制权限执行", s == 200 and r["affected"] >= 1)
+s, copied = call("GET", f"/api/acl?resource_type=group&resource_id={mkt_rg2['id']}")
+check("目标资源已复制ACL", len(copied) >= 2)
+
+# 11i. 权限模板 CRUD
+s, r = call("POST", "/api/permission-templates", {"name": "测试模板", "description": "临时",
+         "perm_visibility": 1, "perm_read": 1, "perm_write": 0, "perm_manage": 0})
+check("创建权限模板", s == 200 and r.get("ok"))
+s, opts2 = call("GET", "/api/permissions/options")
+tpl_id = next(t["id"] for t in opts2["permission_templates"] if t["name"] == "测试模板")
+call("PUT", f"/api/permission-templates/{tpl_id}", {"name": "测试模板改", "perm_write": 1})
+s, opts3 = call("GET", "/api/permissions/options")
+check("编辑权限模板", any(t["name"] == "测试模板改" and t["perm_write"] for t in opts3["permission_templates"]))
+call("DELETE", f"/api/permission-templates/{tpl_id}")
+check("删除权限模板", all(t["name"] != "测试模板改" for t in (call("GET", "/api/permissions/options")[1]["permission_templates"])))
+
+# 11j. 用户分组模板：保存 + 套用
+s, r = call("POST", "/api/user-group-templates", {"name": "市场部套用模板", "description": "复用",
+         "member_usernames": ["perm_a", "perm_b"]})
+check("保存分组模板", s == 200 and r.get("ok"))
+s, opts4 = call("GET", "/api/permissions/options")
+ug_tpl_id = next(t["id"] for t in opts4["user_group_templates"] if t["name"] == "市场部套用模板")
+s, r = call("POST", f"/api/user-group-templates/{ug_tpl_id}/apply", {"name": "市场部(套用)"})
+check("套用分组模板创建新分组", s == 200 and r["added"] == 2)
+call("DELETE", f"/api/user-group-templates/{ug_tpl_id}")
+
+# 11k. 删除引用校验：资源分组下有候选人不可删
+s, _ = call("DELETE", f"/api/resource-groups/{mkt_rg['id']}", expect_error=True)
+check("资源分组有候选人不可删", s == 400)
+
+# 11l. Excel 导出权限矩阵
+req = urllib.request.Request(BASE + "/api/acl/export")
+with opener.open(req) as r:
+    acl_xlsx = r.read()
+    exp_count = r.headers.get("X-Export-Count")
+check("导出权限矩阵Excel", acl_xlsx[:2] == b"PK" and int(exp_count) >= 1)
+
+# 清理权限测试数据
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+s, cands = call("GET", "/api/candidates?q=" + quote("权限隔离甲"))
+for c in cands:
+    call("DELETE", f"/api/candidates/{c['id']}")
+s, ugs = call("GET", "/api/user-groups")
+stale_ugs = [ug for ug in ugs if ug["name"] in ("市场部", "市场部-华东", "市场部(套用)")]
+stale_ugs.sort(key=lambda u: 0 if u.get("parent_id") else 1)
+for ug in stale_ugs:
+    call("DELETE", f"/api/user-groups/{ug['id']}")
+s, rgs = call("GET", "/api/resource-groups")
+for rg in rgs:
+    if rg["name"] in ("市场部资源", "市场部资源2"):
+        call("DELETE", f"/api/resource-groups/{rg['id']}")
+s, users = call("GET", "/api/users")
+for u in users:
+    if u["username"] in ("perm_a", "perm_b"):
+        call("DELETE", f"/api/users/{u['id']}")
 
 # 清理测试数据
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})

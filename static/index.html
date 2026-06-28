@@ -24,54 +24,7 @@
     </div>
     <div id="login-error" class="login-error hidden"></div>
     <button id="login-btn" class="btn btn-primary btn-block">登 录</button>
-    <p class="login-switch"><a id="goto-register" href="#">没有账号？注册</a></p>
-  </div>
-</div>
-
-<!-- 注册页 -->
-<div id="register-view" class="login-wrap hidden">
-  <div class="login-card">
-    <div class="login-logo">📝</div>
-    <h1>账号注册</h1>
-    <p class="login-sub">工号将作为登录账号；系统管理员固定账号不可注册</p>
-    <div class="form-item">
-      <label>工号 *</label>
-      <input id="reg-employee-id" type="text" placeholder="8位数字工号" autocomplete="username" maxlength="8" pattern="\d{8}">
-      <p class="field-hint">工号须为8位数字，将作为登录账号</p>
-    </div>
-    <div class="form-item">
-      <label>姓名 *</label>
-      <input id="reg-display-name" type="text" placeholder="请输入中文姓名">
-      <p class="field-hint">姓名须为中文</p>
-    </div>
-    <div class="form-item">
-      <label>主管 *</label>
-      <input id="reg-supervisor" type="text" placeholder="请输入主管姓名">
-      <p class="field-hint">主管须为中文</p>
-    </div>
-    <div class="form-item">
-      <label>二层部门 *</label>
-      <select id="reg-dept-level2"><option value="">请选择</option></select>
-    </div>
-    <div class="form-item">
-      <label>三层部门</label>
-      <select id="reg-dept-level3"><option value="">（可选）</option></select>
-    </div>
-    <div class="form-item">
-      <label>密码 *</label>
-      <p class="field-hint">建议使用默认密码（123456）或简单密码，请勿使用公司统一密码</p>
-      <div class="password-wrap">
-        <input id="reg-password" type="password" placeholder="登录密码" autocomplete="new-password">
-        <button type="button" class="btn btn-ghost btn-sm pwd-toggle" data-target="reg-password" aria-label="显示密码">显示</button>
-      </div>
-    </div>
-    <div class="form-item">
-      <label>默认业务角色</label>
-      <p class="field-hint">注册后默认拥有：拓源人、接口人（可在「我的账户」中调整）</p>
-    </div>
-    <div id="register-error" class="login-error hidden"></div>
-    <button id="register-btn" class="btn btn-primary btn-block">注 册</button>
-    <p class="login-switch"><a id="goto-login" href="#">已有账号？登录</a></p>
+    <p class="login-switch">账号由系统管理员统一分配，如需开通请联系管理员</p>
   </div>
 </div>
 
@@ -115,6 +68,7 @@
 <script src="/static/js/overview.js"></script>
 <script src="/static/js/charts.js"></script>
 <script src="/static/js/admin.js"></script>
+<script src="/static/js/permissions.js"></script>
 <script src="/static/js/main.js"></script>
 </body>
 </html>

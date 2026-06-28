@@ -1,73 +1,31 @@
 # -*- coding: utf-8 -*-
-"""认证接口：登录 / 退出 / 注册 / 个人资料。"""
-import json
-import sqlite3
+"""认证接口：登录 / 退出 / 账户选项 / 个人资料。
 
+本系统不提供用户自助注册：所有账号、角色与权限均由系统管理员在
+「用户管理」中创建并分配（详见 campus/routes/users.py）。
+"""
 from flask import Blueprint, g, jsonify, request, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from campus.auth.decorators import login_required
-from campus.db.connection import get_db, now_str
+from campus.db.connection import get_db
 from campus.logging_util import log, who
 from campus.services.audit import add_log
 from campus.services.users import (
-    default_register_job_roles,
-    normalize_job_roles,
+    account_options_payload,
+    default_job_roles,
     parse_job_roles,
     parse_user_profile_body,
-    register_options_payload,
-    reserved_accounts,
     user_dict,
 )
-from campus.settings import APP_CONFIG
 
 bp = Blueprint("auth", __name__)
 
 
-@bp.get("/api/register/options")
-def api_register_options():
-    return jsonify(register_options_payload())
-
-
-@bp.post("/api/register")
-def api_register():
-    body = request.get_json(force=True)
-    username = (body.get("employee_id") or body.get("username") or "").strip()
-    if username in reserved_accounts():
-        return jsonify({"error": "系统管理员固定账号不可用于注册"}), 403
-
-    err, fields = parse_user_profile_body(body, require_employee_id=True)
-    if err:
-        return jsonify({"error": err}), 400
-
-    username = fields["employee_id"]
-
-    password = body.get("password") or APP_CONFIG["security"]["default_password"]
-    if not password:
-        return jsonify({"error": "密码不能为空"}), 400
-
-    job_roles = normalize_job_roles(body.get("job_roles") or default_register_job_roles())
-    if not job_roles:
-        return jsonify({"error": "请至少选择一个业务角色"}), 400
-
-    group_id = None
-    db = get_db()
-    try:
-        db.execute(
-            "INSERT INTO users (username, display_name, password_hash, role, group_id, "
-            "supervisor, department, dept_level2, dept_level3, job_roles, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (username, fields["display_name"], generate_password_hash(password), "editor", group_id,
-             fields["supervisor"], fields["department"], fields["dept_level2"], fields["dept_level3"],
-             json.dumps(job_roles, ensure_ascii=False), now_str()),
-        )
-    except sqlite3.IntegrityError:
-        return jsonify({"error": "该工号已注册"}), 400
-    user = db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
-    add_log(user, "user", f"{fields['display_name']} 完成了账号注册（工号 {username}）")
-    db.commit()
-    log.info("用户注册成功 username=%s roles=%s ip=%s", username, job_roles, request.remote_addr)
-    return jsonify({"ok": True, "username": username})
+@bp.get("/api/account/options")
+def api_account_options():
+    """公开接口：下发部门选项与可选业务角色（供个人资料、用户管理弹窗使用）。"""
+    return jsonify(account_options_payload())
 
 
 @bp.post("/api/login")
@@ -113,7 +71,7 @@ def api_profile_update():
     keys = user.keys() if hasattr(user, "keys") else []
     job_roles = parse_job_roles(user["job_roles"] if "job_roles" in keys else None)
     if not job_roles:
-        job_roles = list(default_register_job_roles())
+        job_roles = list(default_job_roles())
 
     db.execute(
         "UPDATE users SET display_name=?, supervisor=?, department=?, dept_level2=?, dept_level3=? WHERE id=?",

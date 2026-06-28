@@ -14,6 +14,8 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT UNIQUE NOT NULL,
+    description TEXT DEFAULT '',
+    parent_id INTEGER REFERENCES groups(id),
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS users (
@@ -66,6 +68,50 @@ CREATE TABLE IF NOT EXISTS interview_bookings (
     booked_by INTEGER REFERENCES users(id),
     created_at TEXT NOT NULL,
     UNIQUE(interviewer_id, start_at, interview_type)
+);
+CREATE TABLE IF NOT EXISTS user_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT DEFAULT '',
+    parent_id INTEGER REFERENCES user_groups(id),
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS user_group_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL REFERENCES user_groups(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    UNIQUE(group_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS user_group_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    member_usernames TEXT DEFAULT '[]',
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS permission_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    perm_visibility INTEGER NOT NULL DEFAULT 1,
+    perm_read INTEGER NOT NULL DEFAULT 1,
+    perm_write INTEGER NOT NULL DEFAULT 0,
+    perm_manage INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS acl (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject_type TEXT NOT NULL,
+    subject_id INTEGER NOT NULL,
+    resource_type TEXT NOT NULL,
+    resource_id INTEGER NOT NULL,
+    perm_visibility INTEGER NOT NULL DEFAULT 0,
+    perm_read INTEGER NOT NULL DEFAULT 0,
+    perm_write INTEGER NOT NULL DEFAULT 0,
+    perm_manage INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    UNIQUE(subject_type, subject_id, resource_type, resource_id)
 );
 """
 
@@ -138,6 +184,73 @@ def migrate(db):
         DROP TABLE candidates;
         ALTER TABLE candidates_new RENAME TO candidates;
         """)
+
+    # 权限管理：扩展 groups 表 + 新增用户分组/成员/模板/权限模板/ACL 表
+    group_cols = {r["name"] for r in db.execute("PRAGMA table_info(groups)").fetchall()}
+    if "description" not in group_cols:
+        db.execute("ALTER TABLE groups ADD COLUMN description TEXT DEFAULT ''")
+    if "parent_id" not in group_cols:
+        db.execute("ALTER TABLE groups ADD COLUMN parent_id INTEGER REFERENCES groups(id)")
+    db.executescript("""
+        CREATE TABLE IF NOT EXISTS user_groups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            description TEXT DEFAULT '',
+            parent_id INTEGER REFERENCES user_groups(id),
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS user_group_members (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            group_id INTEGER NOT NULL REFERENCES user_groups(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            created_at TEXT NOT NULL,
+            UNIQUE(group_id, user_id)
+        );
+        CREATE TABLE IF NOT EXISTS user_group_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            member_usernames TEXT DEFAULT '[]',
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS permission_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            perm_visibility INTEGER NOT NULL DEFAULT 1,
+            perm_read INTEGER NOT NULL DEFAULT 1,
+            perm_write INTEGER NOT NULL DEFAULT 0,
+            perm_manage INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS acl (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject_type TEXT NOT NULL,
+            subject_id INTEGER NOT NULL,
+            resource_type TEXT NOT NULL,
+            resource_id INTEGER NOT NULL,
+            perm_visibility INTEGER NOT NULL DEFAULT 0,
+            perm_read INTEGER NOT NULL DEFAULT 0,
+            perm_write INTEGER NOT NULL DEFAULT 0,
+            perm_manage INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            UNIQUE(subject_type, subject_id, resource_type, resource_id)
+        );
+    """)
+
+    # 首次启用权限管理：写入内置权限模板
+    if db.execute("SELECT COUNT(*) AS c FROM permission_templates").fetchone()["c"] == 0:
+        now = now_str()
+        db.executemany(
+            "INSERT INTO permission_templates (name, description, perm_visibility, perm_read, perm_write, perm_manage, created_at) "
+            "VALUES (?,?,?,?,?,?,?)",
+            [
+                ("只读访客", "仅可查看，不可修改", 1, 1, 0, 0, now),
+                ("协作编辑", "可查看与编辑，不可管理权限", 1, 1, 1, 0, now),
+                ("项目管理员", "可查看、编辑并管理权限", 1, 1, 1, 1, now),
+                ("完全不可见", "在列表与搜索中均不展示", 0, 0, 0, 0, now),
+            ],
+        )
     db.commit()
 
 

@@ -48,7 +48,34 @@ body {
   line-height: 1.5;
   box-sizing: border-box;
 }
-.registration-dept-display label { color: var(--muted); }
+.registration-form-grid .form-item-full { grid-column: 1 / -1; }
+.registration-emp-block .emp-input-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.registration-emp-block .emp-input-row input { flex: 1; min-width: 0; }
+.emp-name-display {
+  flex-shrink: 0;
+  color: var(--primary);
+  font-weight: 500;
+  font-size: 14px;
+  min-width: 72px;
+  text-align: right;
+}
+.registration-emp-block .emp-dept-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+  font-size: 13px;
+}
+.registration-emp-block .emp-dept-label { color: var(--muted); flex-shrink: 0; }
+.registration-emp-block .emp-dept-value {
+  flex: 1;
+  min-height: auto;
+  padding: 6px 10px;
+}
 .password-wrap { display: flex; gap: 8px; align-items: center; }
 .password-wrap input { flex: 1; }
 .pwd-toggle { flex-shrink: 0; min-width: 52px; }
@@ -386,3 +413,19 @@ th.sortable:hover { color: var(--primary); }
 .iv-empty { color: var(--muted); font-size: 12px; text-align: center; padding: 20px 8px; }
 .chk-inline { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; }
 .chk-inline input { width: auto; }
+
+/* ---------- 权限管理 ---------- */
+.perm-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+.perm-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.perm-select { padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+.perm-matrix th, .perm-matrix td { text-align: center; }
+.perm-matrix td:nth-child(2), .perm-matrix th:nth-child(2) { text-align: left; }
+.perm-cell input { width: auto; cursor: pointer; }
+.perm-batch-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.perm-member-list .table-wrap { max-height: 360px; overflow: auto; }
+.checkbox-group { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.checkbox-item { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.checkbox-item input { width: auto; }
+@media (max-width: 900px) {
+  .perm-batch-grid { grid-template-columns: 1fr; }
+}

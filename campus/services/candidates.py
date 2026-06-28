@@ -24,3 +24,29 @@ def candidate_dict(row, group_names=None):
     }
 
 
+def enrich_candidate_employee_displays(db, items):
+    """为候选人列表补充拓源人/接口人姓名展示（存储仍为工号）。"""
+    usernames = set()
+    for c in items:
+        d = c["data"]
+        s = (d.get("sourcer") or "").strip()
+        i = (d.get("interface_person") or "").strip()
+        if s:
+            usernames.add(s)
+        if i:
+            usernames.add(i)
+    if not usernames:
+        return items
+    ph = ",".join("?" * len(usernames))
+    rows = db.execute(
+        f"SELECT username, display_name FROM users WHERE username IN ({ph})",
+        list(usernames),
+    ).fetchall()
+    name_map = {r["username"]: r["display_name"] for r in rows}
+    for c in items:
+        d = c["data"]
+        s = (d.get("sourcer") or "").strip()
+        i = (d.get("interface_person") or "").strip()
+        c["sourcer_display"] = name_map.get(s, s) if s else ""
+        c["interface_person_display"] = name_map.get(i, i) if i else ""
+    return items

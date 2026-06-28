@@ -97,7 +97,7 @@ async function loadBackupList() {
 }
 
 function adminJobRoleOptions() {
-  return (window.registerOptions && window.registerOptions.job_roles) ||
+  return (window.accountOptions && window.accountOptions.job_roles) ||
     ["拓源人", "接口人", "技术面试官", "主管面试官", "HR", "BA"];
 }
 

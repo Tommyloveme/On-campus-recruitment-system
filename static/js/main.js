@@ -6,6 +6,7 @@ const TOOL_TABS = {
   charts: { label: "数据图表", render: renderCharts },
   logs: { label: "操作日志", render: renderLogs },
   admin: { label: "系统管理", render: renderAdmin },
+  permissions: { label: "权限管理", render: renderPermissions },
 };
 
 /** 分组 id -> 子菜单 tab id 列表（用于展开与高亮） */
@@ -49,6 +50,7 @@ function buildNavStructure() {
       type: "group", id: "admin_board", label: "管理看板", items: [
         { id: "logs", label: "操作日志" },
         { id: "admin", label: "系统管理" },
+        { id: "permissions", label: "权限管理" },
       ],
     });
   }
