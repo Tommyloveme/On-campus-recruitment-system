@@ -2,20 +2,19 @@
 "use strict";
 
 let accountOptions = {
+  user_fields: [],
   employee_id_digits: 8,
-  dept_level2_options: [],
-  dept_level3_options: [],
 };
+
+function findField(key) {
+  return (accountOptions.user_fields || []).find(f => f.key === key) || null;
+}
 
 async function loadAccountOptions() {
   try {
     accountOptions = await fetch("/api/account/options").then(r => r.json());
   } catch (_) {
-    accountOptions = {
-      employee_id_digits: 8,
-      dept_level2_options: ["存储部", "计算部", "网络部", "软件部"],
-      dept_level3_options: ["块存储", "对象存储", "通用计算", "研发一组"],
-    };
+    accountOptions = { user_fields: [], employee_id_digits: 8 };
   }
   window.accountOptions = accountOptions;
 }
@@ -26,9 +25,10 @@ function userProfileConfig() {
 
 function renderDeptLevelSelects(l2El, l3El, l2Val, l3Val) {
   if (!l2El || !l3El) return;
-  const cfg = userProfileConfig();
-  const l2Opts = cfg.dept_level2_options || [];
-  const l3Opts = cfg.dept_level3_options || [];
+  const f2 = findField("dept_level2");
+  const f3 = findField("dept_level3");
+  const l2Opts = (f2 && f2.options) || [];
+  const l3Opts = (f3 && f3.options) || [];
   l2El.innerHTML = "<option value=\"\">请选择</option>" +
     l2Opts.map(o => `<option value="${esc(o)}"${o === l2Val ? " selected" : ""}>${esc(o)}</option>`).join("");
   l3El.innerHTML = "<option value=\"\">（可选）</option>" +

@@ -1,19 +1,16 @@
 # -*- coding: utf-8 -*-
-"""用户资料、可选业务角色与字段校验相关业务逻辑。
+"""用户资料与字段校验相关业务逻辑。
 
-本系统不提供用户自助注册：所有账号、角色与权限均由系统管理员统一创建与分配。
-本模块仅提供账号选项下发、个人资料校验与候选人引用工号的合法性校验。
+唯一性由工号(username)决定，其余均为附属信息。附属信息字段由
+config/user_fields.json 配置：内置字段(builtin=true)对应 users 表列，
+自定义字段存入 users.extra(JSON)。本系统不提供用户自助注册。
 """
 import json
 import re
 
 from campus.db.connection import get_db
-from campus.settings import load_app_config
+from campus.settings import load_user_fields, USER_FIELDS, load_app_config
 
-DEFAULT_JOB_ROLES = ("拓源人", "接口人", "技术面试官", "主管面试官", "HR", "BA")
-DEFAULT_NEW_USER_JOB_ROLES = ("拓源人", "接口人")
-DEFAULT_DEPT_LEVEL2 = ("存储部", "计算部", "网络部", "软件部")
-DEFAULT_DEPT_LEVEL3 = ("块存储", "对象存储", "通用计算", "研发一组")
 CHINESE_NAME_RE = re.compile(r"^[\u4e00-\u9fff]+$")
 
 
@@ -28,36 +25,58 @@ def reserved_accounts():
     return accounts
 
 
-def job_role_options():
-    """可选业务角色集合（由系统管理员在创建/编辑用户时勾选）。"""
-    sec = security_config()
-    roles = sec.get("job_roles", sec.get("registerable_job_roles", DEFAULT_JOB_ROLES))
-    return list(roles)
-
-
-def default_job_roles():
-    """新用户默认业务角色（个人资料缺失角色时回退使用）。"""
-    sec = security_config()
-    roles = sec.get(
-        "default_new_user_job_roles",
-        sec.get("default_register_job_roles", DEFAULT_NEW_USER_JOB_ROLES),
-    )
-    return list(roles)
-
-
-def user_profile_config():
-    cfg = load_app_config().get("user_profile", {})
-    return {
-        "employee_id_digits": int(cfg.get("employee_id_digits", 8)),
-        "dept_level2_options": list(cfg.get("dept_level2_options", DEFAULT_DEPT_LEVEL2)),
-        "dept_level3_options": list(cfg.get("dept_level3_options", DEFAULT_DEPT_LEVEL3)),
-    }
+def user_fields_config():
+    """返回用户附属信息字段配置（实时读取，便于热更新）。"""
+    return load_user_fields()
 
 
 def account_options_payload():
-    return {
-        **user_profile_config(),
-    }
+    """下发用户附属信息字段配置（供个人资料、用户管理弹窗渲染）。"""
+    return {"user_fields": user_fields_config()}
+
+
+def persist_user_columns(db, uid, fields, role, password=None, is_create=False, username=None):
+    """根据解析后的 fields（builtin/custom）写入用户表列与 extra JSON。"""
+    b = fields["builtin"]
+    c = fields["custom"]
+    extra = json.dumps(c, ensure_ascii=False)
+    if is_create:
+        from werkzeug.security import generate_password_hash
+        from campus.db.connection import now_str
+        db.execute(
+            "INSERT INTO users (username, display_name, password_hash, role, group_id, "
+            "supervisor, department, dept_level2, dept_level3, extra, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (username, b.get("display_name", ""), generate_password_hash(password),
+             role, None, b.get("supervisor", ""), b.get("department", ""),
+             b.get("dept_level2", ""), b.get("dept_level3", ""), extra, now_str()),
+        )
+    else:
+        db.execute(
+            "UPDATE users SET display_name=?, role=?, supervisor=?, department=?, "
+            "dept_level2=?, dept_level3=?, extra=? WHERE id=?",
+            (b.get("display_name", ""), role, b.get("supervisor", ""), b.get("department", ""),
+             b.get("dept_level2", ""), b.get("dept_level3", ""), extra, uid),
+        )
+        if password:
+            from werkzeug.security import generate_password_hash
+            db.execute("UPDATE users SET password_hash=? WHERE id=?",
+                       (generate_password_hash(password), uid))
+
+
+def builtin_fields():
+    return [f for f in user_fields_config() if f.get("builtin")]
+
+
+def custom_fields():
+    return [f for f in user_fields_config() if not f.get("builtin")]
+
+
+def field_def(key):
+    for f in user_fields_config():
+        if f["key"] == key:
+            return f
+    return None
 
 
 def is_chinese_only(text):
@@ -72,132 +91,83 @@ def format_user_department(level2, level3):
     return f"{l2}/{l3}" if l3 else l2
 
 
-def split_department_field(department):
-    dept = (department or "").strip()
-    if "/" in dept:
-        parts = dept.split("/", 1)
-        return parts[0].strip(), parts[1].strip()
-    return dept, ""
+def parse_extra(raw):
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw:
+        try:
+            v = json.loads(raw)
+            return v if isinstance(v, dict) else {}
+        except (TypeError, json.JSONDecodeError):
+            return {}
+    return {}
 
 
 def parse_user_profile_body(body, require_employee_id=False):
-    """校验并规范化个人资料字段，返回 (error_message, fields_dict)。"""
-    cfg = user_profile_config()
-    digits = cfg["employee_id_digits"]
-    employee_id = None
+    """按 user_fields.json 校验并规范化附属信息字段，返回 (error, fields)。
 
+    fields 包含：builtin 字段（写入内置列）与 custom 字段（写入 extra JSON）。
+    employee_id 即工号(username)。
+    """
+    cfg = user_fields_config()
+    employee_id = None
     if require_employee_id:
         employee_id = (body.get("employee_id") or body.get("username") or "").strip()
+        digits = int(load_app_config().get("user_profile", {}).get("employee_id_digits", 8))
         if not employee_id:
             return "工号不能为空", None
         if not re.fullmatch(rf"\d{{{digits}}}", employee_id):
             return f"工号须为{digits}位数字", None
 
-    display_name = (body.get("display_name") or "").strip()
-    supervisor = (body.get("supervisor") or "").strip()
-    dept_level2 = (body.get("dept_level2") or "").strip()
-    dept_level3 = (body.get("dept_level3") or "").strip()
+    builtin = {}
+    custom = {}
+    for f in cfg:
+        key = f["key"]
+        val = body.get(key)
+        if val is not None:
+            val = str(val).strip() if not isinstance(val, (list, dict)) else val
+        required = bool(f.get("required"))
+        if required and not val:
+            return f"{f['label']}不能为空", None
+        if f.get("pattern") == "chinese" and val and not is_chinese_only(val):
+            return f"{f['label']}须为中文", None
+        if f.get("type") == "select" and val and val not in (f.get("options") or []):
+            return f"{f['label']}不在可选范围内", None
+        if f.get("builtin"):
+            builtin[key] = val or ""
+        else:
+            custom[key] = val or ""
 
-    if not dept_level2 and body.get("department"):
-        dept_level2, dept_level3_from_legacy = split_department_field(body.get("department"))
-        if not dept_level3:
-            dept_level3 = dept_level3_from_legacy
+    # department 自动由 dept_level2/level3 拼接（若配置了该内置字段）
+    if "dept_level2" in builtin:
+        builtin.setdefault("department", format_user_department(builtin.get("dept_level2"), builtin.get("dept_level3")))
 
-    if not display_name:
-        return "姓名不能为空", None
-    if not is_chinese_only(display_name):
-        return "姓名须为中文", None
-    if not supervisor:
-        return "主管不能为空", None
-    if not is_chinese_only(supervisor):
-        return "主管须为中文", None
-    if not dept_level2:
-        return "请选择二层部门", None
-
-    l2_opts = set(cfg["dept_level2_options"])
-    l3_opts = set(cfg["dept_level3_options"])
-    if dept_level2 not in l2_opts:
-        return "二层部门不在可选范围内", None
-    if dept_level3 and dept_level3 not in l3_opts:
-        return "三层部门不在可选范围内", None
-
-    fields = {
-        "display_name": display_name,
-        "supervisor": supervisor,
-        "dept_level2": dept_level2,
-        "dept_level3": dept_level3,
-        "department": format_user_department(dept_level2, dept_level3),
-    }
     if employee_id is not None:
-        fields["employee_id"] = employee_id
-    return None, fields
-
-
-def parse_job_roles(raw):
-    if isinstance(raw, list):
-        roles = [str(r).strip() for r in raw if str(r).strip()]
-    elif raw:
-        try:
-            roles = json.loads(raw)
-            roles = roles if isinstance(roles, list) else []
-        except (TypeError, json.JSONDecodeError):
-            roles = []
-    else:
-        roles = []
-    return roles
-
-
-def normalize_job_roles(raw_roles):
-    allowed = set(job_role_options())
-    roles = parse_job_roles(raw_roles)
-    seen = set()
-    out = []
-    for r in roles:
-        if r in allowed and r not in seen:
-            seen.add(r)
-            out.append(r)
-    return out
+        builtin["employee_id"] = employee_id
+    return None, {"builtin": builtin, "custom": custom}
 
 
 def user_dict(u):
+    """序列化用户：工号 + 角色 + 所有配置字段（builtin 列 + extra JSON）。"""
     keys = u.keys() if hasattr(u, "keys") else []
-    supervisor = u["supervisor"] if "supervisor" in keys else ""
-    department = u["department"] if "department" in keys else ""
-    dept_level2 = u["dept_level2"] if "dept_level2" in keys else ""
-    dept_level3 = u["dept_level3"] if "dept_level3" in keys else ""
-    if not dept_level2 and department:
-        dept_level2, dept_level3 = split_department_field(department)
-    if not department:
-        department = format_user_department(dept_level2, dept_level3)
-    job_roles = parse_job_roles(u["job_roles"] if "job_roles" in keys else None)
-    return {
+    extra = parse_extra(u["extra"] if "extra" in keys else None)
+    out = {
         "id": u["id"],
         "username": u["username"],
         "display_name": u["display_name"],
         "role": u["role"],
-        "supervisor": supervisor or "",
-        "department": department or "",
-        "dept_level2": dept_level2 or "",
-        "dept_level3": dept_level3 or "",
-        "job_roles": job_roles,
     }
-
-
-def resolve_group_id_for_user(department, explicit_group_id=None):
-    if explicit_group_id:
-        return explicit_group_id
-    db = get_db()
-    dept = (department or "").strip()
-    if dept:
-        row = db.execute("SELECT id FROM groups WHERE name=?", (dept,)).fetchone()
-        if row:
-            return row["id"]
-    row = db.execute("SELECT id FROM groups ORDER BY id LIMIT 1").fetchone()
-    return row["id"] if row else None
+    for f in user_fields_config():
+        key = f["key"]
+        if f.get("builtin"):
+            out[key] = u[key] if key in keys else ""
+        else:
+            out[key] = extra.get(key, "")
+    return out
 
 
 def user_dept_display(user_row):
-    """用户二层/三层部门展示文本（用于登记拓源人/接口人部门）。"""
+    """用户二层/三层部门展示文本。"""
     keys = user_row.keys() if hasattr(user_row, "keys") else []
     dept_level2 = user_row["dept_level2"] if "dept_level2" in keys else ""
     dept_level3 = user_row["dept_level3"] if "dept_level3" in keys else ""
@@ -205,6 +175,14 @@ def user_dept_display(user_row):
     if not dept_level2 and department:
         dept_level2, dept_level3 = split_department_field(department)
     return format_user_department(dept_level2, dept_level3) or (department or "").strip()
+
+
+def split_department_field(department):
+    dept = (department or "").strip()
+    if "/" in dept:
+        parts = dept.split("/", 1)
+        return parts[0].strip(), parts[1].strip()
+    return dept, ""
 
 
 def lookup_employee_by_username(db, username):

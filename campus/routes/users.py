@@ -1,25 +1,26 @@
 # -*- coding: utf-8 -*-
-"""用户管理接口（纯分组授权模型，已取消业务角色）。
+"""用户管理接口（纯模块授权模型，已取消业务角色与用户/资源分组）。
 
-系统仅区分「系统管理员」(admin) 与普通用户 (user)。主管/部门等信息仍绑定
-用户但移至二级菜单维护。新建用户自动加入「默认分组」获得基线权限。
+系统仅区分「系统管理员」(admin) 与普通用户 (user)。附属信息字段由
+config/user_fields.json 配置；唯一性由工号(username)决定。
 """
-import json
 import sqlite3
 
 from flask import Blueprint, g, jsonify, request
-from werkzeug.security import generate_password_hash
 
 from campus.auth.decorators import admin_required, login_required
-from campus.db.connection import get_db, now_str
-from campus.services.acl import auto_join_default_group, user_group_ids_of
+from campus.db.connection import get_db
 from campus.services.audit import add_log
 from campus.services.users import (
-    parse_user_profile_body,
-    user_dict,
-    user_dept_display,
-    validate_registration_user_refs,
+    builtin_fields,
+    custom_fields,
     lookup_employee_by_username,
+    parse_extra,
+    parse_user_profile_body,
+    persist_user_columns,
+    user_dept_display,
+    user_dict,
+    validate_registration_user_refs,
 )
 from campus.settings import APP_CONFIG
 
@@ -32,9 +33,8 @@ def _user_row_dict(row):
     return user_dict(row)
 
 
-def _user_with_groups(db, row):
+def _user_full(db, row):
     d = _user_row_dict(row)
-    d["group_ids"] = user_group_ids_of(db, row["id"])
     d["dept_display"] = user_dept_display(row)
     return d
 
@@ -42,24 +42,17 @@ def _user_with_groups(db, row):
 @bp.get("/api/users")
 @admin_required
 def api_users():
-    """用户列表（仅系统管理员）。支持按分组、关键字过滤。"""
+    """用户列表（仅系统管理员）。支持按关键字过滤（工号/姓名/主管/部门）。"""
     db = get_db()
-    group_id = request.args.get("group_id", type=int)
     q = (request.args.get("q") or "").strip().lower()
-    sql = ("SELECT u.id, u.username, u.display_name, u.role, u.supervisor, u.department, "
-           "u.dept_level2, u.dept_level3, u.job_roles FROM users u")
-    params = []
-    if group_id:
-        sql += (" JOIN user_group_members m ON m.user_id=u.id AND m.group_id=?")
-        params.append(group_id)
-    sql += " ORDER BY u.id"
-    rows = db.execute(sql, params).fetchall()
-    out = [_user_with_groups(db, r) for r in rows]
+    rows = db.execute("SELECT * FROM users ORDER BY id").fetchall()
+    out = [_user_full(db, r) for r in rows]
     if q:
-        out = [u for u in out if q in (u["username"] or "").lower()
+        out = [u for u in out
+               if q in (u["username"] or "").lower()
                or q in (u["display_name"] or "").lower()
-               or q in (u.get("dept_display") or "").lower()
-               or q in (u.get("supervisor") or "").lower()]
+               or q in (u.get("supervisor") or "").lower()
+               or q in (u.get("dept_display") or "").lower()]
     return jsonify(out)
 
 
@@ -95,11 +88,16 @@ def api_lookup_employee():
     })
 
 
+def _persist_user_columns(db, uid, fields, role, password=None, is_create=False, username=None):
+    return persist_user_columns(db, uid, fields, role, password=password,
+                                is_create=is_create, username=username)
+
+
 @bp.post("/api/users")
 @admin_required
 def api_user_create():
     b = request.get_json(force=True)
-    username = (b.get("username") or "").strip()
+    username = (b.get("username") or b.get("employee_id") or "").strip()
     if not username:
         return jsonify({"error": "用户名（工号）不能为空"}), 400
     password = b.get("password") or APP_CONFIG["security"]["default_password"]
@@ -107,34 +105,18 @@ def api_user_create():
     if role not in VALID_ROLES:
         return jsonify({"error": "角色不合法"}), 400
 
-    profile_body = {
-        "display_name": b.get("display_name") or username,
-        "supervisor": b.get("supervisor"),
-        "dept_level2": b.get("dept_level2"),
-        "dept_level3": b.get("dept_level3"),
-        "department": b.get("department"),
-    }
-    err, fields = parse_user_profile_body(profile_body)
+    err, fields = parse_user_profile_body(b)
     if err:
         return jsonify({"error": err}), 400
 
     db = get_db()
     try:
-        db.execute(
-            "INSERT INTO users (username, display_name, password_hash, role, group_id, "
-            "supervisor, department, dept_level2, dept_level3, job_roles, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (username, fields["display_name"], generate_password_hash(password),
-             role, None, fields["supervisor"], fields["department"],
-             fields["dept_level2"], fields["dept_level3"],
-             json.dumps([], ensure_ascii=False), now_str()),
-        )
+        _persist_user_columns(db, None, fields, role, password=password,
+                              is_create=True, username=username)
     except sqlite3.IntegrityError:
-        return jsonify({"error": "用户名已存在"}), 400
+        return jsonify({"error": "工号已存在"}), 400
     uid = db.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()["id"]
-    # 自动加入默认分组以获得基线权限
-    auto_join_default_group(db, uid)
-    add_log(g.user, "user", f"{g.user['display_name']} 创建了用户「{fields['display_name']}」")
+    add_log(g.user, "user", f"{g.user['display_name']} 创建了用户「{fields['builtin'].get('display_name')}」")
     db.commit()
     return jsonify({"ok": True, "id": uid})
 
@@ -151,25 +133,21 @@ def api_user_update(uid):
     if role not in VALID_ROLES:
         return jsonify({"error": "角色不合法"}), 400
 
-    profile_body = {
-        "display_name": b.get("display_name", user["display_name"]),
-        "supervisor": b.get("supervisor", user["supervisor"]),
-        "dept_level2": b.get("dept_level2", user["dept_level2"] if "dept_level2" in user.keys() else ""),
-        "dept_level3": b.get("dept_level3", user["dept_level3"] if "dept_level3" in user.keys() else ""),
-        "department": b.get("department", user["department"]),
-    }
-    err, fields = parse_user_profile_body(profile_body)
+    # 合并既有值后再校验（前端可能只提交部分字段）
+    merged = dict(b)
+    for f in builtin_fields():
+        key = f["key"]
+        if key not in merged or merged.get(key) in (None, ""):
+            merged[key] = user[key] if key in user.keys() else ""
+    for f in custom_fields():
+        key = f["key"]
+        if key not in merged:
+            merged[key] = parse_extra(user["extra"]).get(key, "")
+    err, fields = parse_user_profile_body(merged)
     if err:
         return jsonify({"error": err}), 400
 
-    db.execute(
-        "UPDATE users SET display_name=?, role=?, supervisor=?, department=?, "
-        "dept_level2=?, dept_level3=? WHERE id=?",
-        (fields["display_name"], role, fields["supervisor"], fields["department"],
-         fields["dept_level2"], fields["dept_level3"], uid),
-    )
-    if b.get("password"):
-        db.execute("UPDATE users SET password_hash=? WHERE id=?", (generate_password_hash(b["password"]), uid))
+    _persist_user_columns(db, uid, fields, role, password=b.get("password"))
     add_log(g.user, "user", f"{g.user['display_name']} 更新了用户「{user['display_name']}」的信息")
     db.commit()
     return jsonify({"ok": True})
@@ -178,14 +156,14 @@ def api_user_update(uid):
 @bp.put("/api/users/batch")
 @admin_required
 def api_users_batch_update():
-    """批量修改用户资料（主管/二层部门/三层部门/姓名）。"""
+    """批量修改用户附属信息字段（任意 user_fields.json 中定义的字段）。"""
     b = request.get_json(force=True)
     ids = b.get("ids") or []
     if not ids:
         return jsonify({"error": "请选择至少一个用户"}), 400
     patch = b.get("patch") or {}
-    allowed = {"display_name", "supervisor", "dept_level2", "dept_level3"}
-    keys = [k for k in allowed if k in patch]
+    cfg_keys = {f["key"] for f in builtin_fields()} | {f["key"] for f in custom_fields()}
+    keys = [k for k in patch.keys() if k in cfg_keys]
     if not keys:
         return jsonify({"error": "未提供可批量修改的字段"}), 400
     db = get_db()
@@ -194,22 +172,18 @@ def api_users_batch_update():
         row = db.execute("SELECT * FROM users WHERE id=?", (int(uid),)).fetchone()
         if not row:
             continue
-        body = {k: patch[k] for k in keys}
-        # 用解析器校验（合并既有值）
-        profile_body = {
-            "display_name": body.get("display_name", row["display_name"]),
-            "supervisor": body.get("supervisor", row["supervisor"]),
-            "dept_level2": body.get("dept_level2", row["dept_level2"] if "dept_level2" in row.keys() else ""),
-            "dept_level3": body.get("dept_level3", row["dept_level3"] if "dept_level3" in row.keys() else ""),
-        }
-        err, fields = parse_user_profile_body(profile_body)
+        merged = {}
+        for f in builtin_fields():
+            k = f["key"]
+            merged[k] = patch[k] if k in patch else (row[k] if k in row.keys() else "")
+        existing_extra = parse_extra(row["extra"])
+        for f in custom_fields():
+            k = f["key"]
+            merged[k] = patch[k] if k in patch else existing_extra.get(k, "")
+        err, fields = parse_user_profile_body(merged)
         if err:
             continue
-        db.execute(
-            "UPDATE users SET display_name=?, supervisor=?, department=?, dept_level2=?, dept_level3=? WHERE id=?",
-            (fields["display_name"], fields["supervisor"], fields["department"],
-             fields["dept_level2"], fields["dept_level3"], int(uid)),
-        )
+        _persist_user_columns(db, int(uid), fields, row["role"])
         updated += 1
     add_log(g.user, "user", f"{g.user['display_name']} 批量修改了 {updated} 个用户资料")
     db.commit()
@@ -225,6 +199,7 @@ def api_user_delete(uid):
     user = db.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
     if not user:
         return jsonify({"error": "用户不存在"}), 404
+    db.execute("DELETE FROM module_acl WHERE subject_type='user' AND subject_id=?", (uid,))
     db.execute("DELETE FROM users WHERE id=?", (uid,))
     add_log(g.user, "user", f"{g.user['display_name']} 删除了用户「{user['display_name']}」")
     db.commit()

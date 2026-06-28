@@ -439,6 +439,25 @@ th.sortable:hover { color: var(--primary); }
   text-align: left; padding: 2px 4px; border-radius: 4px; font-size: 13px; }
 .perm-module-pick:hover { background: #e2e8f0; }
 .perm-enable-toggle { font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px; }
+/* 合并后 Excel 式权限矩阵 */
+.perm-grid-wrap { max-height: 70vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.perm-grid { border-collapse: separate; border-spacing: 0; font-size: 12px; min-width: 100%; }
+.perm-grid thead th { position: sticky; top: 0; background: #f1f5f9; z-index: 2; padding: 6px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.perm-grid tbody td { padding: 4px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.perm-grid tbody tr:hover { background: #f8fafc; }
+.perm-col-check { width: 34px; }
+.perm-mod-head { writing-mode: vertical-lr; text-orientation: upright; letter-spacing: 0; min-width: 30px; padding: 6px 2px; font-weight: 600; }
+.perm-mod-head.is-section { background: #e2e8f0; }
+.perm-mod-cell { text-align: center; }
+.perm-flag { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; }
+.perm-flag input { width: 14px; height: 14px; cursor: pointer; margin: 0; }
+.perm-info-cell { color: #334155; }
+.perm-actions { display: flex; gap: 4px; }
+.perm-sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 4px; }
+.perm-batch-group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.perm-batch-group select { padding: 4px 6px; font-size: 12px; }
+.perm-toolbar #perm-search { flex: 0 1 220px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 @media (max-width: 900px) {
   .perm-batch-grid { grid-template-columns: 1fr; }
   .perm-modules-layout { grid-template-columns: 1fr; }

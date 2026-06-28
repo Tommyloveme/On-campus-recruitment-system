@@ -5,7 +5,7 @@
 「用户管理」中创建并分配（详见 campus/routes/users.py）。
 """
 from flask import Blueprint, g, jsonify, request, session
-from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.security import check_password_hash
 
 from campus.auth.decorators import login_required
 from campus.db.connection import get_db
@@ -13,7 +13,11 @@ from campus.logging_util import log, who
 from campus.services.audit import add_log
 from campus.services.users import (
     account_options_payload,
+    builtin_fields,
+    custom_fields,
+    parse_extra,
     parse_user_profile_body,
+    persist_user_columns,
     user_dict,
 )
 
@@ -60,24 +64,24 @@ def api_me():
 @login_required
 def api_profile_update():
     body = request.get_json(force=True)
-    err, fields = parse_user_profile_body(body)
+    db = get_db()
+    user = g.user
+    # 合并既有值后再校验
+    merged = dict(body)
+    for f in builtin_fields():
+        k = f["key"]
+        if k not in merged or merged.get(k) in (None, ""):
+            merged[k] = user[k] if k in user.keys() else ""
+    for f in custom_fields():
+        k = f["key"]
+        if k not in merged:
+            merged[k] = parse_extra(user["extra"]).get(k, "")
+    err, fields = parse_user_profile_body(merged)
     if err:
         return jsonify({"error": err}), 400
 
-    db = get_db()
-    user = g.user
-
-    db.execute(
-        "UPDATE users SET display_name=?, supervisor=?, department=?, dept_level2=?, dept_level3=? WHERE id=?",
-        (fields["display_name"], fields["supervisor"], fields["department"],
-         fields["dept_level2"], fields["dept_level3"], user["id"]),
-    )
-    if body.get("password"):
-        db.execute(
-            "UPDATE users SET password_hash=? WHERE id=?",
-            (generate_password_hash(body["password"]), user["id"]),
-        )
-    add_log(user, "user", f"{fields['display_name']} 更新了个人账户信息")
+    persist_user_columns(db, user["id"], fields, user["role"], password=body.get("password"))
+    add_log(user, "user", f"{fields['builtin'].get('display_name')} 更新了个人账户信息")
     db.commit()
     updated = db.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
     log.info("个人资料更新 %s", who(updated))

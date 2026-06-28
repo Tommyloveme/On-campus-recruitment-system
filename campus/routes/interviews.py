@@ -71,7 +71,7 @@ def api_interview_availability_create():
     if parse_hm(start_time) + interview_cfg()["slot_minutes"] > parse_hm(end_time):
         return jsonify({"error": "起止时间间隔至少为一个面试时长（45分钟）"}), 400
 
-    group_id = b.get("group_id")
+    group_id = None
     db = get_db()
     db.execute(
         "INSERT INTO interviewer_availability (user_id, interview_type, avail_date, start_time, end_time, group_id, created_at) "

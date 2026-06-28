@@ -10,12 +10,9 @@ from campus.config_loader import editable_fields, field_labels, get_stage_meta, 
 from campus.db.connection import get_db, now_str
 from campus.logging_util import log, who
 from campus.services.acl import (
-    RESOURCE_TYPE_GROUP,
-    accessible_resource_ids,
     can_delete_candidate,
     can_edit_candidate,
     can_see_candidate,
-    effective_permissions,
     module_writable_for,
 )
 from campus.services.audit import add_log
@@ -39,10 +36,8 @@ bp = Blueprint("candidates", __name__)
 def api_candidates():
     db = get_db()
     rows = db.execute("SELECT * FROM candidates ORDER BY updated_at DESC").fetchall()
-    # ACL 过滤：仅保留当前用户可见的候选人（admin 不受限）
-    visible_ids = accessible_resource_ids(db, g.user, RESOURCE_TYPE_GROUP, "visibility")
-    if visible_ids is not None:
-        rows = [r for r in rows if can_see_candidate(db, g.user, r)]
+    # 共享池：所有登录用户可见
+    rows = [r for r in rows if can_see_candidate(db, g.user, r)]
     names = group_name_map()
     result = [candidate_dict(r, names) for r in rows]
     q = (request.args.get("q") or "").strip()
@@ -52,8 +47,8 @@ def api_candidates():
     if stage_filter:
         result = [c for c in result if c["data"].get("current_stage") == stage_filter]
     enrich_candidate_employee_displays(db, result)
-    log.debug("候选人列表 %s 返回%d条 q=%s group=%s stage=%s",
-              who(g.user), len(result), q or "-", request.args.get("group_id", "-"), stage_filter or "-")
+    log.debug("候选人列表 %s 返回%d条 q=%s stage=%s",
+              who(g.user), len(result), q or "-", stage_filter or "-")
     return jsonify(result)
 
 
@@ -73,16 +68,8 @@ def api_candidate_create():
     if not module_writable_for(g.user, stage):
         log.warning("新增候选人模块写权限拒绝 %s stage=%s", who(g.user), stage)
         return jsonify({"error": f"无「{meta['label']}」模块的写入权限"}), 403
-    # 可选 group_id：将候选人归入指定资源分组（需具备该分组的 write/manage 权限）
-    group_id = b.get("group_id")
-    if group_id is not None:
-        group_id = int(group_id)
-        eff = effective_permissions(get_db(), g.user, RESOURCE_TYPE_GROUP, group_id)
-        if not (eff.get("write") or eff.get("manage")):
-            log.warning("新增候选人到资源分组权限拒绝 %s gid=%s", who(g.user), group_id)
-            return jsonify({"error": "无该资源分组的写入权限"}), 403
-    else:
-        group_id = None
+    # 共享池：候选人不再归属资源分组
+    group_id = None
     fields = editable_fields(stage)
     data = {f["key"]: str(b.get("data", {}).get(f["key"], "") or "").strip() for f in fields}
     if not data.get("name"):
@@ -241,7 +228,7 @@ def api_candidate_delete(cid):
         return jsonify({"error": "候选人不存在"}), 404
     if not can_delete_candidate(db, g.user, row):
         log.warning("删除候选人权限拒绝 %s cid=%d", who(g.user), cid)
-        return jsonify({"error": "无删除权限（需对该候选人所属资源分组具备写/管理权限）"}), 403
+        return jsonify({"error": "无删除权限（需对候选人当前阶段模块具备写权限）"}), 403
     name = json.loads(row["data"]).get("name", "")
     remove_resume_file(row["resume_file"])
     db.execute("DELETE FROM candidates WHERE id=?", (cid,))

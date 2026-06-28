@@ -1,0 +1,81 @@
+{
+  "comment": "用户附属信息字段配置：唯一性由工号(username)决定，其余均为附属信息。管理员可在本文件新增字段并定义其操作模式（text 自由输入 / select 单选下拉，options 为可选项）。builtin 字段对应 users 表内置列；非 builtin 字段存入 users.extra(JSON)。display_name 始终必填且须中文。",
+  "fields": [
+    {
+      "key": "display_name",
+      "label": "姓名",
+      "type": "text",
+      "required": true,
+      "builtin": true,
+      "pattern": "chinese"
+    },
+    {
+      "key": "supervisor",
+      "label": "主管",
+      "type": "text",
+      "required": true,
+      "builtin": true,
+      "pattern": "chinese"
+    },
+    {
+      "key": "dept_level2",
+      "label": "二层部门",
+      "type": "select",
+      "options": [
+        "存储部",
+        "计算部",
+        "网络部",
+        "软件部"
+      ],
+      "required": true,
+      "builtin": true
+    },
+    {
+      "key": "dept_level3",
+      "label": "三层部门",
+      "type": "select",
+      "options": [
+        "块存储",
+        "对象存储",
+        "通用计算",
+        "研发一组"
+      ],
+      "required": false,
+      "builtin": true
+    },
+    {
+      "key": "department",
+      "label": "部门(自动)",
+      "type": "text",
+      "required": false,
+      "builtin": true,
+      "readonly": true
+    },
+    {
+      "key": "employee_type",
+      "label": "员工类型",
+      "type": "select",
+      "options": [
+        "校招",
+        "社招",
+        "实习"
+      ],
+      "required": false,
+      "builtin": false
+    },
+    {
+      "key": "location",
+      "label": "办公地",
+      "type": "select",
+      "options": [
+        "深圳",
+        "杭州",
+        "上海",
+        "北京",
+        "成都"
+      ],
+      "required": false,
+      "builtin": false
+    }
+  ]
+}

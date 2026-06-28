@@ -4,8 +4,6 @@
 const TOOL_TABS = {
   overview: { label: "全局总览", render: renderOverview },
   charts: { label: "数据图表", render: renderCharts },
-  logs: { label: "操作日志", render: renderLogs },
-  admin: { label: "系统管理", render: renderAdmin },
   permissions: { label: "权限管理", render: renderPermissions },
 };
 
