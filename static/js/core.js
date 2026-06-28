@@ -65,7 +65,10 @@ function openModal(title, bodyHtml, footHtml) {
   $("#modal-foot").innerHTML = footHtml || "";
   $("#modal-mask").classList.remove("hidden");
 }
-function closeModal() { $("#modal-mask").classList.add("hidden"); }
+function closeModal() {
+  $("#modal-mask").classList.add("hidden");
+  window.dispatchEvent(new CustomEvent("modal-closed"));
+}
 
 const ROLE_NAMES = {
   admin: "系统管理员", user: "普通用户",

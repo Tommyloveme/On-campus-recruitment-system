@@ -9,6 +9,7 @@ function getStageState(stageKey) {
       list: [], sort: null, selected: new Set(),
       uploadTarget: null, page: 1,
       pageSize: state.app.page_size ?? 15,
+      duplicatePhones: null,
     });
   }
   return stageStates.get(stageKey);
@@ -146,6 +147,14 @@ async function loadCandidateTable(stageKey) {
     ? `/api/candidates?stage=${stageKey}`
     : "/api/candidates";
   ss.list = await api(url);
+  if (stageKey === "registration") {
+    const all = ss.stageFilter !== false ? await api("/api/candidates") : ss.list;
+    ss.allCandidates = all;
+    ss.duplicatePhones = computeDuplicatePhones(all);
+  } else {
+    ss.allCandidates = null;
+    ss.duplicatePhones = null;
+  }
   const ids = new Set(ss.list.map(c => c.id));
   ss.selected.forEach(id => { if (!ids.has(id)) ss.selected.delete(id); });
   renderCandidateRows(stageKey);
@@ -256,6 +265,9 @@ function renderCandidateRows(stageKey) {
           } else if (f.key === "registration_source" && c.data.registration_source === "其他") {
             const custom = (c.data.registration_source_custom || "").trim();
             inner = cellHtml(f, custom ? `其他：${custom}` : "其他");
+          } else if (f.key === "phone" && stageKey === "registration" && ss.duplicatePhones &&
+            ss.duplicatePhones.has(normalizeCandidatePhone(c.data.phone))) {
+            inner = `<span class="cell-phone-dup">${esc(candidateCellValue(c, f) || "")}</span>`;
           } else {
             inner = cellHtml(f, candidateCellValue(c, f));
           }
@@ -652,6 +664,14 @@ function registrationFormFieldHtml(f, cand, stageKey, isRegCreate, lockedFields)
   if (stageKey === "registration" && (f.key === "sourcer" || f.key === "interface_person")) {
     return registrationEmployeeFieldHtml(f, cand, locked);
   }
+  if (stageKey === "registration" && f.key === "phone") {
+    return `
+    <div class="form-item phone-field-wrap${locked ? " is-master-locked" : ""}">
+      <label>${esc(f.label)}${f.required ? " *" : ""}${locked ? "（主数据锁定）" : ""}</label>
+      ${fieldInput(f, candidateFieldDefault(f, cand, isRegCreate), { locked })}
+      <div class="phone-dup-hint hidden" data-phone-dup-hint role="status"></div>
+    </div>`;
+  }
   return `
     <div class="form-item${locked ? " is-master-locked" : ""}${f.key === "registration_remark" ? " form-item-full" : ""}">
       <label>${esc(f.label)}${f.required ? " *" : ""}${locked ? "（主数据锁定）" : ""}</label>
@@ -717,11 +737,63 @@ async function validateRegistrationUserRefs(data) {
   }
 }
 
-async function postCandidateCreate(data, stageKey, confirmOverwrite = false) {
+function normalizeCandidatePhone(phone) {
+  return (phone || "").trim();
+}
+
+function computeDuplicatePhones(candidates) {
+  const counts = new Map();
+  for (const c of candidates) {
+    const ph = normalizeCandidatePhone(c.data.phone);
+    if (!ph) continue;
+    counts.set(ph, (counts.get(ph) || 0) + 1);
+  }
+  const dups = new Set();
+  counts.forEach((n, ph) => { if (n > 1) dups.add(ph); });
+  return dups;
+}
+
+function findCandidateByPhoneInList(phone, excludeId = null) {
+  const ph = normalizeCandidatePhone(phone);
+  if (!ph) return null;
+  const ss = getStageState("registration");
+  const pool = ss.allCandidates || ss.list;
+  return pool.find(c => {
+    if (excludeId != null && c.id === excludeId) return false;
+    return normalizeCandidatePhone(c.data.phone) === ph;
+  }) || null;
+}
+
+function updateRegistrationPhoneDuplicateUI(phone, excludeId, hintEl) {
+  const dup = findCandidateByPhoneInList(phone, excludeId);
+  if (dup) {
+    const name = (dup.data.name || "").trim() || "—";
+    hintEl.textContent = `该电话已登记，候选人：${name}`;
+    hintEl.classList.remove("hidden");
+  } else {
+    hintEl.classList.add("hidden");
+    hintEl.textContent = "";
+  }
+}
+
+function bindRegistrationPhoneDuplicateCheck(cand, stageKey) {
+  const modal = $("#modal-body");
+  if (!modal) return;
+  const input = modal.querySelector("[data-field='phone']");
+  const hint = modal.querySelector("[data-phone-dup-hint]");
+  if (!input || !hint) return;
+  const excludeId = cand?.id ?? null;
+  const run = () => updateRegistrationPhoneDuplicateUI(input.value, excludeId, hint);
+  input.addEventListener("input", run);
+  input.addEventListener("change", run);
+  run();
+}
+
+async function postCandidateCreate(data, stageKey) {
   const res = await fetch("/api/candidates", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data, stage: stageKey, confirm_overwrite: confirmOverwrite }),
+    body: JSON.stringify({ data, stage: stageKey }),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -732,33 +804,6 @@ async function postCandidateCreate(data, stageKey, confirmOverwrite = false) {
     throw err;
   }
   return body;
-}
-
-function openPhoneDuplicateModal(existing, data, stageKey, fields) {
-  openModal("手机号已存在", `
-    <p style="margin-bottom:12px">手机号已存在，当前修改的信息将覆盖已有候选人的登记信息。请确认是否继续保存？</p>
-    <p class="field-hint" style="margin-bottom:12px">覆盖后将以当前表单内容更新该手机号对应候选人的姓名、拓源人、接口人、学历等可编辑字段。</p>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>姓名</th><th>电话</th><th>拓源人</th><th>接口人</th></tr></thead>
-        <tbody><tr>
-          <td>${esc(existing.name || "—")}</td>
-          <td>${esc(existing.phone || "—")}</td>
-          <td>${esc(existing.sourcer_display || existing.sourcer || "—")}</td>
-          <td>${esc(existing.interface_person_display || existing.interface_person || "—")}</td>
-        </tr></tbody>
-      </table>
-    </div>`,
-    `<button class="btn" onclick="closeModal()">取消</button>
-     <button class="btn btn-danger" id="phone-dup-confirm">确认覆盖</button>`);
-  $("#phone-dup-confirm").addEventListener("click", async () => {
-    try {
-      const r = await postCandidateCreate(data, stageKey, true);
-      toast("已覆盖已有候选人信息");
-      closeModal();
-      loadCandidateTable(stageKey);
-    } catch (e) { toast(e.message, true); }
-  });
 }
 
 function openCandidateModal(cand, stageKey) {
@@ -790,7 +835,10 @@ function openCandidateModal(cand, stageKey) {
      <button class="btn btn-primary" id="cand-save">保存</button>`);
 
   if (isRegCreate) bindRegistrationSourceCustom();
-  if (stageKey === "registration") bindRegistrationEmployeeLookup();
+  if (stageKey === "registration") {
+    bindRegistrationEmployeeLookup();
+    bindRegistrationPhoneDuplicateCheck(cand, stageKey);
+  }
 
   $("#cand-save").addEventListener("click", async () => {
     const data = collectCandidateFormData(fields);
@@ -800,11 +848,17 @@ function openCandidateModal(cand, stageKey) {
       toast(`请填写：${missing.map(f => f.label).join("、")}`, true);
       return;
     }
-    if (stageKey === "registration" && !await validateRegistrationUserRefs(data)) return;
+    if (stageKey === "registration") {
+      if (findCandidateByPhoneInList(data.phone, cand?.id ?? null)) {
+        toast("该电话已被其他候选人使用，请修改后再保存", true);
+        return;
+      }
+      if (!await validateRegistrationUserRefs(data)) return;
+    }
     try {
       if (isNew) {
-        const r = await postCandidateCreate(data, stageKey, false);
-        toast(r.overwritten ? "已覆盖已有候选人" : "候选人已新增");
+        await postCandidateCreate(data, stageKey);
+        toast("候选人已新增");
       } else {
         const r = await api(`/api/candidates/${cand.id}`, { method: "PUT", json: { data, stage: stageKey } });
         toast(r.changed ? `已保存，更新了 ${r.changed} 项信息` : "内容无变化");
@@ -812,11 +866,7 @@ function openCandidateModal(cand, stageKey) {
       closeModal();
       loadCandidateTable(stageKey);
     } catch (e) {
-      if (e.code === "phone_duplicate" && e.existing) {
-        openPhoneDuplicateModal(e.existing, data, stageKey, fields);
-      } else {
-        toast(e.message, true);
-      }
+      toast(e.message, true);
     }
   });
 }
@@ -916,7 +966,7 @@ function openImportModal(stageKey) {
     </div>
     <p style="font-size:12px;color:#64748b;line-height:1.8">
       当前阶段可导入的列（config/stages/${stageKey}/fields.json）：<br>${esc(importCols)}<br>
-      已存在的候选人（按电话或姓名匹配）将被更新，其余新增。
+      已存在的候选人（按电话匹配）将被更新，无电话或电话重复的行将跳过。
     </p>`,
     `<button class="btn" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="import-go">开始导入</button>`);

@@ -16,17 +16,25 @@ from campus.services.acl import (
     module_writable_for,
 )
 from campus.services.audit import add_log
-from campus.services.candidates import candidate_dict, enrich_candidate_employee_displays, group_name_map
+from campus.services.candidates import (
+    PhoneDuplicateError,
+    candidate_dict,
+    enrich_candidate_employee_displays,
+    find_candidate_by_phone,
+    group_name_map,
+    insert_candidate_row,
+    normalize_candidate_phone,
+    phone_duplicate_payload,
+    update_candidate_row,
+)
 from campus.services.users import (
     apply_registration_candidate_defaults,
     apply_registration_employee_fields,
     validate_registration_manual_create,
     validate_registration_user_refs,
-    user_dept_display,
-    lookup_employee_by_username,
 )
 from campus.services.resumes import remove_resume_file
-from campus.stage_engine import compute_current_stage, merge_candidate_data, build_global_candidate_index
+from campus.stage_engine import compute_current_stage
 
 bp = Blueprint("candidates", __name__)
 
@@ -91,60 +99,24 @@ def api_candidate_create():
             return jsonify({"error": ref_err, "code": "user_not_registered"}), 400
         data = apply_registration_employee_fields(db, data)
 
-    phone = data.get("phone", "").strip()
-    confirm_overwrite = bool(b.get("confirm_overwrite"))
-
-    # 登记阶段：同手机号须用户确认后才覆盖已有候选人
-    if stage == "registration" and phone:
-        _, by_phone, _ = build_global_candidate_index(db)
-        match = by_phone.get(phone)
-        if match and module_writable_for(g.user, "registration"):
-            old = json.loads(match["data"])
-            if not confirm_overwrite:
-                sourcer = (old.get("sourcer") or "").strip()
-                iface = (old.get("interface_person") or "").strip()
-                sourcer_row = lookup_employee_by_username(db, sourcer) if sourcer else None
-                iface_row = lookup_employee_by_username(db, iface) if iface else None
-                return jsonify({
-                    "error": "该手机号已存在",
-                    "code": "phone_duplicate",
-                    "existing": {
-                        "id": match["id"],
-                        "name": old.get("name") or "",
-                        "phone": phone,
-                        "sourcer": sourcer,
-                        "interface_person": iface,
-                        "sourcer_display": (sourcer_row["display_name"] if sourcer_row else sourcer) if sourcer else "",
-                        "interface_person_display": (iface_row["display_name"] if iface_row else iface) if iface else "",
-                    },
-                }), 409
-            merged = merge_candidate_data(old, data)
-            merged["registration_time"] = data.get("registration_time") or today
-            if not str(old.get("registration_status") or "").strip():
-                merged["registration_status"] = data.get("registration_status", "待投递")
-            compute_current_stage(merged)
-            db.execute(
-                "UPDATE candidates SET data=?, updated_at=? WHERE id=?",
-                (json.dumps(merged, ensure_ascii=False), now_str(), match["id"]),
-            )
-            name = merged.get("name") or old.get("name", "")
-            add_log(g.user, "update",
-                    f"{g.user['display_name']} 登记覆盖了候选人「{name}」（电话 {phone}）",
-                    match["id"], name)
-            db.commit()
-            log.info("登记覆盖 %s id=%d phone=%s", who(g.user), match["id"], phone)
-            return jsonify({"ok": True, "id": match["id"], "overwritten": True})
+    phone = normalize_candidate_phone(data.get("phone"))
+    if not phone:
+        return jsonify({"error": "电话不能为空，候选人以电话作为唯一标识"}), 400
+    data["phone"] = phone
+    dup = find_candidate_by_phone(db, phone)
+    if dup:
+        return jsonify(phone_duplicate_payload(db, dup, phone)), 409
 
     compute_current_stage(data)
-    cur = db.execute(
-        "INSERT INTO candidates (group_id, data, created_at, updated_at) VALUES (?,?,?,?)",
-        (group_id, json.dumps(data, ensure_ascii=False), now_str(), now_str()),
-    )
+    try:
+        cid = insert_candidate_row(db, data, group_id=group_id)
+    except PhoneDuplicateError as e:
+        return jsonify(e.payload), 409
     add_log(g.user, "create", f"{g.user['display_name']} 在{meta['label']}新增了候选人「{data['name']}」",
-            cur.lastrowid, data["name"])
+            cid, data["name"])
     db.commit()
-    log.info("新增候选人 %s id=%d name=%s stage=%s", who(g.user), cur.lastrowid, data["name"], stage)
-    return jsonify({"ok": True, "id": cur.lastrowid})
+    log.info("新增候选人 %s id=%d name=%s stage=%s phone=%s", who(g.user), cid, data["name"], stage, phone)
+    return jsonify({"ok": True, "id": cid})
 
 
 @bp.put("/api/candidates/<int:cid>")
@@ -198,6 +170,13 @@ def api_candidate_update(cid):
         return jsonify({"ok": True, "changed": 0})
     if not new.get("name"):
         return jsonify({"error": "候选人姓名不能为空"}), 400
+    phone = normalize_candidate_phone(new.get("phone"))
+    if not phone:
+        return jsonify({"error": "电话不能为空，候选人以电话作为唯一标识"}), 400
+    new["phone"] = phone
+    dup = find_candidate_by_phone(db, phone, exclude_id=cid)
+    if dup:
+        return jsonify(phone_duplicate_payload(db, dup, phone)), 409
     if stage == "registration":
         ref_err = validate_registration_user_refs(db, new.get("sourcer"), new.get("interface_person"))
         if ref_err:
@@ -207,8 +186,10 @@ def api_candidate_update(cid):
         if k not in new:
             new[k] = v
     compute_current_stage(new)
-    db.execute("UPDATE candidates SET data=?, updated_at=? WHERE id=?",
-               (json.dumps(new, ensure_ascii=False), now_str(), cid))
+    try:
+        update_candidate_row(db, cid, new)
+    except PhoneDuplicateError as e:
+        return jsonify(e.payload), 409
     name = new.get("name") or old.get("name", "")
     add_log(g.user, "update",
             f"{g.user['display_name']} 修改了「{name}」：" + "；".join(changes),
@@ -284,8 +265,7 @@ def api_recompute_stages():
         old = data.get("current_stage")
         compute_current_stage(data)
         if data.get("current_stage") != old:
-            db.execute("UPDATE candidates SET data=?, updated_at=? WHERE id=?",
-                       (json.dumps(data, ensure_ascii=False), now_str(), row["id"]))
+            update_candidate_row(db, row["id"], data)
             n += 1
     add_log(g.user, "config", f"{g.user['display_name']} 重算了 {n} 名候选人的当前流程阶段")
     db.commit()

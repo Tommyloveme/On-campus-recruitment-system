@@ -204,28 +204,31 @@ call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 s, cands = call("GET", "/api/candidates?q=" + quote("测试员"))
 check("手动登记默认待投递", cands[0]["data"]["registration_status"] == "待投递"
       and cands[0]["data"].get("registration_time"))
-# 电话重复须确认后覆盖
+# 电话重复须拒绝录入
 dup_status, dup_body = call("POST", "/api/candidates", {
     "stage": "registration",
     "data": {
-        "name": "测试员", "phone": "13911112222", "sourcer": "hr01",
+        "name": "重复测试", "phone": "13911112222", "sourcer": "hr01",
         "interface_person": "hr02", "education": "本科",
         "school": "测试大学", "major": "计算机", "registration_source": "校园宣讲",
     },
 }, expect_error=True)
-check("同手机号未确认返回409", dup_status == 409 and dup_body.get("code") == "phone_duplicate")
-s, r2 = call("POST", "/api/candidates", {
+check("同手机号拒绝新增", dup_status == 409 and dup_body.get("code") == "phone_duplicate")
+s, r_other = call("POST", "/api/candidates", {
     "stage": "registration",
-    "confirm_overwrite": True,
     "data": {
-        "name": "测试员", "phone": "13911112222", "sourcer": "hr01",
+        "name": "电话冲突乙", "phone": "13933334444", "sourcer": "hr01",
         "interface_person": "hr02", "education": "本科",
         "school": "测试大学", "major": "计算机", "registration_source": "校园宣讲",
     },
 })
-check("确认后覆盖同手机号候选人", r2.get("overwritten") and r2["id"] == cid)
-s, cands = call("GET", "/api/candidates?q=" + quote("测试员"))
-check("合并后保留拓源人", cands[0]["data"].get("sourcer") == "hr01")
+other_id = r_other["id"]
+dup_edit_status, dup_edit_body = call("PUT", f"/api/candidates/{cid}", {
+    "stage": "registration",
+    "data": {"phone": "13933334444"},
+}, expect_error=True)
+check("编辑改为已占用电话拒绝", dup_edit_status == 409 and dup_edit_body.get("code") == "phone_duplicate")
+call("DELETE", f"/api/candidates/{other_id}")
 s, r = call("PUT", f"/api/candidates/{cid}", {
     "stage": "onboarding",
     "data": {"sign_status": "已签约", "onboard_risk": "高"},
@@ -269,8 +272,8 @@ check("Excel导入(新增2 更新1)", r["created"] == 2 and r["updated"] == 1)
 # 5a. 入职阶段导入仍兼容旧表头「入职三层」
 wb_ob = Workbook()
 ws_ob = wb_ob.active
-ws_ob.append(["入职三层", "候选人", "签约状态"])
-ws_ob.append(["网络部", "三层部门测试", "已签约"])
+ws_ob.append(["入职三层", "候选人", "电话", "签约状态"])
+ws_ob.append(["网络部", "三层部门测试", "13700003333", "已签约"])
 buf_legacy = io.BytesIO()
 wb_ob.save(buf_legacy)
 boundary_l = uuid.uuid4().hex

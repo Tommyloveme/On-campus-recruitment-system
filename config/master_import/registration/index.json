@@ -1,5 +1,5 @@
 {
-  "comment": "候选人登记页主数据导入。登记五字段与 Excel 列映射见 field_mappings.json；与系统候选人按手机号匹配合并。",
+  "comment": "候选人登记页主数据导入。字段与 Excel 映射见 field_mappings.json；与系统候选人按手机号匹配合并。",
   "page": "registration",
   "import_mode": "dual_file",
   "current_stage_field": "current_stage",
@@ -7,9 +7,5 @@
   "join_key": "resume_id",
   "source_keys": ["application", "candidate_mgmt"],
   "match_keys": ["phone"],
-  "field_mappings_file": "field_mappings.json",
-  "file_patterns": {
-    "application": "Application*.xlsx",
-    "candidate_mgmt": "候选人管理*.xlsx"
-  }
+  "field_mappings_file": "field_mappings.json"
 }

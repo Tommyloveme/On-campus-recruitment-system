@@ -68,6 +68,17 @@ body {
 .emp-suggest-name { color: #0f172a; font-weight: 500; }
 .emp-suggest-dept { color: #64748b; font-size: 12px; white-space: nowrap; }
 .emp-suggest-hint { padding: 8px 10px; font-size: 12px; color: #64748b; }
+.phone-dup-hint {
+  margin-top: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #64748b;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+}
+.cell-phone-dup { color: #dc2626; font-weight: 600; }
 .registration-emp-block .emp-resolved-meta {
   display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin-top: 6px;
 }

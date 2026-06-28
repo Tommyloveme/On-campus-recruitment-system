@@ -37,11 +37,14 @@ CREATE TABLE IF NOT EXISTS candidates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     group_id INTEGER,
     data TEXT NOT NULL,
+    phone TEXT,
     resume_file TEXT,
     resume_name TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_candidates_phone_unique
+    ON candidates(phone) WHERE phone IS NOT NULL AND phone != '';
 CREATE TABLE IF NOT EXISTS logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_name TEXT NOT NULL,
@@ -186,6 +189,27 @@ def migrate(db):
         );
     """)
 
+    # 候选人电话唯一标识
+    cand_cols = {r["name"] for r in db.execute("PRAGMA table_info(candidates)").fetchall()}
+    if "phone" not in cand_cols:
+        db.execute("ALTER TABLE candidates ADD COLUMN phone TEXT")
+    seen_phones = {}
+    for row in db.execute("SELECT id, data, phone FROM candidates ORDER BY id").fetchall():
+        data = json.loads(row["data"])
+        ph = (row["phone"] or data.get("phone") or "").strip()
+        if not ph:
+            continue
+        if ph in seen_phones:
+            db.execute("UPDATE candidates SET phone=NULL WHERE id=?", (row["id"],))
+            continue
+        seen_phones[ph] = row["id"]
+        if (row["phone"] or "").strip() != ph:
+            db.execute("UPDATE candidates SET phone=? WHERE id=?", (ph, row["id"]))
+    db.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_candidates_phone_unique
+        ON candidates(phone) WHERE phone IS NOT NULL AND phone != ''
+    """)
+
     # ---- 取消用户分组/资源分组/模板/资源ACL：删除相关表 ----
     db.executescript("""
         DROP TABLE IF EXISTS user_group_members;
@@ -295,8 +319,8 @@ def seed_demo(db):
     for data in samples:
         compute_current_stage(data)
         db.execute(
-            "INSERT INTO candidates (group_id, data, created_at, updated_at) VALUES (?,?,?,?)",
-            (None, json.dumps(data, ensure_ascii=False), now_str(), now_str()),
+            "INSERT INTO candidates (group_id, data, phone, created_at, updated_at) VALUES (?,?,?,?,?)",
+            (None, json.dumps(data, ensure_ascii=False), data.get("phone") or None, now_str(), now_str()),
         )
     # 示例用户补齐基线模块权限
     baseline = [

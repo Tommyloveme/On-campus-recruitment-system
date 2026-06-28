@@ -87,6 +87,39 @@ def load_stage_fields(stage_key, group_id=None):
             for field in fields:
                 if field["key"] in visible_map:
                     field["visible"] = bool(visible_map[field["key"]])
+    return _apply_master_import_field_rules(fields)
+
+
+def _apply_master_import_field_rules(fields):
+    """按 field_mappings.json 的 ui_label 控制可见性/标签；lock_on_import 由 API 层拦截。"""
+    try:
+        from campus.services.master_import import load_master_import_config, master_field_ui_map
+        cfg = load_master_import_config("registration")
+        ui_map = master_field_ui_map(cfg.get("field_mappings") or {})
+    except (ValueError, OSError, json.JSONDecodeError):
+        return fields
+    if not ui_map:
+        return fields
+    existing = {f["key"] for f in fields}
+    for field in fields:
+        if field["key"] not in ui_map:
+            continue
+        ui = ui_map[field["key"]]
+        if ui:
+            field["label"] = ui
+        else:
+            field["visible"] = False
+    for key, ui in ui_map.items():
+        if key.startswith("_") or not ui or key in existing:
+            continue
+        fields.append({
+            "key": key,
+            "label": ui,
+            "type": "text",
+            "visible": True,
+            "editable": True,
+            "importable": False,
+        })
     return fields
 
 
@@ -163,7 +196,7 @@ def match_import_header(field, header):
 
 def build_config_response(group_id=None):
     """构建 /api/config 完整响应。"""
-    from campus.stage_engine import load_master_import_config
+    from campus.services.master_import import load_master_import_config
     stages = load_stages_meta()
     stage_fields = {s["key"]: load_stage_fields(s["key"]) for s in stages}
     try:

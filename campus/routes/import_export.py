@@ -97,8 +97,13 @@ def api_import():
         return str(v).strip()
 
     db = get_db()
+    from campus.services.candidates import (
+        insert_candidate_row,
+        normalize_candidate_phone,
+        update_candidate_row,
+    )
     from campus.stage_engine import build_global_candidate_index
-    _, by_phone, by_name = build_global_candidate_index(db)
+    by_phone = build_global_candidate_index(db)
 
     created = updated = skipped = 0
     for raw in rows[1:]:
@@ -109,8 +114,13 @@ def api_import():
         if not data.get("name"):
             skipped += 1
             continue
+        phone = normalize_candidate_phone(data.get("phone"))
+        if not phone:
+            skipped += 1
+            continue
+        data["phone"] = phone
         compute_current_stage(data)
-        match = by_phone.get(data.get("phone", "")) or by_name.get(data["name"])
+        match = by_phone.get(phone)
         if match:
             old = json.loads(match["data"])
             merged = dict(old)
@@ -121,16 +131,14 @@ def api_import():
                     changed = True
             if changed:
                 compute_current_stage(merged)
-                db.execute("UPDATE candidates SET data=?, updated_at=? WHERE id=?",
-                           (json.dumps(merged, ensure_ascii=False), now_str(), match["id"]))
+                update_candidate_row(db, match["id"], merged)
                 updated += 1
+                match = db.execute("SELECT * FROM candidates WHERE id=?", (match["id"],)).fetchone()
+                by_phone[phone] = match
         else:
-            cur = db.execute("INSERT INTO candidates (group_id, data, created_at, updated_at) VALUES (?,?,?,?)",
-                             (None, json.dumps(data, ensure_ascii=False), now_str(), now_str()))
-            row = db.execute("SELECT * FROM candidates WHERE id=?", (cur.lastrowid,)).fetchone()
-            by_name[data["name"]] = row
-            if data.get("phone"):
-                by_phone[data["phone"]] = row
+            cid = insert_candidate_row(db, data, group_id=None)
+            row = db.execute("SELECT * FROM candidates WHERE id=?", (cid,)).fetchone()
+            by_phone[phone] = row
             created += 1
 
     stage_label = get_stage_meta(stage)["label"]

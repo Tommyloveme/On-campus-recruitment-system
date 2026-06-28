@@ -26,8 +26,8 @@
       "label": "登记状态",
       "excel_column": "登记状态",
       "type": "select",
-      "options": ["待投递", "待完善", "已登记", "已放弃"],
-      "colors": { "待投递": "blue", "待完善": "yellow", "已登记": "green", "已放弃": "red" },
+      "options": ["待投递", "已投递", "已放弃"],
+      "colors": { "待投递": "blue", "已投递": "green", "已放弃": "red" },
       "visible": true,
       "editable": true,
       "importable": true

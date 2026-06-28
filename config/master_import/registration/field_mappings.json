@@ -1,16 +1,31 @@
 {
-  "comment": "网页字段与 Application*.xlsx 列映射（均来自 Application 表）。lock_on_import 为 true 时导入后不可在界面修改。",
+  "comment": "主数据导入字段映射。sources 配置各 Excel 的文件名模式与工作表；ui_label 为空则网页不可见；lock_on_import 为 true 导入后不可编辑。未配置的 Excel 列按表头拼音自动入库。",
+  "sources": {
+    "application": {
+      "file_pattern": "Application*.xlsx",
+      "sheet_name": "Sheet",
+      "sheet_index": 0,
+      "label": "Application 主表",
+      "description": "校招主进度表",
+      "storage_name": "application.xlsx"
+    },
+    "candidate_mgmt": {
+      "file_pattern": "候选人管理*.xlsx",
+      "sheet_name": "Sheet",
+      "sheet_index": 0,
+      "label": "候选人管理表",
+      "description": "候选人补充状态表",
+      "storage_name": "candidate_mgmt.xlsx"
+    }
+  },
   "fields": [
     {
       "field_key": "resume_id",
       "ui_label": "简历编号",
       "lock_on_import": true,
       "sources": {
-        "application": {
-          "excel_column": "简历编号",
-          "required": true,
-          "match_patterns": ["*简历*编号*"]
-        }
+        "application": { "excel_column": "简历编号", "required": true, "match_patterns": [] },
+        "candidate_mgmt": { "excel_column": "简历编号", "required": true, "match_patterns": [] }
       }
     },
     {
@@ -18,11 +33,7 @@
       "ui_label": "候选人",
       "lock_on_import": true,
       "sources": {
-        "application": {
-          "excel_column": "候选人",
-          "required": true,
-          "match_patterns": ["*候选人*", "*姓名*"]
-        }
+        "application": { "excel_column": "候选人", "required": true, "match_patterns": [] }
       }
     },
     {
@@ -30,10 +41,7 @@
       "ui_label": "电话",
       "lock_on_import": true,
       "sources": {
-        "application": {
-          "excel_column": "电话",
-          "match_patterns": ["*电话*", "*手机*"]
-        }
+        "application": { "excel_column": "电话", "match_patterns": [] }
       }
     },
     {
@@ -41,10 +49,7 @@
       "ui_label": "学历",
       "lock_on_import": true,
       "sources": {
-        "application": {
-          "excel_column": "学历",
-          "match_patterns": ["*学历*"]
-        }
+        "application": { "excel_column": "学历", "match_patterns": [] }
       }
     },
     {
@@ -52,10 +57,7 @@
       "ui_label": "毕业院校",
       "lock_on_import": true,
       "sources": {
-        "application": {
-          "excel_column": "毕业院校",
-          "match_patterns": ["*毕业*院校*", "*毕业学校*", "*学校*"]
-        }
+        "application": { "excel_column": "毕业院校", "match_patterns": [] }
       }
     },
     {
@@ -63,10 +65,207 @@
       "ui_label": "专业",
       "lock_on_import": true,
       "sources": {
-        "application": {
-          "excel_column": "专业",
-          "match_patterns": ["*专业*"]
-        }
+        "application": { "excel_column": "专业", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "dept_level3",
+      "ui_label": "三层部门",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "三层部门", "excel_aliases": ["入职三层"], "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "_group_name",
+      "ui_label": "",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "二层部门", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "sourcer",
+      "ui_label": "拓源人",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "拓源人", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "sourcer_dept",
+      "ui_label": "拓源人部门",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "拓源人部门", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "interface_person",
+      "ui_label": "接口人",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "接口人", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "interface_dept",
+      "ui_label": "接口人部门",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "接口人部门", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "registration_source",
+      "ui_label": "来源渠道",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "来源渠道", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "work_location",
+      "ui_label": "拟录取工作地",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "拟录取工作地", "excel_aliases": ["工作地"], "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "registration_status",
+      "ui_label": "登记状态",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "登记状态", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "resume_screening_status",
+      "ui_label": "简历筛选状态",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "简历筛选状态", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "qualification_status",
+      "ui_label": "资审状态",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "资审状态", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "written_test_status",
+      "ui_label": "笔试状态",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "笔试状态", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "tech_interview_status",
+      "ui_label": "技术面状态",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "技术面状态", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "manager_interview_status",
+      "ui_label": "主管面状态",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "主管面状态", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "approval_status",
+      "ui_label": "报批状态",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "报批状态", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "salary_status",
+      "ui_label": "谈薪状态",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "谈薪状态", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "offer_status",
+      "ui_label": "Offer状态",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "Offer状态", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "sign_status",
+      "ui_label": "签约状态",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "签约状态", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "onboarded",
+      "ui_label": "是否入职",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "是否入职", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "tech_interview_result",
+      "ui_label": "技术面结果",
+      "lock_on_import": false,
+      "sources": {
+        "candidate_mgmt": { "excel_column": "技术面结果", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "manager_interview_result",
+      "ui_label": "主管面结果",
+      "lock_on_import": false,
+      "sources": {
+        "candidate_mgmt": { "excel_column": "主管面结果", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "offer_send_time",
+      "ui_label": "Offer发放时间",
+      "lock_on_import": false,
+      "sources": {
+        "candidate_mgmt": { "excel_column": "Offer发放时间", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "expected_onboard_time",
+      "ui_label": "预计入职时间",
+      "lock_on_import": false,
+      "sources": {
+        "candidate_mgmt": { "excel_column": "预计入职时间", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "onboard_risk",
+      "ui_label": "入职风险",
+      "lock_on_import": false,
+      "sources": {
+        "candidate_mgmt": { "excel_column": "入职风险", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "progress",
+      "ui_label": "当前进展",
+      "lock_on_import": false,
+      "sources": {
+        "candidate_mgmt": { "excel_column": "当前进展", "match_patterns": [] }
       }
     }
   ]
