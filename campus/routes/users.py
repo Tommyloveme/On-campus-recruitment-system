@@ -16,10 +16,11 @@ from campus.services.users import (
     apply_role_to_user,
     builtin_fields,
     custom_fields,
-    lookup_employee_by_username,
+    lookup_employee_for_registration,
     parse_extra,
     parse_user_profile_body,
     persist_user_columns,
+    search_employees_for_registration,
     user_dept_display,
     user_dict,
     validate_registration_user_refs,
@@ -59,27 +60,16 @@ def api_users():
 @bp.get("/api/users/suggest-employee")
 @login_required
 def api_suggest_employee():
-    """登记页拓源人/接口人：按工号或姓名模糊匹配，超过 5 条则不返回列表。"""
+    """登记页拓源人/接口人：按工号/姓名/部门/主管模糊匹配，返回得分最高的前 5 条。"""
     q = (request.args.get("q") or "").strip()
     if not q:
-        return jsonify({"items": [], "too_many": False})
-    db = get_db()
-    ql = q.lower()
-    matches = []
-    for r in db.execute("SELECT * FROM users ORDER BY id").fetchall():
-        d = _user_full(db, r)
-        username = (d.get("username") or "").lower()
-        name = (d.get("display_name") or "").lower()
-        dept = (d.get("dept_display") or "").lower()
-        if ql in username or ql in name or ql in dept:
-            matches.append({
-                "username": d["username"],
-                "display_name": d["display_name"],
-                "department": d.get("dept_display") or "",
-            })
-    if len(matches) > 5:
-        return jsonify({"items": [], "too_many": True, "count": len(matches)})
-    return jsonify({"items": matches, "too_many": False})
+        return jsonify({"items": [], "too_many": False, "total": 0})
+    result = search_employees_for_registration(get_db(), q, limit=5)
+    return jsonify({
+        "items": result["items"],
+        "too_many": result["too_many"],
+        "total": result["total"],
+    })
 
 
 @bp.get("/api/users/check-registration-refs")
@@ -95,15 +85,15 @@ def api_check_registration_refs():
 @bp.get("/api/users/lookup-employee")
 @login_required
 def api_lookup_employee():
-    """按工号查询用户姓名与部门（登记页部门展示）。"""
-    username = (request.args.get("username") or "").strip()
-    if not username:
-        return jsonify({"error": "工号不能为空"}), 400
-    row = lookup_employee_by_username(get_db(), username)
+    """按工号或姓名查询用户（登记页拓源人/接口人）。"""
+    query = (request.args.get("q") or request.args.get("username") or "").strip()
+    if not query:
+        return jsonify({"error": "请输入工号或姓名"}), 400
+    row = lookup_employee_for_registration(get_db(), query)
     if not row:
         return jsonify({
             "found": False,
-            "error": f"工号「{username}」尚未由系统管理员创建，请联系管理员添加账号",
+            "error": f"「{query}」未匹配到系统用户，请从列表选择或联系管理员",
         })
     d = user_dict(row)
     return jsonify({

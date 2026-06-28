@@ -224,17 +224,95 @@ def lookup_employee_by_username(db, username):
     return db.execute("SELECT * FROM users WHERE username=?", (emp,)).fetchone()
 
 
+def lookup_employee_for_registration(db, query):
+    """登记页：工号精确匹配；姓名精确/唯一模糊匹配；数字工号后缀唯一匹配。"""
+    q = (query or "").strip()
+    if not q:
+        return None
+    row = lookup_employee_by_username(db, q)
+    if row:
+        return row
+    rows = db.execute("SELECT * FROM users WHERE display_name=?", (q,)).fetchall()
+    if len(rows) == 1:
+        return rows[0]
+    rows = db.execute("SELECT * FROM users WHERE display_name LIKE ?", (f"%{q}%",)).fetchall()
+    if len(rows) == 1:
+        return rows[0]
+    if q.isdigit():
+        rows = db.execute(
+            "SELECT * FROM users WHERE username LIKE ? ORDER BY username",
+            (f"%{q}",),
+        ).fetchall()
+        if len(rows) == 1:
+            return rows[0]
+    return None
+
+
+def _employee_brief(row):
+    return {
+        "username": row["username"],
+        "display_name": row["display_name"],
+        "department": user_dept_display(row) or "",
+    }
+
+
+def _employee_search_where(q):
+    """构建登记页用户联想 SQL 条件（工号/姓名/部门/主管）。"""
+    like = f"%{q}%"
+    prefix = f"{q}%"
+    parts = [
+        "username LIKE ?",
+        "display_name LIKE ?",
+        "department LIKE ?",
+        "dept_level2 LIKE ?",
+        "dept_level3 LIKE ?",
+        "supervisor LIKE ?",
+    ]
+    params = [like] * 6
+    if q.isdigit():
+        parts.append("username LIKE ?")
+        params.append(f"%{q}")
+    return " OR ".join(parts), params, prefix
+
+
+def search_employees_for_registration(db, query, limit=5):
+    """登记页拓源人/接口人联想：SQL 过滤 + 相关性排序，返回前 limit 条。"""
+    q = (query or "").strip()
+    if not q:
+        return {"items": [], "total": 0, "too_many": False}
+    where, params, prefix = _employee_search_where(q)
+    total = db.execute(f"SELECT COUNT(*) AS c FROM users WHERE {where}", params).fetchone()["c"]
+    rows = db.execute(
+        f"""SELECT * FROM users WHERE {where}
+            ORDER BY
+              CASE
+                WHEN username = ? THEN 0
+                WHEN display_name = ? THEN 1
+                WHEN username LIKE ? THEN 2
+                WHEN display_name LIKE ? THEN 3
+                ELSE 4
+              END,
+              username
+            LIMIT ?""",
+        params + [q, q, prefix, prefix, limit],
+    ).fetchall()
+    items = [_employee_brief(r) for r in rows]
+    return {"items": items, "total": total, "too_many": total > limit}
+
+
 def apply_registration_employee_fields(db, data):
     """根据拓源人/接口人工号写入部门（只读字段，不信任前端提交）。"""
     sourcer = (data.get("sourcer") or "").strip()
     if sourcer:
-        row = lookup_employee_by_username(db, sourcer)
+        row = lookup_employee_for_registration(db, sourcer)
         if row:
+            data["sourcer"] = row["username"]
             data["sourcer_dept"] = user_dept_display(row)
     iface = (data.get("interface_person") or "").strip()
     if iface:
-        row = lookup_employee_by_username(db, iface)
+        row = lookup_employee_for_registration(db, iface)
         if row:
+            data["interface_person"] = row["username"]
             data["interface_dept"] = user_dept_display(row)
     return data
 
@@ -269,10 +347,10 @@ def validate_registration_user_refs(db, sourcer, interface_person):
     errors = []
     emp = (sourcer or "").strip()
     if emp:
-        if not lookup_employee_by_username(db, emp):
+        if not lookup_employee_for_registration(db, emp):
             errors.append(f"拓源人工号「{emp}」尚未由系统管理员创建，请联系管理员添加账号")
     iface = (interface_person or "").strip()
     if iface:
-        if not lookup_employee_by_username(db, iface):
+        if not lookup_employee_for_registration(db, iface):
             errors.append(f"接口人工号「{iface}」尚未由系统管理员创建，请联系管理员添加账号")
     return "；".join(errors) if errors else None

@@ -442,20 +442,33 @@ function registrationEmployeeFieldHtml(f, cand, locked) {
     </div>`;
 }
 
-async function lookupEmployeeForRegistration(username) {
-  const emp = (username || "").trim();
-  if (!emp) return { found: false, department: "" };
-  const res = await fetch(`/api/users/lookup-employee?username=${encodeURIComponent(emp)}`);
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok && !body.found) {
-    return { found: false, department: "", error: body.error || "查询失败" };
+async function lookupEmployeeForRegistration(query) {
+  const q = (query || "").trim();
+  if (!q) return { found: false, department: "" };
+  try {
+    const body = await api(`/api/users/lookup-employee?q=${encodeURIComponent(q)}`);
+    return body.found ? body : { found: false, department: "", error: body.error || "未找到" };
+  } catch (e) {
+    return { found: false, department: "", error: e.message || "查询失败" };
   }
-  return body;
 }
 
+let _empSuggestCtrl = null;
 async function suggestEmployeesForRegistration(q) {
-  const res = await fetch(`/api/users/suggest-employee?q=${encodeURIComponent(q.trim())}`);
-  return res.json().catch(() => ({ items: [], too_many: false }));
+  if (_empSuggestCtrl) _empSuggestCtrl.abort();
+  _empSuggestCtrl = new AbortController();
+  const signal = _empSuggestCtrl.signal;
+  try {
+    const res = await fetch(
+      `/api/users/suggest-employee?q=${encodeURIComponent(q.trim())}`,
+      { signal },
+    );
+    if (!res.ok) throw new Error("查询失败");
+    return await res.json();
+  } catch (e) {
+    if (e.name === "AbortError") throw e;
+    throw e;
+  }
 }
 
 function clearRegistrationEmployeeResolved(modal, emp, dept) {
@@ -480,6 +493,20 @@ function applyRegistrationEmployeeSelection(modal, emp, dept, user) {
   if (listEl) listEl.classList.add("hidden");
 }
 
+async function resolveRegistrationEmployeeInput(modal, emp, dept, input, lastItems) {
+  const q = input.value.trim();
+  if (!q) {
+    clearRegistrationEmployeeResolved(modal, emp, dept);
+    return;
+  }
+  if (lastItems.length === 1) {
+    applyRegistrationEmployeeSelection(modal, emp, dept, lastItems[0]);
+    return;
+  }
+  const body = await lookupEmployeeForRegistration(q);
+  if (body.found) applyRegistrationEmployeeSelection(modal, emp, dept, body);
+}
+
 function bindRegistrationEmployeeLookup() {
   const pairs = [
     { emp: "sourcer", dept: "sourcer_dept" },
@@ -494,16 +521,37 @@ function bindRegistrationEmployeeLookup() {
     if (!input || input.disabled || !listEl) return;
 
     let lastItems = [];
+    let searchSeq = 0;
     const hideList = () => listEl.classList.add("hidden");
 
+    const bindSuggestItem = (btn, idx) => {
+      btn.addEventListener("mousedown", e => e.preventDefault());
+      btn.addEventListener("click", () => {
+        const u = lastItems[idx];
+        if (u) applyRegistrationEmployeeSelection(modal, emp, dept, u);
+      });
+    };
+
     const renderList = (body) => {
+      lastItems = body.items || [];
+      if (body.too_many && lastItems.length) {
+        listEl.innerHTML = `<div class="emp-suggest-hint">共 ${body.total || lastItems.length} 条匹配，仅显示前 ${lastItems.length} 条</div>` +
+          lastItems.map((u, i) => `
+        <button type="button" class="emp-suggest-item" data-idx="${i}" role="option">
+          <span class="emp-suggest-id mono">${esc(u.username)}</span>
+          <span class="emp-suggest-name">${esc(u.display_name)}</span>
+          <span class="emp-suggest-dept">${esc(u.department || "—")}</span>
+        </button>`).join("");
+        listEl.querySelectorAll(".emp-suggest-item").forEach(btn => bindSuggestItem(btn, +btn.dataset.idx));
+        listEl.classList.remove("hidden");
+        return;
+      }
       if (body.too_many) {
-        listEl.innerHTML = `<div class="emp-suggest-hint">匹配 ${body.count || "过多"} 条，请缩小关键词</div>`;
+        listEl.innerHTML = `<div class="emp-suggest-hint">匹配 ${body.total || "过多"} 条，请缩小关键词</div>`;
         lastItems = [];
         listEl.classList.remove("hidden");
         return;
       }
-      lastItems = body.items || [];
       if (!lastItems.length) {
         listEl.innerHTML = `<div class="emp-suggest-hint">无匹配用户</div>`;
         listEl.classList.remove("hidden");
@@ -515,35 +563,43 @@ function bindRegistrationEmployeeLookup() {
           <span class="emp-suggest-name">${esc(u.display_name)}</span>
           <span class="emp-suggest-dept">${esc(u.department || "—")}</span>
         </button>`).join("");
-      listEl.querySelectorAll(".emp-suggest-item").forEach(btn => {
-        btn.addEventListener("mousedown", e => e.preventDefault());
-        btn.addEventListener("click", () => {
-          const u = lastItems[+btn.dataset.idx];
-          if (u) applyRegistrationEmployeeSelection(modal, emp, dept, u);
-        });
-      });
+      listEl.querySelectorAll(".emp-suggest-item").forEach(btn => bindSuggestItem(btn, +btn.dataset.idx));
       listEl.classList.remove("hidden");
     };
 
-    const search = debounce(async () => {
+    const runSearch = debounce(async () => {
       const q = input.value.trim();
       if (!q) {
         hideList();
         clearRegistrationEmployeeResolved(modal, emp, dept);
         return;
       }
+      const seq = ++searchSeq;
       try {
-        renderList(await suggestEmployeesForRegistration(q));
-      } catch (_) {
+        const body = await suggestEmployeesForRegistration(q);
+        if (seq !== searchSeq) return;
+        renderList(body);
+      } catch (e) {
+        if (e.name === "AbortError" || seq !== searchSeq) return;
         hideList();
       }
-    }, 280);
+    }, 150);
 
-    input.addEventListener("input", search);
+    const onInput = e => {
+      if (e.isComposing) return;
+      runSearch();
+    };
+    input.addEventListener("input", onInput);
+    input.addEventListener("compositionend", () => runSearch());
     input.addEventListener("focus", () => {
-      if (input.value.trim()) search();
+      if (input.value.trim()) runSearch();
     });
-    input.addEventListener("blur", () => setTimeout(hideList, 160));
+    input.addEventListener("blur", () => {
+      setTimeout(async () => {
+        hideList();
+        await resolveRegistrationEmployeeInput(modal, emp, dept, input, lastItems);
+      }, 160);
+    });
 
     if (input.value.trim()) {
       lookupEmployeeForRegistration(input.value.trim()).then(body => {
