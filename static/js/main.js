@@ -74,6 +74,7 @@ async function boot() {
   const [cfg, mods] = await Promise.all([api("/api/config"), api("/api/permissions/modules")]);
   state.stages = cfg.stages;
   state.stageFields = cfg.stage_fields;
+  state.stageTable = cfg.stage_table || {};
   state.masterImport = cfg.master_import || {};
   state.app = cfg.app || {};
   modulePerms = (mods && mods.modules) || [];

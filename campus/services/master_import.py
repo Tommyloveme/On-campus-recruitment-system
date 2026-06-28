@@ -349,6 +349,12 @@ def merge_master_import_data(old, incoming, cfg=None):
     if locked:
         merged["_master_locked_fields"] = locked
         merged["_master_imported"] = True
+
+    from campus.services.candidates import delivery_date_from_resume_id
+
+    delivery = delivery_date_from_resume_id(merged.get("resume_id") or incoming.get("resume_id"))
+    if delivery:
+        merged["delivery_time"] = delivery
     return merged
 
 

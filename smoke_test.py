@@ -125,10 +125,11 @@ check("含登记与入职阶段", "registration" in cfg["stage_fields"] and "onb
 reg_fields = cfg["stage_fields"]["registration"]
 reg_keys = [f["key"] for f in reg_fields if f["visible"]]
 check("登记阶段不含三层部门", "dept_level3" not in reg_keys)
-check("登记阶段列顺序正确",
-      reg_keys[:11] == ["resume_id", "name", "phone", "sourcer", "sourcer_dept", "interface_person",
-                        "interface_dept", "education", "school", "major",
-                        "registration_source"] and reg_keys[11] == "registration_status")
+check("登记阶段表格列顺序配置",
+      cfg.get("stage_table", {}).get("registration", {}).get("column_order")[:2]
+      == ["registration_time", "delivery_time"])
+check("登记阶段默认冻结3列",
+      cfg.get("stage_table", {}).get("registration", {}).get("frozen_column_count") == 3)
 onb_fields = cfg["stage_fields"]["onboarding"]
 check("入职阶段含三层部门", any(f["key"] == "dept_level3" and f["visible"] for f in onb_fields))
 from openpyxl import load_workbook
@@ -332,6 +333,7 @@ s, r = call("POST", "/api/master-import/refresh", raw=body_r.getvalue(),
 check("主数据表刷新成功", s == 200 and (r.get("created", 0) + r.get("updated", 0)) >= 1)
 s, c_new = call("GET", "/api/candidates?q=" + quote("主表新人"))
 check("主表新人已导入且含简历编号", len(c_new) == 1 and c_new[0]["data"].get("resume_id") == "RS2026001")
+check("主表导入解析投递时间", c_new[0]["data"].get("delivery_time") == "2026-01-01")
 check("主表导入锁定登记字段", "name" in c_new[0]["data"].get("_master_locked_fields", []))
 s, _ = call("PUT", f"/api/candidates/{c_new[0]['id']}", {
     "stage": "registration", "data": {"name": "改名测试"},
@@ -430,8 +432,8 @@ check("docx在线预览(转HTML)", s == 200 and "简历正文ABC".encode() in co
       and "text/html" in headers.get("Content-Type", ""))
 
 raw, ct = multipart([("file", b"fake txt", "resume.txt")])
-s, r = call("POST", f"/api/candidates/{cid}/resume", raw=raw, ctype=ct, expect_error=True)
-check("非法格式被拒绝", s == 400)
+s, r = call("POST", f"/api/candidates/{cid}/resume", raw=raw, ctype=ct)
+check("任意格式简历可上传(txt)", s == 200 and r["resume_name"] == "resume.txt")
 
 raw, ct = multipart([("file", b"%PDF-fake", "new_resume.pdf")])
 s, r = call("POST", f"/api/candidates/{cid}/resume", raw=raw, ctype=ct)

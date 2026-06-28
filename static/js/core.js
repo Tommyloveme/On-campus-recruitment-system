@@ -91,8 +91,31 @@ function fieldsForStage(stageKey) {
   return state.stageFields[stageKey] || [];
 }
 
+function stageTableCfg(stageKey) {
+  const key = stageKey || state.tab;
+  return (state.stageTable && state.stageTable[key]) || {};
+}
+
 function visibleFields(stageKey) {
-  return fieldsForStage(stageKey || state.tab).filter(f => f.visible);
+  const key = stageKey || state.tab;
+  let fields = fieldsForStage(key).filter(f => f.visible);
+  const order = stageTableCfg(key).column_order;
+  if (order && order.length) {
+    const byKey = Object.fromEntries(fields.map(f => [f.key, f]));
+    const ordered = [];
+    const seen = new Set();
+    for (const k of order) {
+      if (byKey[k]) {
+        ordered.push(byKey[k]);
+        seen.add(k);
+      }
+    }
+    fields.forEach(f => {
+      if (!seen.has(f.key)) ordered.push(f);
+    });
+    fields = ordered;
+  }
+  return fields;
 }
 
 function allFieldsFlat() {
@@ -113,6 +136,32 @@ function debounce(fn, ms) {
 function todayPrefix() {
   const d = new Date();
   return `${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}：`;
+}
+
+/** 登记备注行首前缀：当前用户（当天日期）： */
+function registrationRemarkPrefix() {
+  const name = (state.me && state.me.display_name) ? state.me.display_name : "用户";
+  const d = new Date();
+  const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return `${name}（${ds}）：`;
+}
+
+function normalizeRegistrationRemark(value) {
+  const v = (value || "").trim();
+  if (!v) return "";
+  const prefix = registrationRemarkPrefix();
+  const lines = v.split("\n");
+  if (lines[0].trim() === prefix) {
+    return lines.slice(1).join("\n").trim();
+  }
+  return v;
+}
+
+function multilineCellHtml(full) {
+  const text = (full || "").trim();
+  if (!text) return `<span style="color:#cbd5e1">—</span>`;
+  const first = text.split("\n")[0];
+  return `<span class="clip multiline-cell" title="${esc(text)}">${esc(first)}</span>`;
 }
 
 function cellHtml(field, value) {
@@ -145,7 +194,10 @@ function fieldInput(f, value, opts) {
       `<option value="${esc(o)}" ${o === v ? "selected" : ""}>${o === "" ? "（未填写）" : esc(o)}</option>`).join("");
     return `<select data-field="${f.key}">${selectOpts}</select>`;
   }
-  if (f.multiline) return `<textarea data-field="${f.key}" rows="3">${ve}</textarea>`;
+  if (f.multiline) {
+    const rows = f.key === "registration_remark" ? 6 : 3;
+    return `<textarea data-field="${f.key}" rows="${rows}">${ve}</textarea>`;
+  }
   const type = f.type === "date" ? "date" : "text";
   return `<input type="${type}" data-field="${f.key}" value="${ve}">`;
 }

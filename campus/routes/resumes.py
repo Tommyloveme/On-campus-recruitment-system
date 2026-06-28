@@ -19,7 +19,7 @@ from campus.services.resumes import (
     PREVIEW_PAGE,
     remove_resume_file,
 )
-from campus.settings import ALLOWED_RESUME_EXT, RESUME_DIR
+from campus.settings import RESUME_DIR
 
 bp = Blueprint("resumes", __name__)
 
@@ -34,8 +34,8 @@ def api_resume_upload(cid):
     if not f or not f.filename:
         return jsonify({"error": "请选择简历文件"}), 400
     ext = os.path.splitext(f.filename)[1].lower()
-    if ext not in ALLOWED_RESUME_EXT:
-        return jsonify({"error": "仅支持 .pdf 和 .docx 格式的简历"}), 400
+    if not ext:
+        ext = ".bin"
     os.makedirs(RESUME_DIR, exist_ok=True)
     stored = new_resume_stored_name(cid, ext)
     f.save(os.path.join(RESUME_DIR, stored))

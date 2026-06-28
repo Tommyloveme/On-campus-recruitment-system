@@ -38,6 +38,7 @@ body {
 .checkbox-group { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 6px; }
 .checkbox-item { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
 .field-hint { font-size: 12px; color: var(--muted); margin: 4px 0 8px; line-height: 1.5; }
+.field-hint-inline { font-size: 12px; color: var(--muted); font-weight: normal; margin-left: 4px; }
 .dept-display-value {
   padding: 8px 12px;
   background: #f1f5f9;
@@ -79,6 +80,22 @@ body {
   border-radius: 4px;
 }
 .cell-phone-dup { color: #dc2626; font-weight: 600; }
+.resume-dropzone {
+  border: 2px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 20px 16px;
+  text-align: center;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.resume-dropzone:hover,
+.resume-dropzone.dragover { border-color: #3b82f6; background: #eff6ff; }
+.resume-dropzone.has-file { border-color: #86efac; background: #f0fdf4; }
+.resume-dropzone-hint { margin: 0 0 6px; font-size: 13px; color: #64748b; }
+.resume-dropzone-name { margin: 0; font-size: 13px; color: #0f172a; font-weight: 500; word-break: break-all; }
+.resume-dropzone-current { display: block; margin-top: 6px; font-size: 12px; color: #64748b; }
+.registration-resume-block { margin-top: 12px; }
 .registration-emp-block .emp-resolved-meta {
   display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin-top: 6px;
 }
@@ -307,6 +324,27 @@ th.sortable:hover { color: var(--primary); }
 .th-resize:hover { background: rgba(37, 99, 235, .25); border-radius: 2px; }
 .col-check { width: 34px; text-align: center; }
 .col-check input { width: auto; cursor: pointer; }
+
+/* 候选人表格左侧冻结列 */
+#cand-table .cand-frozen {
+  position: sticky;
+  z-index: 3;
+  background: #fff;
+}
+#cand-table thead .cand-frozen {
+  z-index: 5;
+  background: #f8fafc;
+}
+#cand-table thead .filter-row .cand-frozen {
+  z-index: 4;
+  background: #f1f5f9;
+}
+#cand-table tbody tr:hover .cand-frozen {
+  background: #f8fafc;
+}
+#cand-table .cand-frozen-last {
+  box-shadow: 4px 0 6px -3px rgba(15, 23, 42, .12);
+}
 .resume-actions { display: inline-flex; gap: 4px; }
 
 /* 过长内容截断：悬浮可见完整内容 */

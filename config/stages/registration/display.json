@@ -1,6 +1,50 @@
 {
-  "comment": "候选人登记界面：覆盖公共字段的显示配置（列顺序见 _common/fields.json）",
+
+  "comment": "候选人登记界面：列顺序、冻结列数与字段可见性",
+
+  "column_order": [
+
+    "registration_time",
+
+    "delivery_time",
+
+    "resume_id",
+
+    "name",
+
+    "phone",
+
+    "sourcer",
+
+    "sourcer_dept",
+
+    "interface_person",
+
+    "interface_dept",
+
+    "education",
+
+    "school",
+
+    "major",
+
+    "registration_source",
+
+    "registration_status",
+
+    "registration_remark"
+
+  ],
+
+  "frozen_column_count": 5,
+
   "visible": {
-    "resume_id": true
+
+    "resume_id": true,
+
+    "registration_remark": true
+
   }
+
 }
+

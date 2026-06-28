@@ -320,6 +320,7 @@ def apply_registration_employee_fields(db, data):
 def apply_registration_candidate_defaults(data, user):
     """登记阶段新增：隐藏主数据/手填项，部门由工号在保存时解析。"""
     data.pop("resume_id", None)
+    data.pop("delivery_time", None)
     data.pop("work_location", None)
     data.pop("sourcer_dept", None)
     data.pop("interface_dept", None)

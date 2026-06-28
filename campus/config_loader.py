@@ -61,6 +61,15 @@ def _load_stage_display_overrides(stage_key):
         return json.load(f)
 
 
+def load_stage_table_config(stage_key):
+    """阶段表格 UI 配置：列顺序（仅影响网页表格）、左侧冻结列数（含勾选列）。"""
+    display = _load_stage_display_overrides(stage_key)
+    return {
+        "column_order": list(display.get("column_order") or []),
+        "frozen_column_count": int(display.get("frozen_column_count") or 0),
+    }
+
+
 def load_stage_fields(stage_key, group_id=None):
     """加载某阶段的完整字段列表 = 公共字段 + 阶段字段，并应用分组 visible 覆盖。"""
     validate_stage(stage_key)
@@ -206,6 +215,7 @@ def build_config_response(group_id=None):
     return {
         "stages": stages,
         "stage_fields": stage_fields,
+        "stage_table": {s["key"]: load_stage_table_config(s["key"]) for s in stages},
         "master_import": {
             "page": master.get("page", "registration"),
             "import_mode": master.get("import_mode", "dual_file"),

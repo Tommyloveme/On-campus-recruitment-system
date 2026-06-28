@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import json
+import re
 import sqlite3
+from datetime import datetime, timedelta
 
 from campus.db.connection import get_db, now_str
 from campus.services.users import lookup_employee_by_username
@@ -8,6 +10,34 @@ from campus.services.users import lookup_employee_by_username
 
 def normalize_candidate_phone(phone):
     return str(phone or "").strip()
+
+
+def delivery_date_from_resume_id(resume_id):
+    """从简历编号解析投递日期（YYYY-MM-DD）。支持 RS20260115… 内嵌 YYYYMMDD，或 RS2026001 形式 YYYY+年内序号。"""
+    raw = str(resume_id or "").strip().upper()
+    if not raw:
+        return None
+    digits = re.sub(r"^[A-Z]+", "", raw)
+    digits = re.sub(r"\D", "", digits)
+    if not digits:
+        return None
+    for i in range(len(digits) - 7):
+        chunk = digits[i : i + 8]
+        try:
+            dt = datetime.strptime(chunk, "%Y%m%d")
+            if 1990 <= dt.year <= 2100:
+                return dt.strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    if len(digits) == 7:
+        year, doy = int(digits[:4]), int(digits[4:])
+        if 1 <= doy <= 366:
+            try:
+                dt = datetime(year, 1, 1) + timedelta(days=doy - 1)
+                return dt.strftime("%Y-%m-%d")
+            except ValueError:
+                pass
+    return None
 
 
 def group_name_map():

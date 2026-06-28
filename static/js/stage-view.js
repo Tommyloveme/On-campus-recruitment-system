@@ -53,9 +53,9 @@ async function renderStageList(stageKey) {
   const canAdd = typeof moduleWritable === "function" && moduleWritable(stageKey) && meta.can_create;
   const showMasterImport = stageKey === "registration" && canAdd;
 
-  const headCells = fields.map(f => f.type === "date"
-    ? `<th class="sortable" data-sortkey="${f.key}" title="点击排序">${esc(f.label)}<span class="sort-arrow" data-arrow="${f.key}"></span></th>`
-    : `<th>${esc(f.label)}</th>`).join("");
+  const headCells = fields.map(f =>
+    `<th class="sortable" data-sortkey="${f.key}" title="点击排序">${esc(f.label)}<span class="sort-arrow" data-arrow="${f.key}"></span></th>`
+  ).join("");
   const filterCells = fields.map(f => {
     if (f.type === "select") {
       const opts = (f.options || []).map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join("");
@@ -97,7 +97,7 @@ async function renderStageList(stageKey) {
       </table>
     </div>
     <div id="cand-pager" class="pager-bar"></div>
-    ${showResume ? `<input type="file" id="resume-input" accept=".pdf,.docx" style="display:none">` : ""}`;
+    ${showResume ? `<input type="file" id="resume-input" style="display:none">` : ""}`;
 
   if (showMasterImport) $("#btn-master-import").addEventListener("click", openMasterImportModal);
   $("#stage-filter-only")?.addEventListener("change", e => {
@@ -139,6 +139,7 @@ async function renderStageList(stageKey) {
   });
 
   await loadCandidateTable(stageKey);
+  applyCandFrozenColumns(stageKey);
 }
 
 async function loadCandidateTable(stageKey) {
@@ -181,15 +182,24 @@ function filteredCandidates(stageKey) {
   });
   if (ss.sort) {
     const { key, dir } = ss.sort;
-    list = [...list].sort((a, b) => {
-      const av = a.data[key] || "", bv = b.data[key] || "";
-      if (!av && !bv) return 0;
-      if (!av) return 1;
-      if (!bv) return -1;
-      return av.localeCompare(bv) * dir;
-    });
+    list = [...list].sort((a, b) => compareCandidateField(a, b, key, dir));
   }
   return list;
+}
+
+function compareCandidateField(a, b, key, dir) {
+  let av = candidateCellValue(a, { key }) ?? a.data[key] ?? "";
+  let bv = candidateCellValue(b, { key }) ?? b.data[key] ?? "";
+  av = String(av).trim();
+  bv = String(bv).trim();
+  if (!av && !bv) return 0;
+  if (!av) return 1;
+  if (!bv) return -1;
+  const an = Number(av), bn = Number(bv);
+  if (av !== "" && bv !== "" && !Number.isNaN(an) && !Number.isNaN(bn)) {
+    return (an - bn) * dir;
+  }
+  return av.localeCompare(bv, "zh-CN", { numeric: true }) * dir;
 }
 
 function toggleSort(stageKey, key) {
@@ -256,12 +266,11 @@ function renderCandidateRows(stageKey) {
           let inner;
           if (f.key === "progress") {
             const full = c.data.progress || "";
-            const first = full.split("\n")[0];
-            inner = full
-              ? `<span class="clip" title="${esc(full)}">${esc(first)}</span>`
-              : `<span style="color:#cbd5e1">—</span>`;
+            inner = multilineCellHtml(full);
             if (canEdit())
               inner += ` <button class="btn btn-sm" data-prog="${c.id}" title="更新进展">更新</button>`;
+          } else if (f.key === "registration_remark") {
+            inner = multilineCellHtml(c.data.registration_remark || "");
           } else if (f.key === "registration_source" && c.data.registration_source === "其他") {
             const custom = (c.data.registration_source_custom || "").trim();
             inner = cellHtml(f, custom ? `其他：${custom}` : "其他");
@@ -360,6 +369,42 @@ function updateSelectionUI(stageKey, list) {
   }
   const all = $("#sel-all");
   if (all) all.checked = list.length > 0 && list.every(c => ss.selected.has(c.id));
+  applyCandFrozenColumns(stageKey);
+}
+
+function applyCandFrozenColumns(stageKey) {
+  const table = $("#cand-table table");
+  if (!table) return;
+  const frozenCount = Math.max(0, stageTableCfg(stageKey).frozen_column_count || 0);
+  const headerRow = table.querySelector("thead tr:first-child");
+  if (!headerRow) return;
+  const headerCells = [...headerRow.children];
+  if (frozenCount <= 0) {
+    table.querySelectorAll(".cand-frozen, .cand-frozen-last").forEach(cell => {
+      cell.classList.remove("cand-frozen", "cand-frozen-last");
+      cell.style.left = "";
+    });
+    return;
+  }
+  const offsets = [];
+  let left = 0;
+  for (let i = 0; i < headerCells.length; i++) {
+    if (i < frozenCount) {
+      offsets[i] = left;
+      left += headerCells[i].offsetWidth;
+    }
+  }
+  table.querySelectorAll("tr").forEach(row => {
+    [...row.children].forEach((cell, i) => {
+      cell.classList.remove("cand-frozen", "cand-frozen-last");
+      cell.style.left = "";
+      if (i < frozenCount) {
+        cell.classList.add("cand-frozen");
+        cell.style.left = `${offsets[i]}px`;
+        if (i === frozenCount - 1) cell.classList.add("cand-frozen-last");
+      }
+    });
+  });
 }
 
 function enableColumnResize() {
@@ -390,11 +435,13 @@ function enableColumnResize() {
       const onMove = ev => {
         colWidths[idx + 1] = Math.max(48, startW + ev.pageX - startX);
         applyWidths();
+        applyCandFrozenColumns(state.tab);
       };
       const onUp = () => {
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
         document.body.style.cursor = "";
+        applyCandFrozenColumns(state.tab);
       };
       document.body.style.cursor = "col-resize";
       document.addEventListener("mousemove", onMove);
@@ -405,7 +452,7 @@ function enableColumnResize() {
 
 function registrationCreateHiddenKeys() {
   return new Set([
-    "registration_time", "registration_status",
+    "registration_time", "registration_status", "delivery_time",
     "resume_id", "work_location", "sourcer_dept", "graduation_time", "interface_dept",
     "registration_source_custom",
   ]);
@@ -643,18 +690,24 @@ function registrationCreateFields(stageKey) {
 
 const REGISTRATION_EDIT_FIELD_ORDER = [
   ...REGISTRATION_CREATE_FIELD_ORDER,
-  "registration_status", "resume_id", "work_location", "graduation_time",
+  "registration_status", "work_location", "graduation_time",
 ];
 
+const REGISTRATION_EDIT_HIDDEN_KEYS = new Set([
+  "resume_id", "registration_source_custom",
+  "registration_time", "delivery_time",
+]);
+
 function registrationEditFields(stageKey) {
-  const pool = fieldsForStage(stageKey).filter(f => f.editable);
+  const hide = REGISTRATION_EDIT_HIDDEN_KEYS;
+  const pool = fieldsForStage(stageKey).filter(f => f.editable && !hide.has(f.key));
   const ordered = [];
   for (const key of REGISTRATION_EDIT_FIELD_ORDER) {
     const f = pool.find(x => x.key === key);
     if (f) ordered.push(f);
   }
   pool.forEach(f => {
-    if (!ordered.some(x => x.key === f.key)) ordered.push(f);
+    if (!hide.has(f.key) && !ordered.some(x => x.key === f.key)) ordered.push(f);
   });
   return ordered;
 }
@@ -674,15 +727,36 @@ function registrationFormFieldHtml(f, cand, stageKey, isRegCreate, lockedFields)
   }
   return `
     <div class="form-item${locked ? " is-master-locked" : ""}${f.key === "registration_remark" ? " form-item-full" : ""}">
-      <label>${esc(f.label)}${f.required ? " *" : ""}${locked ? "（主数据锁定）" : ""}</label>
+      <label>${esc(f.label)}${f.required ? " *" : ""}${locked ? "（主数据锁定）" : ""}${f.key === "registration_remark" ? '<span class="field-hint-inline">（最新写在第一行）</span>' : ""}</label>
       ${fieldInput(f, candidateFieldDefault(f, cand, isRegCreate), { locked })}
     </div>`;
 }
 
 function candidateFieldDefault(f, cand, isRegCreate) {
+  if (f.key === "registration_remark") {
+    const prefix = registrationRemarkPrefix();
+    if (cand) {
+      const cur = (cand.data.registration_remark || "").trim();
+      return cur ? `${prefix}\n${cur}` : prefix;
+    }
+    return prefix;
+  }
   if (cand) return cand.data[f.key];
   if (f.key === "progress") return todayPrefix();
   return "";
+}
+
+function bindRegistrationRemarkInput() {
+  const ta = $("#modal-body")?.querySelector("[data-field='registration_remark']");
+  if (!ta || ta.disabled) return;
+  const prefix = registrationRemarkPrefix();
+  ta.focus();
+  if (ta.value.startsWith(prefix)) {
+    ta.setSelectionRange(prefix.length, prefix.length);
+  } else if (!ta.value.trim()) {
+    ta.value = prefix;
+    ta.setSelectionRange(prefix.length, prefix.length);
+  }
 }
 
 function bindRegistrationSourceCustom() {
@@ -697,6 +771,83 @@ function bindRegistrationSourceCustom() {
   };
   sel.addEventListener("change", toggle);
   toggle();
+}
+
+let _modalResumeFile = null;
+
+function registrationResumeBlockHtml(cand) {
+  const current = cand?.resume_name
+    ? `<span class="resume-dropzone-current">当前：${esc(cand.resume_name)}</span>`
+    : "";
+  return `
+    <div class="form-item form-item-full registration-resume-block">
+      <label>简历 *</label>
+      <div class="resume-dropzone" id="reg-resume-dropzone" role="button" tabindex="0">
+        <p class="resume-dropzone-hint">拖拽文件到此处，或点击选择</p>
+        <p class="resume-dropzone-name" id="reg-resume-filename">尚未选择文件</p>
+        ${current}
+        <input type="file" id="reg-resume-input" hidden>
+      </div>
+    </div>`;
+}
+
+function bindRegistrationResumeDropzone(cand) {
+  _modalResumeFile = null;
+  const zone = $("#reg-resume-dropzone");
+  const input = $("#reg-resume-input");
+  const nameEl = $("#reg-resume-filename");
+  if (!zone || !input || !nameEl) return;
+
+  const refreshLabel = () => {
+    if (_modalResumeFile) {
+      nameEl.textContent = _modalResumeFile.name;
+      zone.classList.add("has-file");
+      return;
+    }
+    if (cand?.resume_name) {
+      nameEl.textContent = "保留当前简历（可拖拽或点击更换）";
+      zone.classList.add("has-file");
+      return;
+    }
+    nameEl.textContent = "尚未选择文件";
+    zone.classList.remove("has-file");
+  };
+
+  const pickFile = file => {
+    _modalResumeFile = file || null;
+    refreshLabel();
+  };
+
+  refreshLabel();
+
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", e => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); }
+  });
+  input.addEventListener("change", () => pickFile(input.files[0] || null));
+  zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("dragover"); });
+  zone.addEventListener("dragleave", e => {
+    if (!zone.contains(e.relatedTarget)) zone.classList.remove("dragover");
+  });
+  zone.addEventListener("drop", e => {
+    e.preventDefault();
+    zone.classList.remove("dragover");
+    const file = e.dataTransfer?.files?.[0];
+    if (file) pickFile(file);
+  });
+}
+
+function registrationResumeReady(cand) {
+  return !!(_modalResumeFile || cand?.resume_name);
+}
+
+async function uploadCandidateResume(cid, file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`/api/candidates/${cid}/resume`, { method: "POST", body: fd });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || "简历上传失败");
+  return body;
 }
 
 function collectCandidateFormData(fields) {
@@ -823,6 +974,8 @@ function openCandidateModal(cand, stageKey) {
              placeholder="请填写具体简历来源">
     </div>` : "";
 
+  const resumeBlock = stageKey === "registration" ? registrationResumeBlockHtml(cand) : "";
+
   openModal(isNew ? `新增候选人 - ${meta.label}` : `编辑 - ${esc(cand.data.name || "")}（${meta.label}）`, `
     <div class="form-grid registration-form-grid">
       ${fields.map(f => {
@@ -830,7 +983,8 @@ function openCandidateModal(cand, stageKey) {
         if (isRegCreate && f.key === "registration_source") html += sourceCustomField;
         return html;
       }).join("")}
-    </div>`,
+    </div>
+    ${resumeBlock}`,
     `<button class="btn" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="cand-save">保存</button>`);
 
@@ -838,10 +992,15 @@ function openCandidateModal(cand, stageKey) {
   if (stageKey === "registration") {
     bindRegistrationEmployeeLookup();
     bindRegistrationPhoneDuplicateCheck(cand, stageKey);
+    bindRegistrationRemarkInput();
+    bindRegistrationResumeDropzone(cand);
   }
 
   $("#cand-save").addEventListener("click", async () => {
     const data = collectCandidateFormData(fields);
+    if (stageKey === "registration" && "registration_remark" in data) {
+      data.registration_remark = normalizeRegistrationRemark(data.registration_remark);
+    }
     if (isRegCreate && !validateRegistrationCreateForm(fields, data)) return;
     const missing = fields.filter(f => f.required && !(data[f.key] || "").trim());
     if (!isRegCreate && missing.length) {
@@ -849,6 +1008,10 @@ function openCandidateModal(cand, stageKey) {
       return;
     }
     if (stageKey === "registration") {
+      if (!registrationResumeReady(cand)) {
+        toast("请上传简历", true);
+        return;
+      }
       if (findCandidateByPhoneInList(data.phone, cand?.id ?? null)) {
         toast("该电话已被其他候选人使用，请修改后再保存", true);
         return;
@@ -856,13 +1019,18 @@ function openCandidateModal(cand, stageKey) {
       if (!await validateRegistrationUserRefs(data)) return;
     }
     try {
+      let cid;
       if (isNew) {
-        await postCandidateCreate(data, stageKey);
-        toast("候选人已新增");
+        const r = await postCandidateCreate(data, stageKey);
+        cid = r.id;
       } else {
-        const r = await api(`/api/candidates/${cand.id}`, { method: "PUT", json: { data, stage: stageKey } });
-        toast(r.changed ? `已保存，更新了 ${r.changed} 项信息` : "内容无变化");
+        await api(`/api/candidates/${cand.id}`, { method: "PUT", json: { data, stage: stageKey } });
+        cid = cand.id;
       }
+      if (stageKey === "registration" && _modalResumeFile) {
+        await uploadCandidateResume(cid, _modalResumeFile);
+      }
+      toast(isNew ? "候选人已新增" : "已保存");
       closeModal();
       loadCandidateTable(stageKey);
     } catch (e) {
@@ -990,8 +1158,6 @@ async function onResumeFilePicked() {
   const ss = getStageState("registration");
   const file = $("#resume-input").files[0];
   if (!file || !ss.uploadTarget) return;
-  const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
-  if (![".pdf", ".docx"].includes(ext)) { toast("仅支持 .pdf 和 .docx 格式", true); return; }
   const fd = new FormData();
   fd.append("file", file);
   try {
