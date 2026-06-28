@@ -49,32 +49,43 @@ body {
   box-sizing: border-box;
 }
 .registration-form-grid .form-item-full { grid-column: 1 / -1; }
-.registration-emp-block .emp-input-row {
-  display: flex;
-  gap: 12px;
-  align-items: center;
+.form-grid.registration-form-grid { grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.registration-emp-block .emp-suggest-wrap { position: relative; }
+.registration-emp-block .emp-suggest-input { width: 100%; }
+.emp-suggest-list {
+  position: absolute; left: 0; right: 0; top: calc(100% + 2px); z-index: 20;
+  background: #fff; border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, .12); max-height: 220px; overflow: auto;
 }
-.registration-emp-block .emp-input-row input { flex: 1; min-width: 0; }
-.emp-name-display {
-  flex-shrink: 0;
-  color: var(--primary);
-  font-weight: 500;
-  font-size: 14px;
-  min-width: 72px;
-  text-align: right;
+.emp-suggest-item {
+  display: grid; grid-template-columns: 88px 1fr auto; gap: 8px; align-items: center;
+  width: 100%; padding: 7px 10px; border: none; border-bottom: 1px solid #f1f5f9;
+  background: #fff; text-align: left; font-size: 13px; cursor: pointer;
 }
+.emp-suggest-item:last-child { border-bottom: none; }
+.emp-suggest-item:hover { background: #eff6ff; }
+.emp-suggest-id { color: #475569; font-size: 12px; }
+.emp-suggest-name { color: #0f172a; font-weight: 500; }
+.emp-suggest-dept { color: #64748b; font-size: 12px; white-space: nowrap; }
+.emp-suggest-hint { padding: 8px 10px; font-size: 12px; color: #64748b; }
+.registration-emp-block .emp-resolved-meta {
+  display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin-top: 6px;
+}
+.registration-emp-block .emp-meta-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.registration-emp-block .emp-meta-label { color: var(--muted); }
+.emp-name-display { color: var(--primary); font-weight: 500; font-size: 13px; }
 .registration-emp-block .emp-dept-row {
-  display: flex;
-  gap: 8px;
+  display: inline-flex;
+  gap: 6px;
   align-items: center;
-  margin-top: 8px;
-  font-size: 13px;
+  font-size: 12px;
 }
 .registration-emp-block .emp-dept-label { color: var(--muted); flex-shrink: 0; }
 .registration-emp-block .emp-dept-value {
-  flex: 1;
+  flex: 0 1 auto;
   min-height: auto;
-  padding: 6px 10px;
+  padding: 4px 8px;
+  font-size: 12px;
 }
 .password-wrap { display: flex; gap: 8px; align-items: center; }
 .password-wrap input { flex: 1; }

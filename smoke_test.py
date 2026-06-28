@@ -188,6 +188,10 @@ check("登记保存接口人工号", auto_data.get("interface_person") == "hr02"
 check("登记接口人部门由工号解析", auto_data.get("interface_dept") == "软件部")
 s, lookup = call("GET", "/api/users/lookup-employee?username=hr02")
 check("工号查询接口人部门", lookup.get("found") and lookup.get("department") == "软件部")
+s, sug = call("GET", "/api/users/suggest-employee?q=hr")
+check("拓源人/接口人联想匹配", sug.get("items") and any(x["username"] == "hr02" for x in sug["items"]))
+s, sug_many = call("GET", "/api/users/suggest-employee?q=")
+check("空关键词不返回联想", not sug_many.get("items"))
 s, bad_iface = call("POST", "/api/candidates", {
     "stage": "registration",
     "data": sample_reg_data("无效接口人", interface_person="notexist99"),

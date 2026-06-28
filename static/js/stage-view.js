@@ -416,7 +416,7 @@ function registrationDeptFieldHtml(deptKey, value) {
     </div>`;
 }
 
-function registrationEmployeeFieldHtml(f, cand, locked, isRegCreate) {
+function registrationEmployeeFieldHtml(f, cand, locked) {
   const empKey = f.key;
   const deptKey = empKey === "sourcer" ? "sourcer_dept" : "interface_dept";
   const empVal = cand ? (cand.data[empKey] || "") : "";
@@ -425,19 +425,20 @@ function registrationEmployeeFieldHtml(f, cand, locked, isRegCreate) {
     ? (empKey === "sourcer" ? cand.sourcer_display : cand.interface_person_display) || ""
     : "";
   const ve = esc(empVal);
-  const hint = !locked ? registrationFieldHint(f) : "";
   const inputHtml = locked
     ? `<input type="text" data-field="${empKey}" class="master-locked-field" value="${ve}" disabled title="该字段已由主数据表导入，不可修改">`
-    : `<input type="text" data-field="${empKey}" value="${ve}" placeholder="填写工号" autocomplete="off">`;
+    : `<input type="text" class="emp-suggest-input" data-field="${empKey}" value="${ve}" placeholder="输入工号或姓名" autocomplete="off">`;
   return `
-    <div class="form-item registration-emp-block${locked ? " is-master-locked" : ""}">
+    <div class="form-item registration-emp-block form-item-full${locked ? " is-master-locked" : ""}">
       <label>${esc(f.label)}${f.required ? " *" : ""}${locked ? "（主数据锁定）" : ""}</label>
-      <div class="emp-input-row">
+      <div class="emp-suggest-wrap">
         ${inputHtml}
-        <span class="emp-name-display" id="emp-name-${empKey}">${esc(nameVal || "—")}</span>
+        <div class="emp-suggest-list hidden" data-suggest-for="${empKey}" role="listbox"></div>
       </div>
-      ${registrationDeptFieldHtml(deptKey, deptVal)}
-      ${hint}
+      <div class="emp-resolved-meta">
+        <span class="emp-meta-item"><span class="emp-meta-label">姓名</span><span class="emp-name-display" id="emp-name-${empKey}">${esc(nameVal || "—")}</span></span>
+        ${registrationDeptFieldHtml(deptKey, deptVal)}
+      </div>
     </div>`;
 }
 
@@ -452,6 +453,33 @@ async function lookupEmployeeForRegistration(username) {
   return body;
 }
 
+async function suggestEmployeesForRegistration(q) {
+  const res = await fetch(`/api/users/suggest-employee?q=${encodeURIComponent(q.trim())}`);
+  return res.json().catch(() => ({ items: [], too_many: false }));
+}
+
+function clearRegistrationEmployeeResolved(modal, emp, dept) {
+  const nameEl = modal.querySelector("#emp-name-" + emp);
+  const displayEl = modal.querySelector("#dept-display-" + dept);
+  const hidden = modal.querySelector(`[data-field='${dept}']`);
+  if (nameEl) nameEl.textContent = "—";
+  if (displayEl) displayEl.textContent = "—";
+  if (hidden) hidden.value = "";
+}
+
+function applyRegistrationEmployeeSelection(modal, emp, dept, user) {
+  const input = modal.querySelector(`[data-field='${emp}']`);
+  const listEl = modal.querySelector(`[data-suggest-for='${emp}']`);
+  const nameEl = modal.querySelector("#emp-name-" + emp);
+  const displayEl = modal.querySelector("#dept-display-" + dept);
+  const hidden = modal.querySelector(`[data-field='${dept}']`);
+  if (input) input.value = user.username || "";
+  if (nameEl) nameEl.textContent = user.display_name || "—";
+  if (displayEl) displayEl.textContent = user.department || "—";
+  if (hidden) hidden.value = user.department || "";
+  if (listEl) listEl.classList.add("hidden");
+}
+
 function bindRegistrationEmployeeLookup() {
   const pairs = [
     { emp: "sourcer", dept: "sourcer_dept" },
@@ -459,41 +487,69 @@ function bindRegistrationEmployeeLookup() {
   ];
   const modal = $("#modal-body");
   if (!modal) return;
+
   pairs.forEach(({ emp, dept }) => {
     const input = modal.querySelector(`[data-field='${emp}']`);
-    if (!input || input.disabled) return;
-    const displayEl = $("#dept-display-" + dept);
-    const nameEl = $("#emp-name-" + emp);
-    const hidden = modal.querySelector(`[data-field='${dept}']`);
-    const update = async () => {
-      const username = input.value.trim();
-      if (!username) {
-        if (displayEl) displayEl.textContent = "—";
-        if (nameEl) nameEl.textContent = "—";
-        if (hidden) hidden.value = "";
+    const listEl = modal.querySelector(`[data-suggest-for='${emp}']`);
+    if (!input || input.disabled || !listEl) return;
+
+    let lastItems = [];
+    const hideList = () => listEl.classList.add("hidden");
+
+    const renderList = (body) => {
+      if (body.too_many) {
+        listEl.innerHTML = `<div class="emp-suggest-hint">匹配 ${body.count || "过多"} 条，请缩小关键词</div>`;
+        lastItems = [];
+        listEl.classList.remove("hidden");
+        return;
+      }
+      lastItems = body.items || [];
+      if (!lastItems.length) {
+        listEl.innerHTML = `<div class="emp-suggest-hint">无匹配用户</div>`;
+        listEl.classList.remove("hidden");
+        return;
+      }
+      listEl.innerHTML = lastItems.map((u, i) => `
+        <button type="button" class="emp-suggest-item" data-idx="${i}" role="option">
+          <span class="emp-suggest-id mono">${esc(u.username)}</span>
+          <span class="emp-suggest-name">${esc(u.display_name)}</span>
+          <span class="emp-suggest-dept">${esc(u.department || "—")}</span>
+        </button>`).join("");
+      listEl.querySelectorAll(".emp-suggest-item").forEach(btn => {
+        btn.addEventListener("mousedown", e => e.preventDefault());
+        btn.addEventListener("click", () => {
+          const u = lastItems[+btn.dataset.idx];
+          if (u) applyRegistrationEmployeeSelection(modal, emp, dept, u);
+        });
+      });
+      listEl.classList.remove("hidden");
+    };
+
+    const search = debounce(async () => {
+      const q = input.value.trim();
+      if (!q) {
+        hideList();
+        clearRegistrationEmployeeResolved(modal, emp, dept);
         return;
       }
       try {
-        const body = await lookupEmployeeForRegistration(username);
-        if (body.found) {
-          const deptText = body.department || "—";
-          if (displayEl) displayEl.textContent = deptText;
-          if (nameEl) nameEl.textContent = body.display_name || "—";
-          if (hidden) hidden.value = body.department || "";
-        } else {
-          if (displayEl) displayEl.textContent = "—";
-          if (nameEl) nameEl.textContent = body.error || "工号未注册";
-          if (hidden) hidden.value = "";
-        }
+        renderList(await suggestEmployeesForRegistration(q));
       } catch (_) {
-        if (displayEl) displayEl.textContent = "查询失败";
-        if (nameEl) nameEl.textContent = "—";
-        if (hidden) hidden.value = "";
+        hideList();
       }
-    };
-    input.addEventListener("blur", update);
-    input.addEventListener("input", debounce(update, 400));
-    if (input.value.trim()) update();
+    }, 280);
+
+    input.addEventListener("input", search);
+    input.addEventListener("focus", () => {
+      if (input.value.trim()) search();
+    });
+    input.addEventListener("blur", () => setTimeout(hideList, 160));
+
+    if (input.value.trim()) {
+      lookupEmployeeForRegistration(input.value.trim()).then(body => {
+        if (body.found) applyRegistrationEmployeeSelection(modal, emp, dept, body);
+      });
+    }
   });
 }
 
@@ -538,13 +594,12 @@ function registrationEditFields(stageKey) {
 function registrationFormFieldHtml(f, cand, stageKey, isRegCreate, lockedFields) {
   const locked = lockedFields.has(f.key);
   if (stageKey === "registration" && (f.key === "sourcer" || f.key === "interface_person")) {
-    return registrationEmployeeFieldHtml(f, cand, locked, isRegCreate);
+    return registrationEmployeeFieldHtml(f, cand, locked);
   }
   return `
     <div class="form-item${locked ? " is-master-locked" : ""}${f.key === "registration_remark" ? " form-item-full" : ""}">
       <label>${esc(f.label)}${f.required ? " *" : ""}${locked ? "（主数据锁定）" : ""}</label>
       ${fieldInput(f, candidateFieldDefault(f, cand, isRegCreate), { locked })}
-      ${(isRegCreate || stageKey === "registration") && !locked ? registrationFieldHint(f) : ""}
     </div>`;
 }
 
@@ -604,13 +659,6 @@ async function validateRegistrationUserRefs(data) {
     toast("无法校验拓源人/接口人，请稍后重试", true);
     return false;
   }
-}
-
-function registrationFieldHint(f) {
-  if (f.key === "sourcer" || f.key === "interface_person") {
-    return `<p class="field-hint">填写工号，系统将自动匹配姓名与部门</p>`;
-  }
-  return "";
 }
 
 async function postCandidateCreate(data, stageKey, confirmOverwrite = false) {

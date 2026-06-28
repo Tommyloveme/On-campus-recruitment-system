@@ -56,6 +56,32 @@ def api_users():
     return jsonify(out)
 
 
+@bp.get("/api/users/suggest-employee")
+@login_required
+def api_suggest_employee():
+    """登记页拓源人/接口人：按工号或姓名模糊匹配，超过 5 条则不返回列表。"""
+    q = (request.args.get("q") or "").strip()
+    if not q:
+        return jsonify({"items": [], "too_many": False})
+    db = get_db()
+    ql = q.lower()
+    matches = []
+    for r in db.execute("SELECT * FROM users ORDER BY id").fetchall():
+        d = _user_full(db, r)
+        username = (d.get("username") or "").lower()
+        name = (d.get("display_name") or "").lower()
+        dept = (d.get("dept_display") or "").lower()
+        if ql in username or ql in name or ql in dept:
+            matches.append({
+                "username": d["username"],
+                "display_name": d["display_name"],
+                "department": d.get("dept_display") or "",
+            })
+    if len(matches) > 5:
+        return jsonify({"items": [], "too_many": True, "count": len(matches)})
+    return jsonify({"items": matches, "too_many": False})
+
+
 @bp.get("/api/users/check-registration-refs")
 @login_required
 def api_check_registration_refs():
