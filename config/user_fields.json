@@ -22,10 +22,10 @@
       "label": "二层部门",
       "type": "select",
       "options": [
-        "存储部",
-        "计算部",
-        "网络部",
-        "软件部"
+        "软件部",
+        "模型部",
+        "仿真部",
+        "测试部"
       ],
       "required": true,
       "builtin": true
@@ -33,49 +33,9 @@
     {
       "key": "dept_level3",
       "label": "三层部门",
-      "type": "select",
-      "options": [
-        "块存储",
-        "对象存储",
-        "通用计算",
-        "研发一组"
-      ],
-      "required": false,
-      "builtin": true
-    },
-    {
-      "key": "department",
-      "label": "部门(自动)",
       "type": "text",
       "required": false,
-      "builtin": true,
-      "readonly": true
-    },
-    {
-      "key": "employee_type",
-      "label": "员工类型",
-      "type": "select",
-      "options": [
-        "校招",
-        "社招",
-        "实习"
-      ],
-      "required": false,
-      "builtin": false
-    },
-    {
-      "key": "location",
-      "label": "办公地",
-      "type": "select",
-      "options": [
-        "深圳",
-        "杭州",
-        "上海",
-        "北京",
-        "成都"
-      ],
-      "required": false,
-      "builtin": false
+      "builtin": true
     }
   ]
 }

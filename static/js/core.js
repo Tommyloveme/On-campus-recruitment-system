@@ -70,7 +70,7 @@ function closeModal() { $("#modal-mask").classList.add("hidden"); }
 const ROLE_NAMES = {
   admin: "系统管理员", user: "普通用户",
 };
-const isAdmin = () => state.me && state.me.role === "admin";
+const isAdmin = () => state.me && (state.me.is_admin === true || state.me.role === "admin");
 const canEdit = () => {
   if (!state.me) return false;
   // 模块级写权限：当前 tab 即模块 key，须具备写权限（admin 直通）

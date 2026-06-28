@@ -1,0 +1,177 @@
+{
+  "comment": "角色=权限模板。每个角色定义 key/label/bypass/perms。bypass=true 表示绕过所有模块权限（系统管理员）。perms 为模块权限映射 {module_key: {v,r,w,m}}；应用角色时将该映射写入对应用户的 module_acl（覆盖该用户原有模块权限）。管理员可在界面新增/编辑角色，变更会落回本文件。builtin 角色建议保留不要删除。",
+  "roles": [
+    {
+      "key": "admin",
+      "label": "系统管理员",
+      "bypass": true,
+      "builtin": true,
+      "perms": {}
+    },
+    {
+      "key": "user",
+      "label": "普通用户",
+      "builtin": true,
+      "perms": {
+        "registration": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "recruit_flow": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "resume_screening": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "qualification": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "written_test": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "tech_interview": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "manager_interview": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "offer_strategy": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "approval": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "salary": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "offer": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "onboarding": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        }
+      }
+    },
+    {
+      "key": "interviewer",
+      "label": "面试官",
+      "builtin": true,
+      "perms": {
+        "recruit_flow": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "qualification": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "written_test": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "tech_interview": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "manager_interview": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        }
+      }
+    },
+    {
+      "key": "manager",
+      "label": "主管",
+      "builtin": true,
+      "perms": {
+        "recruit_flow": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "manager_interview": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "offer_strategy": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "approval": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "salary": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "offer": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "onboarding": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        }
+      }
+    }
+  ]
+}

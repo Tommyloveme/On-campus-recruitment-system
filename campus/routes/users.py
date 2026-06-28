@@ -11,7 +11,9 @@ from flask import Blueprint, g, jsonify, request
 from campus.auth.decorators import admin_required, login_required
 from campus.db.connection import get_db
 from campus.services.audit import add_log
+from campus.services.roles import role_keys, role_label
 from campus.services.users import (
+    apply_role_to_user,
     builtin_fields,
     custom_fields,
     lookup_employee_by_username,
@@ -25,8 +27,6 @@ from campus.services.users import (
 from campus.settings import APP_CONFIG
 
 bp = Blueprint("users", __name__)
-
-VALID_ROLES = ("admin", "user")
 
 
 def _user_row_dict(row):
@@ -101,9 +101,9 @@ def api_user_create():
     if not username:
         return jsonify({"error": "用户名（工号）不能为空"}), 400
     password = b.get("password") or APP_CONFIG["security"]["default_password"]
-    role = b.get("role", "user")
-    if role not in VALID_ROLES:
-        return jsonify({"error": "角色不合法"}), 400
+    role = (b.get("role") or "user").strip()
+    if role not in role_keys():
+        return jsonify({"error": f"角色不合法：{role}"}), 400
 
     err, fields = parse_user_profile_body(b)
     if err:
@@ -116,7 +116,10 @@ def api_user_create():
     except sqlite3.IntegrityError:
         return jsonify({"error": "工号已存在"}), 400
     uid = db.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()["id"]
-    add_log(g.user, "user", f"{g.user['display_name']} 创建了用户「{fields['builtin'].get('display_name')}」")
+    # 新建用户默认应用角色权限模板（除非显式关闭）
+    if b.get("apply_role", True):
+        apply_role_to_user(db, uid, role)
+    add_log(g.user, "user", f"{g.user['display_name']} 创建了用户「{fields['builtin'].get('display_name')}」（角色：{role_label(role)}）")
     db.commit()
     return jsonify({"ok": True, "id": uid})
 
@@ -129,9 +132,9 @@ def api_user_update(uid):
     user = db.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
     if not user:
         return jsonify({"error": "用户不存在"}), 404
-    role = b.get("role", user["role"])
-    if role not in VALID_ROLES:
-        return jsonify({"error": "角色不合法"}), 400
+    role = (b.get("role") or user["role"]).strip()
+    if role not in role_keys():
+        return jsonify({"error": f"角色不合法：{role}"}), 400
 
     # 合并既有值后再校验（前端可能只提交部分字段）
     merged = dict(b)
@@ -148,9 +151,48 @@ def api_user_update(uid):
         return jsonify({"error": err}), 400
 
     _persist_user_columns(db, uid, fields, role, password=b.get("password"))
+    # 显式要求重新应用角色权限（覆盖该用户模块权限）
+    if b.get("apply_role"):
+        apply_role_to_user(db, uid, role)
     add_log(g.user, "user", f"{g.user['display_name']} 更新了用户「{user['display_name']}」的信息")
     db.commit()
     return jsonify({"ok": True})
+
+
+@bp.post("/api/users/<int:uid>/apply-role")
+@admin_required
+def api_user_apply_role(uid):
+    """将用户当前角色的权限模板应用到其 module_acl（覆盖原有模块权限）。"""
+    db = get_db()
+    user = db.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+    if not user:
+        return jsonify({"error": "用户不存在"}), 404
+    cnt = apply_role_to_user(db, uid, user["role"])
+    add_log(g.user, "permission",
+            f"{g.user['display_name']} 对用户「{user['display_name']}」应用了角色「{role_label(user['role'])}」权限（{cnt} 项）")
+    db.commit()
+    return jsonify({"ok": True, "applied": cnt})
+
+
+@bp.post("/api/users/apply-role-batch")
+@admin_required
+def api_users_apply_role_batch():
+    """批量对所选用户应用其当前角色的权限模板。"""
+    b = request.get_json(force=True)
+    ids = b.get("ids") or []
+    if not ids:
+        return jsonify({"error": "请选择至少一个用户"}), 400
+    db = get_db()
+    total = 0
+    for uid in ids:
+        user = db.execute("SELECT * FROM users WHERE id=?", (int(uid),)).fetchone()
+        if not user:
+            continue
+        total += apply_role_to_user(db, int(uid), user["role"])
+    add_log(g.user, "permission",
+            f"{g.user['display_name']} 批量应用角色权限到 {len(ids)} 个用户（共 {total} 项）")
+    db.commit()
+    return jsonify({"ok": True, "applied": total})
 
 
 @bp.put("/api/users/batch")

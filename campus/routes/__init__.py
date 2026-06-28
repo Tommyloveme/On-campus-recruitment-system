@@ -11,6 +11,7 @@ from campus.routes.logs import bp as logs_bp
 from campus.routes.overview import bp as overview_bp
 from campus.routes.pages import bp as pages_bp
 from campus.routes.resumes import bp as resumes_bp
+from campus.routes.roles import bp as roles_bp
 from campus.routes.users import bp as users_bp
 
 
@@ -19,6 +20,7 @@ def register_routes(app):
         auth_bp,
         config_bp,
         users_bp,
+        roles_bp,
         candidates_bp,
         resumes_bp,
         import_export_bp,

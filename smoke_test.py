@@ -62,7 +62,7 @@ call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 req = urllib.request.Request(BASE + "/api/account/options")
 with opener.open(req) as r:
     acct_opts = json.loads(r.read().decode())
-check("账户选项下发用户字段配置", "user_fields" in acct_opts and len(acct_opts["user_fields"]) >= 5)
+check("账户选项下发用户字段配置", "user_fields" in acct_opts and len(acct_opts["user_fields"]) >= 4)
 check("账户选项不再下发业务角色", "job_roles" not in acct_opts)
 check("用户字段含工号唯一性与附属信息", any(f["key"] == "display_name" for f in acct_opts["user_fields"])
       and any(f["key"] == "dept_level2" and f.get("type") == "select" for f in acct_opts["user_fields"]))
@@ -81,25 +81,24 @@ check("自助注册接口已关闭(404)", s == 404)
 test_emp = f"{uuid.uuid4().int % 100000000:08d}"
 s, _ = call("POST", "/api/users", {
     "username": test_emp, "display_name": "Test", "supervisor": "张主管",
-    "dept_level2": "存储部", "password": "123456", "role": "user",
+    "dept_level2": "软件部", "password": "123456", "role": "user",
 }, expect_error=True)
 check("管理员创建用户姓名须中文", s == 400)
 s, _ = call("POST", "/api/users", {
     "username": "admin", "display_name": "假管理员", "supervisor": "张主管",
-    "dept_level2": "存储部", "password": "123456", "role": "user",
+    "dept_level2": "软件部", "password": "123456", "role": "user",
 }, expect_error=True)
 check("重复账号创建被拒", s == 400)
 s, crt = call("POST", "/api/users", {
     "username": test_emp, "display_name": "管理员创建", "supervisor": "张主管",
-    "dept_level2": "存储部", "dept_level3": "块存储",
-    "employee_type": "校招", "location": "深圳",
+    "dept_level2": "软件部", "dept_level3": "块存储",
     "password": "123456", "role": "user",
 })
 check("管理员创建用户成功(含自定义附属字段)", s == 200 and crt.get("ok"))
 s, me_reg = call("POST", "/api/login", {"username": test_emp, "password": "123456"})
 check("管理员创建的用户可登录", s == 200 and me_reg["display_name"] == "管理员创建")
 check("新建用户角色为user", me_reg["role"] == "user")
-# 新建用户无任何模块权限（纯模块授权模型，权限由管理员在矩阵授予）
+# 新建 user 角色用户默认应用角色权限模板（角色与权限捆绑），故可见登记模块
 s, mods_new = call("GET", "/api/permissions/modules")
 def find_mod(mods_resp, key):
     for sec in mods_resp["modules"]:
@@ -109,9 +108,9 @@ def find_mod(mods_resp, key):
             if it["key"] == key:
                 return it
     return None
-check("新建用户默认无登记模块权限", find_mod(mods_new, "registration")["visible"] is False)
+check("新建user角色用户默认获登记模块权限", find_mod(mods_new, "registration")["visible"] is True)
 s, me_up = call("PUT", "/api/profile", {
-    "display_name": "管理员创建改", "supervisor": "王主管", "dept_level2": "存储部",
+    "display_name": "管理员创建改", "supervisor": "王主管", "dept_level2": "软件部",
 })
 check("用户可更新个人资料", me_up["display_name"] == "管理员创建改")
 # 清理本节创建的临时用户（需管理员权限）
@@ -162,7 +161,7 @@ hr01 = next((u for u in users if u["username"] == "hr01"), None)
 if hr01:
     call("PUT", f"/api/users/{hr01['id']}", {
         "display_name": "招聘专员小王", "role": hr01["role"],
-        "supervisor": "李主管", "dept_level2": "存储部",
+        "supervisor": "李主管", "dept_level2": "软件部",
     })
 hr02 = next((u for u in users if u["username"] == "hr02"), None)
 if hr02:
@@ -183,7 +182,7 @@ s, r_auto = call("POST", "/api/candidates", {
 auto_id = r_auto["id"]
 s, auto_cands = call("GET", "/api/candidates?q=" + quote("自动带入测试"))
 auto_data = auto_cands[0]["data"]
-check("登记自动带入拓源人部门", auto_data.get("sourcer_dept") == "存储部")
+check("登记自动带入拓源人部门", auto_data.get("sourcer_dept") == "软件部")
 check("登记保存拓源人工号", auto_data.get("sourcer") == "hr01")
 check("登记保存接口人工号", auto_data.get("interface_person") == "hr02")
 check("登记接口人部门由工号解析", auto_data.get("interface_dept") == "软件部")
@@ -462,6 +461,16 @@ resume_logs = [l["message"] for l in logs["items"][:6]]
 check("简历操作已记录日志", any("简历" in m for m in resume_logs))
 
 # 8. 普通用户权限（基线模块授权用户：共享池可读写、无管理员模块）
+# 重置 hr02 的非基线模块授权（避免手动 UI 测试残留的 data_board/overview 等影响断言）
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+s, _users8 = call("GET", "/api/users")
+_hr02 = next((u for u in _users8 if u["username"] == "hr02"), None)
+if _hr02:
+    for _mk in ("data_board", "overview", "charts"):
+        try:
+            call("DELETE", "/api/module-acl", {"subject_type": "user", "subject_id": _hr02["id"], "module_key": _mk})
+        except Exception:
+            pass
 call("POST", "/api/login", {"username": "hr02", "password": "123456"})
 s, cands = call("GET", "/api/candidates")
 check("普通用户可见共享池候选人", len(cands) >= 1)
@@ -480,10 +489,11 @@ s, users = call("GET", "/api/users")
 for u in users:
     if u["username"] in ("t_user", "t_isolated"):
         call("DELETE", f"/api/users/{u['id']}")
-# 创建一个隔离用户（新建用户默认无任何模块权限，无需移出分组）
+# 创建一个隔离用户（显式不应用角色权限，故无任何模块权限）
 s, r_iso = call("POST", "/api/users", {"username": "t_isolated", "display_name": "隔离用户",
                                        "password": "pw123", "role": "user",
-                                       "supervisor": "张主管", "dept_level2": "存储部"})
+                                       "supervisor": "张主管", "dept_level2": "软件部",
+                                       "apply_role": False})
 check("创建隔离用户", s == 200 and r_iso.get("ok"))
 iso_id = r_iso["id"]
 
@@ -501,7 +511,7 @@ for u in users:
         call("DELETE", f"/api/users/{u['id']}")
 s, _ = call("POST", "/api/users", {"username": "t_admin2", "display_name": "测试管理员",
                                    "password": "pw123", "role": "admin",
-                                   "supervisor": "张主管", "dept_level2": "存储部"})
+                                   "supervisor": "张主管", "dept_level2": "软件部"})
 check("系统管理员可创建管理员", s == 200)
 
 # 9b. 按用户授予模块读权限：授予 hr02 overview 读 → hr02 可访问总览
@@ -613,14 +623,15 @@ check("权限选项含用户与模块矩阵", "users" in perm_opts and "modules"
 check("已取消用户分组/资源分组/模板概念",
       "user_groups" not in perm_opts and "resource_groups" not in perm_opts
       and "permission_templates" not in perm_opts and "user_group_templates" not in perm_opts)
-check("附属信息字段由配置下发", any(f["key"] == "employee_type" and f.get("type") == "select" for f in perm_opts["user_fields"]))
+check("附属信息字段由配置下发", any(f["key"] == "dept_level2" and f.get("type") == "select" for f in perm_opts["user_fields"]))
 
-# 11b. 准备测试用户 perm_a（新建用户默认无任何模块权限）
+# 11b. 准备测试用户 perm_a（显式不应用角色权限，保持无任何模块权限，用于后续逐项授权测试）
 call("POST", "/api/users", {"username": "perm_a", "display_name": "权限甲", "role": "user",
-                            "supervisor": "张主管", "dept_level2": "存储部", "password": "123456"})
+                            "supervisor": "张主管", "dept_level2": "软件部", "password": "123456",
+                            "apply_role": False})
 s, users = call("GET", "/api/users")
 perm_a = next(u for u in users if u["username"] == "perm_a")
-check("perm_a 创建成功且自带自定义字段默认空", perm_a.get("employee_type") == "")
+check("perm_a 创建成功且自带附属字段默认空", perm_a.get("dept_level3") == "")
 
 # 12. 模块级 ACL：用户 × 模块 的 V/R/W/M（恒门禁，纯用户主体授权）
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
@@ -637,8 +648,9 @@ check("模块含板块与子模块", {"recruit_flow", "tech_interview", "manager
 check("模块元数据不含 enabled 开关", "enabled" not in mods["modules"][0])
 ab = find_mod(mods, "admin_board")
 ab_keys = {it["key"] for it in (ab or {}).get("items", [])} if ab else set()
-check("管理看板含权限管理/操作日志/数据备份/字段配置同级",
-      {"permissions", "op_logs", "backups", "field_config"} <= ab_keys)
+check("管理看板含权限管理/操作日志/数据备份同级",
+      {"permissions", "op_logs", "backups"} <= ab_keys)
+check("字段配置已合并进权限管理", "field_config" not in ab_keys)
 
 # 12b. 授予 perm_a tech_interview 可见+读+写
 s, _ = call("PUT", "/api/module-acl", {
@@ -736,11 +748,52 @@ check("导出模块权限矩阵Excel", mod_xlsx[:2] == b"PK")
 
 # 12h. 批量修改用户附属信息（Excel 式批量）
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
-s, r = call("PUT", "/api/users/batch", {"ids": [perm_a["id"]], "patch": {"employee_type": "社招", "location": "杭州"}})
+s, r = call("PUT", "/api/users/batch", {"ids": [perm_a["id"]], "patch": {"dept_level3": "研发三组"}})
 check("批量修改用户附属信息", s == 200 and r["updated"] == 1)
 s, users = call("GET", "/api/users")
 perm_a2 = next(u for u in users if u["username"] == "perm_a")
-check("自定义附属字段已批量写入(extra)", perm_a2.get("employee_type") == "社招" and perm_a2.get("location") == "杭州")
+check("附属字段已批量写入", perm_a2.get("dept_level3") == "研发三组")
+
+# 13. 角色管理（角色=权限模板，持久化到 config/roles.json）
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+s, roles_resp = call("GET", "/api/roles")
+role_keys_list = [r["key"] for r in roles_resp["roles"]]
+check("角色列表含4个默认角色", {"admin", "user", "interviewer", "manager"} <= set(role_keys_list))
+check("admin角色标记bypass", any(r["key"] == "admin" and r["bypass"] for r in roles_resp["roles"]))
+check("interviewer角色含技术面写权限",
+      (roles_resp["roles"][[r["key"] for r in roles_resp["roles"]].index("interviewer")]["perms"]
+       .get("tech_interview", {}).get("w") == 1))
+# 新增自定义角色
+s, rrole = call("POST", "/api/roles", {"key": "test_role", "label": "测试角色",
+    "perms": {"tech_interview": {"v": 1, "r": 1, "w": 1, "m": 0}}})
+check("新增自定义角色", s == 200 and rrole["role"]["key"] == "test_role")
+s, roles_resp2 = call("GET", "/api/roles")
+check("新角色已持久化", any(r["key"] == "test_role" for r in roles_resp2["roles"]))
+# 重复 key 被拒
+s, _ = call("POST", "/api/roles", {"key": "test_role", "label": "重复", "perms": {}}, expect_error=True)
+check("重复角色key被拒", s == 400)
+# 编辑角色
+s, _ = call("PUT", "/api/roles/test_role", {"label": "测试角色改", "perms": {"manager_interview": {"v": 1, "r": 1, "w": 1, "m": 0}}})
+check("编辑角色成功", s == 200)
+s, roles_resp3 = call("GET", "/api/roles")
+_tr = next(r for r in roles_resp3["roles"] if r["key"] == "test_role")
+check("角色编辑已持久化", _tr["label"] == "测试角色改" and _tr["perms"]["manager_interview"]["w"] == 1)
+# 应用角色权限到用户：把 perm_a 的角色改为 test_role 并应用其权限模板（覆盖原有模块权限）
+s, r_ap = call("PUT", f"/api/users/{perm_a['id']}", {"role": "test_role", "apply_role": True})
+check("切换用户角色并应用权限", s == 200)
+call("POST", "/api/login", {"username": "perm_a", "password": "123456"})
+s, mods_ap = call("GET", "/api/permissions/modules")
+check("perm_a 应用测试角色后可见主管面写",
+      find_mod(mods_ap, "manager_interview")["writable"] is True)
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+# 删除内置角色被拒
+s, _ = call("DELETE", "/api/roles/user", expect_error=True)
+check("内置角色不可删除", s == 400)
+# 删除自定义角色
+s, _ = call("DELETE", "/api/roles/test_role")
+check("删除自定义角色", s == 200)
+s, roles_resp4 = call("GET", "/api/roles")
+check("自定义角色已删除", not any(r["key"] == "test_role" for r in roles_resp4["roles"]))
 
 # 清理模块 ACL 与权限测试数据
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})

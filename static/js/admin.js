@@ -95,13 +95,10 @@ async function renderBackups() {
   });
 }
 
-/* ---------- 字段配置 ---------- */
-async function renderFieldConfig() {
-  if (!isAdmin()) {
-    $("#main").innerHTML = `<div class="empty-state">仅系统管理员可查看字段配置。</div>`;
-    return;
-  }
-  $("#main").innerHTML = `<div class="card"><div class="section-title">附属信息字段配置</div><div id="fc-body">加载中…</div></div>`;
+/* ---------- 字段配置（嵌入权限管理页底部） ---------- */
+async function renderFieldConfigInto(container) {
+  if (!container) return;
+  container.innerHTML = `<div class="perm-embed-title">附属信息字段配置</div><div id="fc-body">加载中…</div>`;
   let fields = [];
   try {
     const opts = await api("/api/account/options");
@@ -111,8 +108,8 @@ async function renderFieldConfig() {
     return;
   }
   $("#fc-body").innerHTML = `
-    <p style="font-size:12px;color:#64748b;margin-bottom:10px">
-      在 <code>config/user_fields.json</code> 中新增字段并定义操作模式（<b>text</b> 自由输入 / <b>select</b> 单选下拉，<code>options</code> 为可选项）。<br>
+    <p class="perm-embed-sub">
+      在 <code>config/user_fields.json</code> 中新增字段并定义操作模式（<b>text</b> 自由输入 / <b>select</b> 单选下拉，<code>options</code> 为可选项）。
       <b>builtin</b> 字段对应 users 表内置列；非 builtin 字段存入 <code>users.extra</code>(JSON)。修改后刷新页面即生效。
     </p>
     <div class="table-wrap"><table class="fc-table">

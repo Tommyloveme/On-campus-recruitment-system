@@ -60,9 +60,11 @@ async function renderPermissions() {
 
       <div class="perm-batch-bar">
         <span class="perm-batch-label">批量授权</span>
-        <span>模块</span><select id="perm-batch-module" class="perm-select"></select>
-        ${PERM_FLAGS.map(([s, , label]) =>
-          `<label class="perm-flag perm-flag-toggle"><input type="checkbox" id="perm-batch-${s}">${label}</label>`).join("")}
+        <span class="perm-batch-field"><label class="perm-batch-cap">模块</label><select id="perm-batch-module" class="perm-select"></select></span>
+        <span class="perm-batch-flags">
+          ${PERM_FLAGS.map(([s, , label, color]) =>
+            `<label class="perm-flag-toggle" style="--flag-color:${color}"><input type="checkbox" id="perm-batch-${s}"><span>${label}</span></label>`).join("")}
+        </span>
         <button class="btn btn-primary btn-sm" id="perm-batch-apply">应用到所选用户</button>
         <button class="btn btn-sm" id="perm-batch-revoke">清空所选用户该模块</button>
         <span class="perm-flex"></span>
@@ -70,6 +72,9 @@ async function renderPermissions() {
       </div>
 
       <div class="perm-grid-wrap"><table id="perm-grid" class="perm-grid"></table></div>
+
+      <div id="perm-roles" class="perm-embed"></div>
+      <div id="perm-field-config" class="perm-embed"></div>
     </div>`;
 
   $("#perm-add-user").addEventListener("click", () => openUserModal(null));
@@ -83,6 +88,8 @@ async function renderPermissions() {
     .map(m => `<option value="${m.key}">${esc(m.label)}${m.type === "section" ? "（板块）" : ""}</option>`).join("");
   renderPermGrid();
   refreshPermBatchBtn();
+  renderRolesSection();
+  renderFieldConfigInto($("#perm-field-config"));
 }
 
 async function loadPermData() {
@@ -130,8 +137,7 @@ function rowPassesFilter(u, cols) {
     if (col.kind === "text" || col.kind === "field") {
       if (f && !String(cellValue(u, col)).toLowerCase().includes(String(f).toLowerCase())) return false;
     } else if (col.kind === "role") {
-      if (f === "admin" && u.role !== "admin") return false;
-      if (f === "user" && u.role !== "user") return false;
+      if (f && u.role !== f) return false;
     } else if (col.kind === "module") {
       const a = aclOf(u.id, col.module.key);
       const match = {
@@ -152,7 +158,7 @@ function renderPermGrid() {
 
   // 表头：第1行标签，第2行筛选
   const labelRow = cols.map(c => {
-    if (c.kind === "check") return `<th class="perm-col-check"><input type="checkbox" id="perm-check-all" title="全选"></th>`;
+    if (c.kind === "check") return `<th class="perm-col-check sticky-col col-check"><input type="checkbox" id="perm-check-all" title="全选"></th>`;
     if (c.kind === "actions") return `<th class="perm-actions-col">操作</th>`;
     const sticky = (c.id === "username") ? " sticky-col col-username" : (c.id === "display_name" ? " sticky-col col-name" : "");
     const modCls = c.kind === "module" ? ` perm-mod-head${c.module.type === "section" ? " is-section" : ""}` : "";
@@ -160,12 +166,14 @@ function renderPermGrid() {
   }).join("");
 
   const filterRow = cols.map(c => {
-    if (c.kind === "check") return `<th class="perm-col-check"></th>`;
+    if (c.kind === "check") return `<th class="perm-col-check sticky-col col-check"></th>`;
     if (c.kind === "actions") return `<th class="perm-actions-col"></th>`;
     const sticky = (c.id === "username") ? " sticky-col col-username" : (c.id === "display_name" ? " sticky-col col-name" : "");
     if (c.kind === "role") {
+      const ro = (permOptions.roles || []).map(r =>
+        `<option value="${esc(r.key)}">${esc(r.label)}</option>`).join("");
       return `<th class="${sticky}"><select class="perm-col-filter" data-col="${c.id}">
-        <option value="">全部</option><option value="admin">管理员</option><option value="user">普通用户</option></select></th>`;
+        <option value="">全部</option>${ro}</select></th>`;
     }
     if (c.kind === "module") {
       const opts = MOD_FILTERS.map(([v, label]) =>
@@ -223,13 +231,15 @@ function renderPermGridBody(cols) {
 
 function permUserRow(u, cols) {
   const tds = cols.map(c => {
-    if (c.kind === "check") return `<td class="perm-col-check"><input type="checkbox" class="perm-row-check" value="${u.id}"></td>`;
+    if (c.kind === "check") return `<td class="perm-col-check sticky-col col-check"><input type="checkbox" class="perm-row-check" value="${u.id}"></td>`;
     if (c.kind === "actions") return `<td class="perm-actions-col"><div class="perm-actions">
       <button class="btn btn-sm" data-uedit="${u.id}">编辑</button>
       ${u.id !== state.me.id ? `<button class="btn btn-sm btn-danger" data-udel="${u.id}">删除</button>` : ""}</div></td>`;
     if (c.kind === "role") {
-      const sticky = " sticky-col col-role";
-      return `<td class="${sticky}"><span class="badge badge-${u.role === "admin" ? "blue" : "gray"}">${esc(ROLE_NAMES[u.role] || u.role)}</span></td>`;
+      const rdef = (permOptions.roles || []).find(r => r.key === u.role);
+      const label = rdef ? rdef.label : (ROLE_NAMES[u.role] || u.role || "—");
+      const tone = (rdef && rdef.bypass) ? "blue" : "gray";
+      return `<td class="col-role"><span class="badge badge-${tone}">${esc(label)}</span></td>`;
     }
     if (c.kind === "module") {
       const a = aclOf(u.id, c.module.key);
@@ -322,8 +332,9 @@ function fieldInputHtml(f, val) {
 function openUserModal(user) {
   const isNew = !user;
   const fields = permOptions.user_fields || [];
-  const roleOptions = [["user", "普通用户"], ["admin", "系统管理员"]]
-    .map(([v, t]) => `<option value="${v}" ${user?.role === v ? "selected" : ""}>${t}</option>`).join("");
+  const roles = permOptions.roles || [];
+  const roleOptions = roles.map(r =>
+    `<option value="${esc(r.key)}" ${user?.role === r.key ? "selected" : ""}>${esc(r.label)}${r.bypass ? "（全权）" : ""}</option>`).join("");
   const fieldRows = fields.map(f => `
     <div class="form-item">
       <label>${esc(f.label)} ${f.required ? "*" : ""}${f.readonly ? "（只读/自动）" : ""}</label>
@@ -337,7 +348,9 @@ function openUserModal(user) {
       <div class="form-item"><label>密码 ${isNew ? "（默认 123456）" : "（留空则不修改）"}</label>
         <input id="uf-password" type="text" ${isNew ? `value="123456"` : ""}></div>
       ${fieldRows}
-    </div>`,
+    </div>
+    <label class="perm-flag-toggle" style="margin-top:8px"><input type="checkbox" id="uf-apply-role" ${isNew ? "checked" : ""}>
+      <span>${isNew ? "创建后应用该角色权限模板" : "重新应用该角色权限模板（覆盖此用户当前模块权限）"}</span></label>`,
     `<button class="btn" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="uf-save">保存</button>`);
   $("#uf-save").addEventListener("click", async () => {
@@ -345,6 +358,7 @@ function openUserModal(user) {
       username: $("#uf-username").value.trim(),
       password: $("#uf-password").value,
       role: $("#uf-role").value,
+      apply_role: $("#uf-apply-role").checked,
     };
     for (const f of fields) {
       const el = $(`#uf-${f.key}`);
@@ -357,6 +371,7 @@ function openUserModal(user) {
       closeModal();
       await loadPermData();
       renderPermGrid();
+      renderRolesSection();
       refreshPermBatchBtn();
     } catch (e) { toast(e.message, true); }
   });
@@ -393,6 +408,120 @@ function openBatchEditModal() {
       await loadPermData();
       renderPermGrid();
       refreshPermBatchBtn();
+    } catch (e) { toast(e.message, true); }
+  });
+}
+
+/* ---------- 角色管理（角色=权限模板，持久化到 config/roles.json） ---------- */
+
+function roleFlagMatrix(role) {
+  const perms = role.perms || {};
+  return permModuleCols.map(m => {
+    const p = perms[m.key] || {v:0,r:0,w:0,m:0};
+    const flags = PERM_FLAGS.map(([s, , , color]) =>
+      `<span class="role-flag${p[s] ? " on" : ""}" style="--flag-color:${color}">${p[s] ? "✓" : "·"}</span>`).join("");
+    return `<tr><td class="role-mod-name${m.type === "section" ? " is-section" : ""}">${esc(m.label)}</td>
+      <td class="role-flag-cell">${flags}</td></tr>`;
+  }).join("");
+}
+
+function renderRolesSection() {
+  const box = $("#perm-roles");
+  if (!box) return;
+  const roles = permOptions.roles || [];
+  const cards = roles.map(r => `
+    <div class="role-card${r.bypass ? " is-bypass" : ""}" data-role="${esc(r.key)}">
+      <div class="role-card-head">
+        <div class="role-card-title">
+          <span class="role-name">${esc(r.label)}</span>
+          ${r.bypass ? `<span class="badge badge-blue">全权(绕过)</span>` : ""}
+          ${r.builtin ? `<span class="badge badge-gray">内置</span>` : ""}
+          <span class="role-key mono">${esc(r.key)}</span>
+        </div>
+        <div class="role-card-actions">
+          <button class="btn btn-sm" data-role-edit="${esc(r.key)}">编辑</button>
+          ${r.builtin ? "" : `<button class="btn btn-sm btn-danger" data-role-del="${esc(r.key)}">删除</button>`}
+        </div>
+      </div>
+      ${r.bypass ? `<p class="role-bypass-note">该角色绕过所有模块权限，无需逐项配置。</p>`
+        : `<table class="role-matrix"><tbody>${roleFlagMatrix(r)}</tbody></table>`}
+    </div>`).join("");
+  box.innerHTML = `
+    <div class="perm-embed-title">角色管理 <span class="muted" style="font-weight:400;font-size:12px">（角色=权限模板，应用角色时写入对应用户的模块权限）</span></div>
+    <div class="perm-embed-sub">默认角色配置承载于 <code>config/roles.json</code>；新增/编辑角色会写回该文件。在用户新增/编辑弹窗中选择角色并勾选"应用角色权限"即可把模板写入该用户。</div>
+    <div class="perm-toolbar" style="margin-bottom:10px"><button class="btn btn-primary btn-sm" id="role-add">+ 新增角色</button></div>
+    <div class="role-grid">${cards}</div>`;
+  $("#role-add").addEventListener("click", () => openRoleModal(null));
+  box.querySelectorAll("[data-role-edit]").forEach(b =>
+    b.addEventListener("click", () => openRoleModal(roles.find(r => r.key === b.dataset.roleEdit))));
+  box.querySelectorAll("[data-role-del]").forEach(b =>
+    b.addEventListener("click", async () => {
+      if (!confirm(`确认删除角色「${b.dataset.roleDel}」？已分配该角色的用户不会被删除，但其模块权限不会自动变更。`)) return;
+      try {
+        await api(`/api/roles/${encodeURIComponent(b.dataset.roleDel)}`, { method: "DELETE" });
+        toast("角色已删除");
+        await loadPermData();
+        renderPermGrid();
+        renderRolesSection();
+      } catch (e) { toast(e.message, true); }
+    }));
+}
+
+function openRoleModal(role) {
+  const isNew = !role;
+  const modules = permModuleCols;
+  const perms = isNew ? {} : (role.perms || {});
+  const rows = modules.map(m => {
+    const p = perms[m.key] || {v:0,r:0,w:0,m:0};
+    const flags = PERM_FLAGS.map(([s, , label, color]) =>
+      `<label class="perm-flag-toggle" style="--flag-color:${color}"><input type="checkbox" class="rf-cb" data-mk="${m.key}" data-flag="${s}" ${p[s] ? "checked" : ""}><span>${label}</span></label>`).join("");
+    return `<tr><td class="role-mod-name${m.type === "section" ? " is-section" : ""}">${esc(m.label)}</td>
+      <td class="role-flag-cell">${flags}</td></tr>`;
+  }).join("");
+  openModal(isNew ? "新增角色" : `编辑角色 - ${esc(role.label)}`, `
+    <div class="form-grid" style="grid-template-columns:1fr 1fr">
+      <div class="form-item"><label>角色名称 *</label>
+        <input id="rf-label" value="${role ? esc(role.label) : ""}"></div>
+      <div class="form-item"><label>角色key ${isNew ? "（唯一，英文/数字/下划线）" : "（不可修改）"}</label>
+        <input id="rf-key" value="${role ? esc(role.key) : ""}" ${isNew ? "" : "disabled"}></div>
+    </div>
+    <label class="perm-flag-toggle" style="margin:6px 0 10px"><input type="checkbox" id="rf-bypass" ${role?.bypass ? "checked" : ""}>
+      <span>全权角色（绕过所有模块权限，如系统管理员）</span></label>
+    <div class="role-modal-matrix"><table class="role-matrix"><tbody>${rows}</tbody></table></div>`,
+    `<button class="btn" onclick="closeModal()">取消</button>
+     <button class="btn btn-primary" id="rf-save">保存</button>`);
+
+  const toggleMatrix = () => {
+    const dis = $("#rf-bypass").checked;
+    document.querySelectorAll(".rf-cb").forEach(cb => cb.disabled = dis);
+    const m = document.querySelector(".role-modal-matrix");
+    if (m) m.style.opacity = dis ? ".5" : "1";
+  };
+  $("#rf-bypass").addEventListener("change", toggleMatrix);
+  toggleMatrix();
+
+  $("#rf-save").addEventListener("click", async () => {
+    const label = $("#rf-label").value.trim();
+    const bypass = $("#rf-bypass").checked;
+    const permsBody = {};
+    document.querySelectorAll(".rf-cb").forEach(cb => {
+      if (!cb.checked) return;
+      const mk = cb.dataset.mk, f = cb.dataset.flag;
+      (permsBody[mk] = permsBody[mk] || {v:0,r:0,w:0,m:0})[f] = 1;
+    });
+    const body = { label, perms: permsBody, bypass };
+    try {
+      if (isNew) {
+        body.key = $("#rf-key").value.trim();
+        await api("/api/roles", { method: "POST", json: body });
+      } else {
+        await api(`/api/roles/${encodeURIComponent(role.key)}`, { method: "PUT", json: body });
+      }
+      toast("角色已保存");
+      closeModal();
+      await loadPermData();
+      renderPermGrid();
+      renderRolesSection();
     } catch (e) { toast(e.message, true); }
   });
 }

@@ -22,6 +22,7 @@ from campus.services.acl import (
     permission_settings,
 )
 from campus.services.audit import add_log
+from campus.services.roles import roles_payload
 from campus.services.users import user_dict, user_fields_config
 
 bp = Blueprint("acl", __name__)
@@ -50,6 +51,7 @@ def api_permission_options():
         "users": users,
         "user_fields": user_fields_config(),
         "modules": module_meta,
+        "roles": roles_payload(),
     })
 
 

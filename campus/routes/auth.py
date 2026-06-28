@@ -57,7 +57,10 @@ def api_logout():
 @bp.get("/api/me")
 @login_required
 def api_me():
-    return jsonify(user_dict(g.user))
+    from campus.auth.permissions import is_admin
+    d = user_dict(g.user)
+    d["is_admin"] = is_admin(g.user)
+    return jsonify(d)
 
 
 @bp.put("/api/profile")

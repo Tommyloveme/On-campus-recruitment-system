@@ -149,6 +149,7 @@ def parse_user_profile_body(body, require_employee_id=False):
 
 def user_dict(u):
     """序列化用户：工号 + 角色 + 所有配置字段（builtin 列 + extra JSON）。"""
+    from campus.services.roles import role_label
     keys = u.keys() if hasattr(u, "keys") else []
     extra = parse_extra(u["extra"] if "extra" in keys else None)
     out = {
@@ -156,6 +157,7 @@ def user_dict(u):
         "username": u["username"],
         "display_name": u["display_name"],
         "role": u["role"],
+        "role_label": role_label(u["role"]),
     }
     for f in user_fields_config():
         key = f["key"]
@@ -164,6 +166,36 @@ def user_dict(u):
         else:
             out[key] = extra.get(key, "")
     return out
+
+
+def apply_role_to_user(db, uid, role_key):
+    """将角色权限模板写入用户的 module_acl（覆盖该用户原有模块权限）。
+
+    bypass 角色（如系统管理员）清空其 module_acl（依赖 admin_bypass 直通）。
+    返回写入的条目数。
+    """
+    from campus.services.roles import get_role, role_bypass
+    db.execute("DELETE FROM module_acl WHERE subject_type='user' AND subject_id=?", (uid,))
+    if role_bypass(role_key):
+        return 0
+    r = get_role(role_key)
+    perms = (r or {}).get("perms", {}) or {}
+    from campus.db.connection import now_str
+    now = now_str()
+    cnt = 0
+    for mk, flags in perms.items():
+        if not flags or not (flags.get("v") or flags.get("r") or flags.get("w") or flags.get("m")):
+            continue
+        db.execute(
+            "INSERT INTO module_acl (subject_type, subject_id, module_key, "
+            "perm_visibility, perm_read, perm_write, perm_manage, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            ("user", uid, mk,
+             1 if flags.get("v") else 0, 1 if flags.get("r") else 0,
+             1 if flags.get("w") else 0, 1 if flags.get("m") else 0, now),
+        )
+        cnt += 1
+    return cnt
 
 
 def user_dept_display(user_row):

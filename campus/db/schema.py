@@ -226,8 +226,9 @@ def migrate(db):
         ("onboarding", 1, 1, 1, 0),
     ]
     now = now_str()
+    from campus.services.roles import role_bypass
     for u in db.execute("SELECT id, role FROM users").fetchall():
-        if u["role"] == "admin":
+        if u["role"] == "admin" or role_bypass(u["role"]):
             continue
         cnt = db.execute(
             "SELECT COUNT(*) AS c FROM module_acl WHERE subject_type='user' AND subject_id=?", (u["id"],)
