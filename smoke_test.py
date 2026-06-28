@@ -635,9 +635,10 @@ for sec in mods["modules"]:
         mk_keys.add(it["key"])
 check("模块含板块与子模块", {"recruit_flow", "tech_interview", "manager_interview", "admin_board"} <= mk_keys)
 check("模块元数据不含 enabled 开关", "enabled" not in mods["modules"][0])
-check("管理看板仅保留权限管理",
-      find_mod(mods, "admin_board") is not None
-      and all(it["key"] == "permissions" for it in find_mod(mods, "admin_board").get("items", [])))
+ab = find_mod(mods, "admin_board")
+ab_keys = {it["key"] for it in (ab or {}).get("items", [])} if ab else set()
+check("管理看板含权限管理/操作日志/数据备份/字段配置同级",
+      {"permissions", "op_logs", "backups", "field_config"} <= ab_keys)
 
 # 12b. 授予 perm_a tech_interview 可见+读+写
 s, _ = call("PUT", "/api/module-acl", {
