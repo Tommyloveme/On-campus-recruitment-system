@@ -2,7 +2,7 @@
 
 /* 权限管理：单一 Excel 式 用户×模块 权限矩阵页，仅系统管理员。
  * 行=用户(工号唯一)；列=附属信息(由 config/user_fields.json 配置) + 各模块的 V/R/W/M 四勾选。
- * 每列支持模糊搜索/筛选；内联勾选即时保存；多选用户后批量填充某模块权限；列宽可拖拽调整。
+ * 每列支持模糊搜索/筛选；内联勾选即时保存；多选用户后批量填充某模块权限；列宽可拖拽调整（默认按表头/单元格/筛选项最长内容计算）。
  * 操作日志 / 数据备份 已剥离为「管理看板」同级标签页；附属信息字段配置置于本页顶部。
  */
 let permOptions = { users: [], user_fields: [], modules: [], settings: {} };
@@ -160,7 +160,11 @@ function rowPassesFilter(u, cols) {
 const PERM_FROZEN_COUNT = 3;
 const PERM_COL_WIDTH_KEY = "perm_col_widths_v1";
 let permColWidths = {};
+let permComputedDefaults = {};
 let _permMeasureEl;
+let _permBadgeEl;
+let _permActionsEl;
+let _permModCellEl;
 
 function permLoadColWidths() {
   try {
@@ -173,26 +177,130 @@ function permSaveColWidths() {
   try { localStorage.setItem(PERM_COL_WIDTH_KEY, JSON.stringify(permColWidths)); } catch (_) {}
 }
 
-function permMeasureText(text, mono) {
+function permMeasureText(text, mono, fontSize) {
   if (!_permMeasureEl) {
     _permMeasureEl = document.createElement("span");
-    _permMeasureEl.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap;font-size:12px;padding:0;";
+    _permMeasureEl.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap;padding:0;";
     document.body.appendChild(_permMeasureEl);
   }
   _permMeasureEl.className = mono ? "mono" : "";
-  _permMeasureEl.textContent = text;
+  _permMeasureEl.style.fontSize = (fontSize || 12) + "px";
+  _permMeasureEl.textContent = text || "";
   return _permMeasureEl.offsetWidth;
 }
 
+function permMeasureBadge(text) {
+  if (!_permBadgeEl) {
+    _permBadgeEl = document.createElement("span");
+    _permBadgeEl.className = "badge badge-gray";
+    _permBadgeEl.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap;font-size:11px;padding:1px 5px;";
+    document.body.appendChild(_permBadgeEl);
+  }
+  _permBadgeEl.textContent = text || "";
+  return _permBadgeEl.offsetWidth;
+}
+
+function permMeasureActions() {
+  if (!_permActionsEl) {
+    _permActionsEl = document.createElement("div");
+    _permActionsEl.className = "perm-actions";
+    _permActionsEl.style.cssText = "position:absolute;visibility:hidden;display:flex;gap:3px;";
+    _permActionsEl.innerHTML = `<button class="btn btn-sm">编辑</button><button class="btn btn-sm btn-danger">删除</button>`;
+    document.body.appendChild(_permActionsEl);
+  }
+  return _permActionsEl.offsetWidth;
+}
+
+function permMeasureModuleCell() {
+  if (!_permModCellEl) {
+    _permModCellEl = document.createElement("div");
+    _permModCellEl.className = "perm-mod-cell";
+    _permModCellEl.style.cssText = "position:absolute;visibility:hidden;";
+    _permModCellEl.innerHTML = PERM_FLAGS.map(([, , , color]) =>
+      `<label class="perm-flag" style="--flag-color:${color}"><input type="checkbox" style="width:13px;height:13px;margin:0"></label>`).join("");
+    document.body.appendChild(_permModCellEl);
+  }
+  return _permModCellEl.offsetWidth;
+}
+
+function permRoleLabel(u) {
+  const rdef = (permOptions.roles || []).find(r => r.key === u.role);
+  return rdef ? rdef.label : (ROLE_NAMES[u.role] || u.role || "—");
+}
+
+function permFilterOptionTexts(col) {
+  if (col.kind === "role") return ["全部", ...(permOptions.roles || []).map(r => r.label)];
+  if (col.kind === "module") return MOD_FILTERS.map(([, label]) => label);
+  return ["筛选"];
+}
+
+function permRecomputeDefaultColWidths(cols) {
+  const cellPad = 8;
+  const filterPad = 22;
+  permComputedDefaults = {};
+
+  for (const col of cols) {
+    let maxW = 0;
+    const header = col.label || "";
+
+    if (col.kind === "check") {
+      permComputedDefaults[col.id] = 34;
+      continue;
+    }
+
+    if (col.id === "username") {
+      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureText("0123456789", true) + cellPad);
+      for (const u of permUsersCache) {
+        const v = String(u.username ?? "");
+        if (v) maxW = Math.max(maxW, permMeasureText(v, true) + cellPad);
+      }
+      maxW = Math.max(maxW, permMeasureText("筛选", false, 10) + filterPad);
+    } else if (col.id === "display_name") {
+      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureText("一二三四", false) + cellPad);
+      for (const u of permUsersCache) {
+        const v = String(u.display_name ?? "");
+        if (v) maxW = Math.max(maxW, permMeasureText(v, false) + cellPad);
+      }
+      maxW = Math.max(maxW, permMeasureText("筛选", false, 10) + filterPad);
+    } else if (col.kind === "field") {
+      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      for (const u of permUsersCache) {
+        const v = String(u[col.field.key] ?? "");
+        if (v) maxW = Math.max(maxW, permMeasureText(v, false) + cellPad);
+      }
+      maxW = Math.max(maxW, permMeasureText("筛选", false, 11) + filterPad);
+    } else if (col.kind === "role") {
+      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      for (const u of permUsersCache) maxW = Math.max(maxW, permMeasureBadge(permRoleLabel(u)) + cellPad);
+      for (const r of (permOptions.roles || [])) maxW = Math.max(maxW, permMeasureBadge(r.label) + cellPad);
+      for (const t of permFilterOptionTexts(col)) maxW = Math.max(maxW, permMeasureText(t, false, 11) + filterPad);
+    } else if (col.kind === "actions") {
+      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureActions() + cellPad);
+    } else if (col.kind === "module") {
+      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureModuleCell() + cellPad);
+      for (const t of permFilterOptionTexts(col)) maxW = Math.max(maxW, permMeasureText(t, false, 10) + filterPad);
+    } else {
+      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+    }
+
+    permComputedDefaults[col.id] = Math.max(32, Math.ceil(maxW));
+  }
+}
+
 function permDefaultColWidth(col) {
+  if (permComputedDefaults[col.id] != null) return permComputedDefaults[col.id];
   const pad = 8;
   if (col.kind === "check") return 34;
   if (col.id === "username") return permMeasureText("0123456789", true) + pad;
   if (col.id === "display_name") return permMeasureText("一二三四", false) + pad;
-  if (col.kind === "actions") return 96;
+  if (col.kind === "actions") return permMeasureActions() + pad;
   if (col.kind === "role") return 72;
   if (col.kind === "field") return Math.max(56, permMeasureText(col.label || "字段", false) + pad + 12);
-  if (col.kind === "module") return Math.max(64, permMeasureText(col.label || "模块", false) + pad);
+  if (col.kind === "module") return Math.max(permMeasureModuleCell() + pad, permMeasureText(col.label || "模块", false) + pad);
   return 72;
 }
 
@@ -368,6 +476,7 @@ function syncPermGridLayout() {
 
 function renderPermGrid() {
   const cols = permColumns();
+  permRecomputeDefaultColWidths(cols);
   const { frozen, scroll } = permSplitCols(cols);
   const left = $("#perm-grid-left");
   left.innerHTML = permBuildColgroup(frozen) + permBuildThead(frozen) + "<tbody></tbody>";
