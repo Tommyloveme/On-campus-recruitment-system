@@ -23,10 +23,12 @@ def api_config():
             "fields": load_stage_fields(stage),
             "stages": load_stages_meta(),
             "app": {**load_app_config().get("ui", {}),
-                    "interview": load_app_config().get("interview", {})},
+                    "interview": load_app_config().get("interview", {}),
+                    "user_profile": load_app_config().get("user_profile", {})},
         }
     else:
         resp = build_config_response()
         resp["app"] = load_app_config().get("ui", {})
         resp["app"]["interview"] = load_app_config().get("interview", {})
+        resp["app"]["user_profile"] = load_app_config().get("user_profile", {})
     return jsonify(resp)

@@ -275,7 +275,49 @@ def migrate(db):
                 "VALUES (?,?,?,?,?,?,?,?)",
                 [("user", u["id"], k, v, r, w, m, now) for (k, v, r, w, m) in baseline],
             )
+
+    db.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_iv_avail_unique
+        ON interviewer_availability(user_id, interview_type, avail_date, start_time)
+    """)
+    _backfill_candidate_employee_names(db)
     db.commit()
+
+
+def _backfill_candidate_employee_names(db):
+    """历史候选人：补全拓源人/接口人中文姓名与部门（列表展示用）。"""
+    from campus.services.users import user_dept_display
+
+    for row in db.execute("SELECT id, data FROM candidates").fetchall():
+        data = json.loads(row["data"])
+        changed = False
+        for emp_key, name_key, dept_key in (
+            ("sourcer", "sourcer_name", "sourcer_dept"),
+            ("interface_person", "interface_person_name", "interface_dept"),
+        ):
+            emp = (data.get(emp_key) or "").strip()
+            if not emp:
+                continue
+            if (data.get(name_key) or "").strip() and (data.get(dept_key) or "").strip():
+                continue
+            u = db.execute(
+                "SELECT username, display_name, department, dept_level2, dept_level3 "
+                "FROM users WHERE username=?",
+                (emp,),
+            ).fetchone()
+            if not u:
+                continue
+            if not (data.get(name_key) or "").strip():
+                data[name_key] = u["display_name"] or ""
+                changed = True
+            if not (data.get(dept_key) or "").strip():
+                data[dept_key] = user_dept_display(u)
+                changed = True
+        if changed:
+            db.execute(
+                "UPDATE candidates SET data=? WHERE id=?",
+                (json.dumps(data, ensure_ascii=False), row["id"]),
+            )
 
 
 def seed_demo(db):

@@ -332,19 +332,27 @@ def search_employees_for_registration(db, query, limit=5):
 
 
 def apply_registration_employee_fields(db, data):
-    """根据拓源人/接口人工号写入部门（只读字段，不信任前端提交）。"""
+    """根据拓源人/接口人工号写入姓名、部门（保存时解析一次并落库，列表不再实时查用户表）。"""
     sourcer = (data.get("sourcer") or "").strip()
     if sourcer:
         row = lookup_employee_for_registration(db, sourcer)
         if row:
             data["sourcer"] = row["username"]
+            data["sourcer_name"] = row["display_name"] or ""
             data["sourcer_dept"] = user_dept_display(row)
+    else:
+        data.pop("sourcer_name", None)
+        data.pop("sourcer_dept", None)
     iface = (data.get("interface_person") or "").strip()
     if iface:
         row = lookup_employee_for_registration(db, iface)
         if row:
             data["interface_person"] = row["username"]
+            data["interface_person_name"] = row["display_name"] or ""
             data["interface_dept"] = user_dept_display(row)
+    else:
+        data.pop("interface_person_name", None)
+        data.pop("interface_dept", None)
     return data
 
 

@@ -62,8 +62,6 @@ def phone_duplicate_payload(db, row, phone):
     old = json.loads(row["data"])
     sourcer = (old.get("sourcer") or "").strip()
     iface = (old.get("interface_person") or "").strip()
-    sourcer_row = lookup_employee_by_username(db, sourcer) if sourcer else None
-    iface_row = lookup_employee_by_username(db, iface) if iface else None
     name = old.get("name") or "—"
     return {
         "error": f"电话「{phone}」已被候选人「{name}」使用，请使用其他号码",
@@ -74,8 +72,8 @@ def phone_duplicate_payload(db, row, phone):
             "phone": phone,
             "sourcer": sourcer,
             "interface_person": iface,
-            "sourcer_display": (sourcer_row["display_name"] if sourcer_row else sourcer) if sourcer else "",
-            "interface_person_display": (iface_row["display_name"] if iface_row else iface) if iface else "",
+            "sourcer_display": old.get("sourcer_name") or sourcer,
+            "interface_person_display": old.get("interface_person_name") or iface,
         },
     }
 

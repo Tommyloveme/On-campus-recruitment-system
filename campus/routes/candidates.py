@@ -19,7 +19,6 @@ from campus.services.audit import add_log
 from campus.services.candidates import (
     PhoneDuplicateError,
     candidate_dict,
-    enrich_candidate_employee_displays,
     find_candidate_by_phone,
     group_name_map,
     insert_candidate_row,
@@ -54,7 +53,6 @@ def api_candidates():
         result = [c for c in result if any(q in str(v) for v in c["data"].values())]
     if stage_filter:
         result = [c for c in result if c["data"].get("current_stage") == stage_filter]
-    enrich_candidate_employee_displays(db, result)
     log.debug("候选人列表 %s 返回%d条 q=%s stage=%s",
               who(g.user), len(result), q or "-", stage_filter or "-")
     return jsonify(result)

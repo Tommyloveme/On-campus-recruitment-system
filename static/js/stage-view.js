@@ -192,10 +192,10 @@ function filteredCandidates(stageKey) {
     if (!val) return;
     const key = el.dataset.filter;
     if (el.tagName === "SELECT") {
-      list = list.filter(c => (c.data[key] || "") === val);
+      list = list.filter(c => candidateFilterValue(c, key) === val);
     } else {
       const lv = val.toLowerCase();
-      list = list.filter(c => String(c.data[key] || "").toLowerCase().includes(lv));
+      list = list.filter(c => String(candidateFilterValue(c, key)).toLowerCase().includes(lv));
     }
   });
   if (ss.sort) {
@@ -234,12 +234,18 @@ function toggleSort(stageKey, key) {
 
 function candidateCellValue(c, f) {
   if (f.key === "sourcer") {
-    return c.sourcer_display || c.data.sourcer || "";
+    return c.data.sourcer_name || c.data.sourcer || "";
   }
   if (f.key === "interface_person") {
-    return c.interface_person_display || c.data.interface_person || "";
+    return c.data.interface_person_name || c.data.interface_person || "";
   }
   return c.data[f.key];
+}
+
+function candidateFilterValue(c, key) {
+  if (key === "sourcer") return c.data.sourcer_name || c.data.sourcer || "";
+  if (key === "interface_person") return c.data.interface_person_name || c.data.interface_person || "";
+  return c.data[key] || "";
 }
 
 function resumeCellHtml(c) {
@@ -499,9 +505,10 @@ function registrationEmployeeFieldHtml(f, cand, locked) {
   const empVal = cand ? (cand.data[empKey] || "") : "";
   const deptVal = cand ? (cand.data[deptKey] || "") : "";
   const nameVal = cand
-    ? (empKey === "sourcer" ? cand.sourcer_display : cand.interface_person_display) || ""
+    ? (cand.data[empKey === "sourcer" ? "sourcer_name" : "interface_person_name"] || "")
     : "";
-  const ve = esc(empVal);
+  const displayVal = nameVal || empVal;
+  const ve = esc(displayVal);
   const inputHtml = locked
     ? `<input type="text" data-field="${empKey}" class="master-locked-field" value="${ve}" disabled title="该字段已由主数据表导入，不可修改">`
     : `<input type="text" class="emp-suggest-input" data-field="${empKey}" value="${ve}" placeholder="输入工号或姓名" autocomplete="off">`;
@@ -677,12 +684,6 @@ function bindRegistrationEmployeeLookup() {
         await resolveRegistrationEmployeeInput(modal, emp, dept, input, lastItems);
       }, 160);
     });
-
-    if (input.value.trim()) {
-      lookupEmployeeForRegistration(input.value.trim()).then(body => {
-        if (body.found) applyRegistrationEmployeeSelection(modal, emp, dept, body);
-      });
-    }
   });
 }
 
