@@ -17,6 +17,7 @@ from campus.services.users import (
     builtin_fields,
     custom_fields,
     lookup_employee_for_registration,
+    normalize_job_roles_payload,
     parse_extra,
     parse_user_profile_body,
     persist_user_columns,
@@ -104,9 +105,10 @@ def api_lookup_employee():
     })
 
 
-def _persist_user_columns(db, uid, fields, role, password=None, is_create=False, username=None):
+def _persist_user_columns(db, uid, fields, role, password=None, is_create=False, username=None,
+                          job_roles=None):
     return persist_user_columns(db, uid, fields, role, password=password,
-                                is_create=is_create, username=username)
+                                is_create=is_create, username=username, job_roles=job_roles)
 
 
 @bp.post("/api/users")
@@ -126,9 +128,16 @@ def api_user_create():
         return jsonify({"error": err}), 400
 
     db = get_db()
+    job_roles = normalize_job_roles_payload(b)
+    if "job_roles" not in b and role == "interviewer":
+        from campus.services.roles import get_role
+        rdef = get_role(role)
+        job_roles = list((rdef or {}).get("interview_positions") or [])
+    elif job_roles is None:
+        job_roles = []
     try:
         _persist_user_columns(db, None, fields, role, password=password,
-                              is_create=True, username=username)
+                              is_create=True, username=username, job_roles=job_roles)
     except sqlite3.IntegrityError:
         return jsonify({"error": "工号已存在"}), 400
     uid = db.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()["id"]
@@ -166,7 +175,8 @@ def api_user_update(uid):
     if err:
         return jsonify({"error": err}), 400
 
-    _persist_user_columns(db, uid, fields, role, password=b.get("password"))
+    _persist_user_columns(db, uid, fields, role, password=b.get("password"),
+                          job_roles=normalize_job_roles_payload(b))
     # 显式要求重新应用角色权限（覆盖该用户模块权限）
     if b.get("apply_role"):
         apply_role_to_user(db, uid, role)

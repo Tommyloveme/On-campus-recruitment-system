@@ -10,10 +10,34 @@ from campus.db.connection import get_db, now_str
 from campus.interview_schedule import expand_availability_windows, generate_time_options, parse_hm, fmt_hm
 from campus.services.acl import can_edit_candidate, is_admin
 from campus.services.audit import add_log
-from campus.services.interviews import interview_cfg, validate_interview_type
+from campus.services.candidates import find_candidate_by_phone, normalize_candidate_phone
+from campus.services.interviews import (
+    interview_cfg,
+    interviewer_matches_position,
+    parse_job_roles,
+    validate_interview_type,
+)
+from campus.services.users import lookup_employee_for_registration
 from campus.stage_engine import compute_current_stage
 
 bp = Blueprint("interviews", __name__)
+
+
+def _slot_minutes_from_request(default):
+    raw = request.args.get("slot_minutes") if request.method == "GET" else None
+    if raw is None and request.method != "GET":
+        body = request.get_json(silent=True) or {}
+        raw = body.get("slot_minutes")
+    try:
+        val = int(raw) if raw is not None else default
+    except (TypeError, ValueError):
+        val = default
+    return max(15, min(180, val))
+
+
+def _user_job_roles(db, user_id):
+    row = db.execute("SELECT job_roles FROM users WHERE id=?", (user_id,)).fetchone()
+    return parse_job_roles(row["job_roles"] if row else None)
 
 
 @bp.get("/api/interview/time-options")
@@ -22,6 +46,26 @@ def api_interview_time_options():
     ic = interview_cfg()
     opts = generate_time_options(ic["day_start"], ic["day_end"], ic["time_step_minutes"])
     return jsonify({**ic, "options": opts})
+
+
+@bp.get("/api/interview/candidate-by-phone")
+@login_required
+def api_interview_candidate_by_phone():
+    phone = normalize_candidate_phone(request.args.get("phone"))
+    if not phone:
+        return jsonify({"error": "请填写候选人电话"}), 400
+    db = get_db()
+    row = find_candidate_by_phone(db, phone)
+    if not row:
+        return jsonify({"error": f"电话「{phone}」未找到对应候选人", "found": False}), 404
+    data = json.loads(row["data"])
+    return jsonify({
+        "found": True,
+        "id": row["id"],
+        "name": data.get("name") or "",
+        "phone": phone,
+        "interview_position": data.get("interview_position") or "",
+    })
 
 
 @bp.get("/api/interview/availability")
@@ -36,7 +80,7 @@ def api_interview_availability_list():
     date_to = request.args.get("to", "")
     user_id = request.args.get("user_id", type=int)
 
-    sql = ("SELECT a.*, u.display_name FROM interviewer_availability a "
+    sql = ("SELECT a.*, u.display_name, u.job_roles FROM interviewer_availability a "
            "JOIN users u ON u.id=a.user_id WHERE a.interview_type=?")
     params = [itype]
     if user_id:
@@ -50,7 +94,12 @@ def api_interview_availability_list():
         params.append(date_to)
     sql += " ORDER BY a.avail_date, a.start_time"
     rows = get_db().execute(sql, params).fetchall()
-    return jsonify([dict(r) for r in rows])
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["job_roles"] = parse_job_roles(d.get("job_roles"))
+        out.append(d)
+    return jsonify(out)
 
 
 @bp.post("/api/interview/availability")
@@ -68,19 +117,30 @@ def api_interview_availability_create():
     if not avail_date or not start_time or not end_time:
         return jsonify({"error": "请填写日期与起止时间"}), 400
 
-    if parse_hm(start_time) + interview_cfg()["slot_minutes"] > parse_hm(end_time):
-        return jsonify({"error": "起止时间间隔至少为一个面试时长（45分钟）"}), 400
+    ic = interview_cfg()
+    slot_minutes = _slot_minutes_from_request(ic["slot_minutes"])
+    if parse_hm(start_time) + slot_minutes > parse_hm(end_time):
+        return jsonify({"error": f"起止时间间隔至少为一个面试时长（{slot_minutes} 分钟）"}), 400
 
-    group_id = None
     db = get_db()
+    interviewer_q = (b.get("interviewer") or b.get("interviewer_query") or "").strip()
+    if interviewer_q:
+        iv_row = lookup_employee_for_registration(db, interviewer_q)
+        if not iv_row:
+            return jsonify({"error": "未找到该面试官，请填写已注册用户的工号或姓名"}), 400
+        user_id = iv_row["id"]
+        iv_name = iv_row["display_name"]
+    else:
+        user_id = g.user["id"]
+        iv_name = g.user["display_name"]
+
     db.execute(
         "INSERT INTO interviewer_availability (user_id, interview_type, avail_date, start_time, end_time, group_id, created_at) "
         "VALUES (?,?,?,?,?,?,?)",
-        (g.user["id"], itype, avail_date, start_time, end_time, group_id, now_str()),
+        (user_id, itype, avail_date, start_time, end_time, None, now_str()),
     )
     add_log(g.user, "update",
-            f"{g.user['display_name']} 设置了 {avail_date} {start_time}-{end_time} 的可面试时间（{itype}）",
-            group_id=group_id)
+            f"{g.user['display_name']} 为面试官「{iv_name}」设置了 {avail_date} {start_time}-{end_time} 的可面试时间（{itype}）")
     db.commit()
     return jsonify({"ok": True})
 
@@ -93,7 +153,7 @@ def api_interview_availability_delete(aid):
     if not row:
         return jsonify({"error": "记录不存在"}), 404
     if row["user_id"] != g.user["id"] and not is_admin(g.user):
-        return jsonify({"error": "只能删除自己的可面试时间"}), 403
+        return jsonify({"error": "只能删除自己的可面试时间，或联系管理员"}), 403
     db.execute("DELETE FROM interviewer_availability WHERE id=?", (aid,))
     db.commit()
     return jsonify({"ok": True})
@@ -109,15 +169,25 @@ def api_interview_calendar():
         return jsonify({"error": str(e)}), 400
     date_from = request.args.get("from", "")
     date_to = request.args.get("to", "")
+    position = (request.args.get("position") or "").strip()
     if not date_from or not date_to:
         return jsonify({"error": "请指定 from 和 to 日期"}), 400
 
     db = get_db()
-    sql = ("SELECT a.id, a.user_id, u.display_name, a.avail_date, a.start_time, a.end_time "
+    ic = interview_cfg()
+    slot_minutes = _slot_minutes_from_request(ic["slot_minutes"])
+
+    sql = ("SELECT a.id, a.user_id, u.display_name, u.job_roles, a.avail_date, a.start_time, a.end_time "
            "FROM interviewer_availability a JOIN users u ON u.id=a.user_id "
            "WHERE a.interview_type=? AND a.avail_date>=? AND a.avail_date<=?")
     params = [itype, date_from, date_to]
-    windows = [dict(r) for r in db.execute(sql, params).fetchall()]
+    windows = []
+    for r in db.execute(sql, params).fetchall():
+        d = dict(r)
+        d["job_roles"] = parse_job_roles(d.get("job_roles"))
+        if not interviewer_matches_position(d["job_roles"], position):
+            continue
+        windows.append(d)
 
     bookings = db.execute(
         "SELECT b.*, c.data AS candidate_data, u.display_name AS interviewer_name "
@@ -130,13 +200,19 @@ def api_interview_calendar():
     booking_map = {}
     for b in bookings:
         bd = dict(b)
-        bd["candidate_name"] = json.loads(bd["candidate_data"]).get("name", "")
+        cdata = json.loads(bd["candidate_data"])
+        bd["candidate_name"] = cdata.get("name", "")
+        bd["candidate_phone"] = cdata.get("phone", "")
+        bd["interview_position"] = cdata.get("interview_position", "")
         del bd["candidate_data"]
+        if position and bd.get("interview_position") and bd["interview_position"] != position:
+            continue
         booking_map[(bd["interviewer_id"], bd["start_at"])] = bd
 
-    ic = interview_cfg()
-    slots = expand_availability_windows(windows, ic["slot_minutes"], ic["time_step_minutes"], booking_map)
-    return jsonify({"slots": slots, "config": ic})
+    slots = expand_availability_windows(windows, slot_minutes, ic["time_step_minutes"], booking_map)
+    if position:
+        slots = [s for s in slots if not s.get("booking") or s["booking"].get("interview_position") in ("", position)]
+    return jsonify({"slots": slots, "config": {**ic, "slot_minutes": slot_minutes}})
 
 
 @bp.post("/api/interview/book")
@@ -148,25 +224,37 @@ def api_interview_book():
         validate_interview_type(itype)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    candidate_id = b.get("candidate_id")
-    interviewer_id = b.get("interviewer_id")
-    start_at = (b.get("start_at") or "").strip()
-    if not candidate_id or not interviewer_id or not start_at:
-        return jsonify({"error": "缺少预约参数"}), 400
 
     db = get_db()
-    cand = db.execute("SELECT * FROM candidates WHERE id=?", (candidate_id,)).fetchone()
+    candidate_id = b.get("candidate_id")
+    phone = normalize_candidate_phone(b.get("phone"))
+    if phone:
+        cand = find_candidate_by_phone(db, phone)
+        if not cand:
+            return jsonify({"error": f"电话「{phone}」未找到对应候选人，无法预约"}), 404
+        candidate_id = cand["id"]
+    elif candidate_id:
+        cand = db.execute("SELECT * FROM candidates WHERE id=?", (candidate_id,)).fetchone()
+    else:
+        return jsonify({"error": "请填写候选人电话"}), 400
+
     if not cand:
         return jsonify({"error": "候选人不存在"}), 404
     if not can_edit_candidate(db, g.user, cand):
         return jsonify({"error": "无该候选人编辑权限"}), 403
 
+    interviewer_id = b.get("interviewer_id")
+    start_at = (b.get("start_at") or "").strip()
+    if not interviewer_id or not start_at:
+        return jsonify({"error": "缺少预约参数"}), 400
+
     ic = interview_cfg()
+    slot_minutes = _slot_minutes_from_request(ic["slot_minutes"])
     parts = start_at.split(" ")
     if len(parts) != 2:
         return jsonify({"error": "start_at 格式应为 YYYY-MM-DD HH:MM"}), 400
     avail_date, start_time = parts
-    end_time = fmt_hm(parse_hm(start_time) + ic["slot_minutes"])
+    end_time = fmt_hm(parse_hm(start_time) + slot_minutes)
 
     exists = db.execute(
         "SELECT id FROM interview_bookings WHERE interviewer_id=? AND start_at=? AND interview_type=?",
@@ -187,7 +275,7 @@ def api_interview_book():
     interviewer_key = "tech_interviewer" if itype == "tech_interview" else "manager_interviewer"
     iv = db.execute("SELECT display_name FROM users WHERE id=?", (interviewer_id,)).fetchone()
     data[status_key] = "已预约"
-    data[time_key] = avail_date
+    data[time_key] = start_at
     data[interviewer_key] = iv["display_name"] if iv else ""
     compute_current_stage(data)
     db.execute("UPDATE candidates SET data=?, updated_at=? WHERE id=?",
@@ -195,7 +283,8 @@ def api_interview_book():
 
     cname = data.get("name", "")
     add_log(g.user, "update",
-            f"{g.user['display_name']} 为「{cname}」预约了 {start_at} 的{get_stage_meta(itype)['label']}（面试官 {iv['display_name'] if iv else ''}）",
+            f"{g.user['display_name']} 为「{cname}」（{data.get('phone', '')}）预约了 {start_at} 的"
+            f"{get_stage_meta(itype)['label']}（面试官 {iv['display_name'] if iv else ''}）",
             candidate_id, cname, cand["group_id"])
     db.commit()
     return jsonify({"ok": True})

@@ -32,32 +32,61 @@ def user_fields_config():
 
 def account_options_payload():
     """下发用户附属信息字段配置（供个人资料、用户管理弹窗渲染）。"""
-    return {"user_fields": user_fields_config()}
+    from campus.services.interviews import interview_cfg
+    return {
+        "user_fields": user_fields_config(),
+        "interview_position_options": interview_cfg().get("position_options", []),
+    }
 
 
-def persist_user_columns(db, uid, fields, role, password=None, is_create=False, username=None):
+def parse_job_roles_list(raw):
+    return parse_job_roles(raw)
+
+
+def normalize_job_roles_payload(body):
+    """从请求体解析 job_roles 列表。"""
+    if "job_roles" not in body:
+        return None
+    val = body.get("job_roles")
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return [str(x).strip() for x in val if str(x).strip()]
+    if isinstance(val, str):
+        return parse_job_roles(val)
+    return []
+
+
+def persist_user_columns(db, uid, fields, role, password=None, is_create=False, username=None, job_roles=None):
     """根据解析后的 fields（builtin/custom）写入用户表列与 extra JSON。"""
     b = fields["builtin"]
     c = fields["custom"]
     extra = json.dumps(c, ensure_ascii=False)
+    jr = json.dumps(job_roles if job_roles is not None else [], ensure_ascii=False)
     if is_create:
         from werkzeug.security import generate_password_hash
         from campus.db.connection import now_str
         db.execute(
             "INSERT INTO users (username, display_name, password_hash, role, group_id, "
-            "supervisor, department, dept_level2, dept_level3, extra, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "supervisor, department, dept_level2, dept_level3, job_roles, extra, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (username, b.get("display_name", ""), generate_password_hash(password),
              role, None, b.get("supervisor", ""), b.get("department", ""),
-             b.get("dept_level2", ""), b.get("dept_level3", ""), extra, now_str()),
+             b.get("dept_level2", ""), b.get("dept_level3", ""), jr, extra, now_str()),
         )
     else:
-        db.execute(
+        sql = (
             "UPDATE users SET display_name=?, role=?, supervisor=?, department=?, "
-            "dept_level2=?, dept_level3=?, extra=? WHERE id=?",
-            (b.get("display_name", ""), role, b.get("supervisor", ""), b.get("department", ""),
-             b.get("dept_level2", ""), b.get("dept_level3", ""), extra, uid),
+            "dept_level2=?, dept_level3=?, extra=?"
         )
+        params = [b.get("display_name", ""), role, b.get("supervisor", ""), b.get("department", ""),
+                  b.get("dept_level2", ""), b.get("dept_level3", ""), extra]
+        if job_roles is not None:
+            sql += ", job_roles=?"
+            params.append(jr)
+        sql += " WHERE id=?"
+        params.append(uid)
+        db.execute(sql, params)
         if password:
             from werkzeug.security import generate_password_hash
             db.execute("UPDATE users SET password_hash=? WHERE id=?",
@@ -150,6 +179,7 @@ def parse_user_profile_body(body, require_employee_id=False):
 def user_dict(u):
     """序列化用户：工号 + 角色 + 所有配置字段（builtin 列 + extra JSON）。"""
     from campus.services.roles import role_label
+    from campus.services.interviews import parse_job_roles
     keys = u.keys() if hasattr(u, "keys") else []
     extra = parse_extra(u["extra"] if "extra" in keys else None)
     out = {
@@ -158,6 +188,7 @@ def user_dict(u):
         "display_name": u["display_name"],
         "role": u["role"],
         "role_label": role_label(u["role"]),
+        "job_roles": parse_job_roles(u["job_roles"] if "job_roles" in keys else None),
     }
     for f in user_fields_config():
         key = f["key"]

@@ -22,6 +22,7 @@ from campus.services.acl import (
     permission_settings,
 )
 from campus.services.audit import add_log
+from campus.services.interviews import interview_cfg
 from campus.services.roles import roles_payload
 from campus.services.users import user_dict, user_fields_config
 
@@ -50,6 +51,7 @@ def api_permission_options():
         "settings": permission_settings(),
         "users": users,
         "user_fields": user_fields_config(),
+        "interview_position_options": interview_cfg().get("position_options", []),
         "modules": module_meta,
         "roles": roles_payload(),
     })

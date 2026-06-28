@@ -34,7 +34,8 @@ def api_role_create():
     perms = b.get("perms") or {}
     bypass = bool(b.get("bypass"))
     try:
-        r = create_role(key, label, perms=perms, bypass=bypass)
+        r = create_role(key, label, perms=perms, bypass=bypass,
+                        interview_positions=b.get("interview_positions"))
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     add_log(g.user, "permission", f"{g.user['display_name']} 新增了角色「{label}」（{key}）")
@@ -51,6 +52,7 @@ def api_role_update(key):
             label=b.get("label"),
             perms=b.get("perms"),
             bypass=b.get("bypass"),
+            interview_positions=b.get("interview_positions"),
         )
     except ValueError as e:
         return jsonify({"error": str(e)}), 400

@@ -2,6 +2,16 @@
   "comment": "候选人主管面试预约阶段字段配置",
   "fields": [
     {
+      "key": "interview_position",
+      "label": "待面试岗位",
+      "excel_column": "待面试岗位",
+      "type": "select",
+      "options": ["软件岗", "测试岗", "算法岗", "硬件岗", "产品岗"],
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
       "key": "manager_interview_book_time",
       "label": "主管面预约时间",
       "excel_column": "主管面预约时间",

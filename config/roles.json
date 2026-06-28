@@ -92,10 +92,10 @@
       "label": "面试官",
       "builtin": true,
       "perms": {
-        "recruit_flow": {
+        "manager_interview": {
           "v": 1,
           "r": 1,
-          "w": 0,
+          "w": 1,
           "m": 0
         },
         "qualification": {
@@ -104,7 +104,7 @@
           "w": 0,
           "m": 0
         },
-        "written_test": {
+        "recruit_flow": {
           "v": 1,
           "r": 1,
           "w": 0,
@@ -116,13 +116,18 @@
           "w": 1,
           "m": 0
         },
-        "manager_interview": {
+        "written_test": {
           "v": 1,
           "r": 1,
-          "w": 1,
+          "w": 0,
           "m": 0
         }
-      }
+      },
+      "interview_positions": [
+        "软件岗",
+        "测试岗",
+        "算法岗"
+      ]
     },
     {
       "key": "manager",

@@ -69,6 +69,7 @@ def expand_availability_windows(windows, slot_minutes, step_minutes, bookings_by
                 "availability_id": w["id"],
                 "interviewer_id": w["user_id"],
                 "interviewer_name": w["display_name"],
+                "job_roles": w.get("job_roles") or [],
                 "booked": booking is not None,
                 "booking": booking,
             })

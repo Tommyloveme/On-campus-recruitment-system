@@ -633,6 +633,34 @@ function fieldInputHtml(f, val) {
   return `<input id="uf-${f.key}" value="${esc(v)}">`;
 }
 
+function jobRolesCheckboxHtml(selected, roleKey) {
+  if (roleKey !== "interviewer") return "";
+  const opts = permOptions.interview_position_options || [];
+  const sel = new Set(selected || []);
+  if (!opts.length) return "";
+  return `
+    <div class="form-item form-item-full" id="uf-job-roles-wrap">
+      <label>可面试岗位（多选，用于日程匹配）</label>
+      <div class="checkbox-group">
+        ${opts.map(p => `
+          <label class="checkbox-item">
+            <input type="checkbox" class="uf-job-role" value="${esc(p)}" ${sel.has(p) ? "checked" : ""}> ${esc(p)}
+          </label>`).join("")}
+      </div>
+    </div>`;
+}
+
+function bindUserJobRolesVisibility() {
+  const roleEl = $("#uf-role");
+  if (!roleEl) return;
+  const sync = () => {
+    const wrap = $("#uf-job-roles-wrap");
+    if (wrap) wrap.style.display = roleEl.value === "interviewer" ? "" : "none";
+  };
+  roleEl.addEventListener("change", sync);
+  sync();
+}
+
 function openUserModal(user) {
   const isNew = !user;
   const fields = permOptions.user_fields || [];
@@ -653,17 +681,23 @@ function openUserModal(user) {
         <input id="uf-password" type="text" ${isNew ? `value="123456"` : ""}></div>
       ${fieldRows}
     </div>
+    ${jobRolesCheckboxHtml(user?.job_roles, user?.role || "user")}
     <label class="perm-flag-toggle" style="margin-top:8px"><input type="checkbox" id="uf-apply-role" ${isNew ? "checked" : ""}>
       <span>${isNew ? "创建后应用该角色权限模板" : "重新应用该角色权限模板（覆盖此用户当前模块权限）"}</span></label>`,
     `<button class="btn" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="uf-save">保存</button>`);
+  bindUserJobRolesVisibility();
   $("#uf-save").addEventListener("click", async () => {
+    const role = $("#uf-role").value;
     const payload = {
       username: $("#uf-username").value.trim(),
       password: $("#uf-password").value,
-      role: $("#uf-role").value,
+      role,
       apply_role: $("#uf-apply-role").checked,
     };
+    if (role === "interviewer") {
+      payload.job_roles = [...document.querySelectorAll(".uf-job-role:checked")].map(cb => cb.value);
+    }
     for (const f of fields) {
       const el = $(`#uf-${f.key}`);
       if (el) payload[f.key] = f.type === "select" ? el.value : el.value.trim();
@@ -1112,6 +1146,23 @@ async function roleBatchApply(revoke) {
   } catch (e) { toast(e.message, true); await loadPermData(); renderRoleGrid(); }
 }
 
+function roleInterviewPositionsHtml(role) {
+  if (role && role.key !== "interviewer") return "";
+  const opts = permOptions.interview_position_options || [];
+  const sel = new Set(role?.interview_positions || []);
+  if (!opts.length) return "";
+  return `
+    <div class="form-item form-item-full" id="rf-interview-pos-wrap">
+      <label>可面试岗位模板（多选，新建面试官用户时可作默认）</label>
+      <div class="checkbox-group">
+        ${opts.map(p => `
+          <label class="checkbox-item">
+            <input type="checkbox" class="rf-interview-pos" value="${esc(p)}" ${sel.has(p) ? "checked" : ""}> ${esc(p)}
+          </label>`).join("")}
+      </div>
+    </div>`;
+}
+
 function openRoleModal(role) {
   const isNew = !role;
   openModal(isNew ? "新增角色" : `编辑角色 - ${esc(role.label)}`, `
@@ -1123,6 +1174,7 @@ function openRoleModal(role) {
     </div>
     <label class="perm-flag-toggle" style="margin:6px 0 4px"><input type="checkbox" id="rf-bypass" ${role?.bypass ? "checked" : ""}>
       <span>全权角色（绕过所有模块权限，如系统管理员）</span></label>
+    ${roleInterviewPositionsHtml(role)}
     <p style="font-size:12px;color:#64748b;margin:0">模块权限请在下方表格中勾选；勾选即保存。</p>`,
     `<button class="btn" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="rf-save">保存</button>`);
@@ -1131,6 +1183,10 @@ function openRoleModal(role) {
     const label = $("#rf-label").value.trim();
     const bypass = $("#rf-bypass").checked;
     const body = { label, bypass };
+    const roleKey = isNew ? $("#rf-key").value.trim() : role.key;
+    if (roleKey === "interviewer") {
+      body.interview_positions = [...document.querySelectorAll(".rf-interview-pos:checked")].map(cb => cb.value);
+    }
     try {
       if (isNew) {
         body.key = $("#rf-key").value.trim();

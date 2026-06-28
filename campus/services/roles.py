@@ -106,7 +106,7 @@ def _normalize_perms(perms):
     return out
 
 
-def create_role(key, label, perms=None, bypass=False):
+def create_role(key, label, perms=None, bypass=False, interview_positions=None):
     key = (key or "").strip()
     label = (label or "").strip()
     if not valid_role_key(key):
@@ -117,17 +117,20 @@ def create_role(key, label, perms=None, bypass=False):
     roles = data.get("roles", [])
     if any(r["key"] == key for r in roles):
         raise ValueError("角色key已存在")
-    roles.append({
+    entry = {
         "key": key, "label": label, "builtin": False,
         "bypass": bool(bypass),
         "perms": _normalize_perms(perms or {}),
-    })
+    }
+    if interview_positions is not None:
+        entry["interview_positions"] = [str(x).strip() for x in interview_positions if str(x).strip()]
+    roles.append(entry)
     data["roles"] = roles
     _flush(data)
     return get_role(key)
 
 
-def update_role(key, label=None, perms=None, bypass=None):
+def update_role(key, label=None, perms=None, bypass=None, interview_positions=None):
     data = _read()
     roles = data.get("roles", [])
     for r in roles:
@@ -141,6 +144,8 @@ def update_role(key, label=None, perms=None, bypass=None):
                 r["bypass"] = bool(bypass)
             if perms is not None:
                 r["perms"] = _normalize_perms(perms)
+            if interview_positions is not None:
+                r["interview_positions"] = [str(x).strip() for x in interview_positions if str(x).strip()]
             data["roles"] = roles
             _flush(data)
             return get_role(key)
@@ -171,6 +176,7 @@ def roles_payload():
             "builtin": bool(r.get("builtin")),
             "bypass": bool(r.get("bypass")),
             "perms": r.get("perms", {}) or {},
+            "interview_positions": list(r.get("interview_positions") or []),
         }
         for r in all_roles()
     ]

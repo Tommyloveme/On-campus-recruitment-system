@@ -42,6 +42,7 @@
     "slot_minutes": 45,
     "time_step_minutes": 5,
     "day_start": "08:00",
-    "day_end": "20:00"
+    "day_end": "20:00",
+    "position_options": ["软件岗", "测试岗", "算法岗", "硬件岗", "产品岗"]
   }
 }
