@@ -161,8 +161,10 @@ function renderPermGrid() {
     if (c.kind === "check") return `<th class="perm-col-check sticky-col col-check"><input type="checkbox" id="perm-check-all" title="全选"></th>`;
     if (c.kind === "actions") return `<th class="perm-actions-col">操作</th>`;
     const sticky = (c.id === "username") ? " sticky-col col-username" : (c.id === "display_name" ? " sticky-col col-name" : "");
-    const modCls = c.kind === "module" ? ` perm-mod-head${c.module.type === "section" ? " is-section" : ""}` : "";
-    return `<th class="${sticky}${modCls}" title="${esc(c.label)}">${esc(c.label)}</th>`;
+    const modCls = c.kind === "module" ? ` col-module perm-mod-head${c.module.type === "section" ? " is-section" : ""}` : "";
+    const fieldCls = c.kind === "field" ? " col-field" : "";
+    const roleCls = c.kind === "role" ? " col-role-h" : "";
+    return `<th class="${sticky}${modCls}${fieldCls}${roleCls}" title="${esc(c.label)}">${esc(c.label)}</th>`;
   }).join("");
 
   const filterRow = cols.map(c => {
@@ -172,15 +174,17 @@ function renderPermGrid() {
     if (c.kind === "role") {
       const ro = (permOptions.roles || []).map(r =>
         `<option value="${esc(r.key)}">${esc(r.label)}</option>`).join("");
-      return `<th class="${sticky}"><select class="perm-col-filter" data-col="${c.id}">
+      return `<th class="col-role-h${sticky}"><select class="perm-col-filter perm-role-filter" data-col="${c.id}">
         <option value="">全部</option>${ro}</select></th>`;
     }
     if (c.kind === "module") {
       const opts = MOD_FILTERS.map(([v, label]) =>
         `<option value="${v}">${label}</option>`).join("");
-      return `<th class="${sticky} perm-mod-head"><select class="perm-col-filter perm-mod-filter" data-col="${c.id}">${opts}</select></th>`;
+      return `<th class="col-module${sticky} perm-mod-head"><select class="perm-col-filter perm-mod-filter" data-col="${c.id}">${opts}</select></th>`;
     }
-    return `<th class="${sticky}"><input type="text" class="perm-col-filter" data-col="${c.id}" placeholder="筛选…" value="${esc(permFilters[c.id] || "")}"></th>`;
+    const fieldCls = c.kind === "field" ? " col-field" : "";
+    const stickyFilter = sticky ? " perm-sticky-filter" : "";
+    return `<th class="${sticky}${fieldCls}"><input type="text" class="perm-col-filter${stickyFilter}" data-col="${c.id}" placeholder="筛选" value="${esc(permFilters[c.id] || "")}"></th>`;
   }).join("");
 
   $("#perm-grid").innerHTML = `<thead><tr>${labelRow}</tr><tr class="perm-filter-row">${filterRow}</tr></thead><tbody></tbody>`;
@@ -196,6 +200,7 @@ function renderPermGrid() {
     refreshPermBatchBtn();
   });
   renderPermGridBody(cols);
+  syncPermStickyCols(cols);
 }
 
 function renderPermGridBody(cols) {
@@ -205,6 +210,7 @@ function renderPermGridBody(cols) {
   if (!users.length) {
     tbody.innerHTML = `<tr><td colspan="${cols.length}" class="empty" style="padding:24px">没有符合筛选条件的用户</td></tr>`;
     $("#perm-row-count") && ($("#perm-row-count").textContent = "0 / " + permUsersCache.length + " 人");
+    syncPermStickyCols(cols);
     return;
   }
   tbody.innerHTML = users.map(u => permUserRow(u, cols)).join("");
@@ -227,6 +233,59 @@ function renderPermGridBody(cols) {
       } catch (e) { toast(e.message, true); }
     }));
   $("#perm-check-all").checked = false;
+  syncPermStickyCols(cols);
+}
+
+/** 冻结列：勾选列固定宽；工号/姓名按内容紧凑计算，colgroup 强制列宽 */
+const PERM_CHECK_W = 34;
+const PERM_COL_PAD = 6;
+
+function permDisplayUnits(s) {
+  let u = 0;
+  for (const ch of String(s ?? "")) u += ch.codePointAt(0) > 255 ? 1 : 0.55;
+  return u;
+}
+
+function permCompactColPx(label, values, minPx, maxPx) {
+  let units = permDisplayUnits(label);
+  for (const v of values) {
+    if (v != null && v !== "") units = Math.max(units, permDisplayUnits(v));
+  }
+  return Math.min(maxPx, Math.max(minPx, Math.ceil(units * 11 + PERM_COL_PAD)));
+}
+
+function ensurePermColgroup(grid, colCount, checkW, userW, nameW) {
+  let cg = grid.querySelector("colgroup");
+  if (!cg) {
+    cg = document.createElement("colgroup");
+    grid.insertBefore(cg, grid.firstChild);
+  }
+  while (cg.children.length < colCount) cg.appendChild(document.createElement("col"));
+  while (cg.children.length > colCount) cg.removeChild(cg.lastChild);
+  cg.children[0].style.width = checkW + "px";
+  cg.children[1].style.width = userW + "px";
+  cg.children[2].style.width = nameW + "px";
+  for (let i = 3; i < colCount; i++) cg.children[i].style.width = "";
+}
+
+function syncPermStickyCols(cols) {
+  const grid = $("#perm-grid");
+  if (!grid) return;
+  cols = cols || permColumns();
+  const users = permUsersCache.filter(u => rowPassesFilter(u, cols));
+  const checkW = PERM_CHECK_W;
+  const userW = permCompactColPx("工号", users.map(u => u.username), 32, 48);
+  const nameW = permCompactColPx("姓名", users.map(u => u.display_name), 32, 40);
+  ensurePermColgroup(grid, cols.length, checkW, userW, nameW);
+  grid.style.setProperty("--perm-user-left", checkW + "px");
+  grid.style.setProperty("--perm-name-left", (checkW + userW) + "px");
+  for (const [cls, w] of [["col-check", checkW], ["col-username", userW], ["col-name", nameW]]) {
+    grid.querySelectorAll("." + cls).forEach(el => {
+      el.style.width = w + "px";
+      el.style.minWidth = w + "px";
+      el.style.maxWidth = w + "px";
+    });
+  }
 }
 
 function permUserRow(u, cols) {
@@ -243,15 +302,15 @@ function permUserRow(u, cols) {
     }
     if (c.kind === "module") {
       const a = aclOf(u.id, c.module.key);
-      return `<td class="perm-mod-cell">${PERM_FLAGS.map(([s, , label, color]) =>
+      return `<td class="col-module perm-mod-cell">${PERM_FLAGS.map(([s, , label, color]) =>
         `<label class="perm-flag" title="${label}"><input type="checkbox" class="perm-flag-cb"
           data-uid="${u.id}" data-mk="${c.module.key}" data-flag="${s}" ${a[s] ? "checked" : ""}
           style="--flag-color:${color}"></label>`).join("")}</td>`;
     }
-    const sticky = (c.id === "username") ? " sticky-col col-username" : (c.id === "display_name" ? " sticky-col col-name" : "");
-    const cls = (c.kind === "field" ? "perm-info-cell" : "");
+    const sticky = (c.id === "username") ? " sticky-col col-username mono" : (c.id === "display_name" ? " sticky-col col-name" : "");
+    const cls = c.kind === "field" ? "perm-info-cell col-field" : "";
     const val = cellValue(u, c);
-    return `<td class="${sticky} ${cls}">${val === "" ? `<span class="perm-dash">—</span>` : esc(val)}</td>`;
+    return `<td class="${sticky} ${cls}" title="${val === "" ? "" : esc(val)}">${val === "" ? `<span class="perm-dash">—</span>` : esc(val)}</td>`;
   }).join("");
   return `<tr>${tds}</tr>`;
 }
