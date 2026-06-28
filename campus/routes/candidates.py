@@ -17,6 +17,7 @@ from campus.services.acl import (
     can_edit_candidate,
     can_see_candidate,
     effective_permissions,
+    module_writable_for,
 )
 from campus.services.audit import add_log
 from campus.services.candidates import candidate_dict, enrich_candidate_employee_displays, group_name_map
@@ -69,6 +70,10 @@ def api_candidate_create():
     meta = get_stage_meta(stage)
     if not meta.get("can_create"):
         return jsonify({"error": f"「{meta['label']}」阶段不支持新增候选人，请在登记阶段新增"}), 400
+    # 模块级写权限：阶段 key 即模块 key，启用 ACL 后须具备写权限
+    if not module_writable_for(g.user, stage):
+        log.warning("新增候选人模块写权限拒绝 %s stage=%s", who(g.user), stage)
+        return jsonify({"error": f"无「{meta['label']}」模块的写入权限"}), 403
     if not can_edit_group(g.user):
         log.warning("新增候选人权限拒绝 %s", who(g.user))
         return jsonify({"error": "无新增候选人权限"}), 403
@@ -177,6 +182,10 @@ def api_candidate_update(cid):
         validate_stage(stage)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
+    # 模块级写权限：当前编辑阶段 key 即模块 key
+    if not module_writable_for(g.user, stage):
+        log.warning("修改候选人模块写权限拒绝 %s cid=%d stage=%s", who(g.user), cid, stage)
+        return jsonify({"error": f"无「{get_stage_meta(stage)['label']}」模块的写入权限"}), 403
     fields = editable_fields(stage)
     labels = field_labels(stage)
     new = dict(old)

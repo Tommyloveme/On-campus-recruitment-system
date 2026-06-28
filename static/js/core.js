@@ -75,7 +75,12 @@ const isAdmin = () => state.me && state.me.role === "admin";
 const isGroupAdmin = () => state.me && state.me.role === "group_admin";
 const canSeeAll = () => state.me && ["admin", "global_viewer"].includes(state.me.role);
 const canCreate = () => state.me && ["admin", "group_admin", "editor"].includes(state.me.role);
-const canEdit = () => state.me && ["admin", "group_admin", "editor"].includes(state.me.role);
+const canEdit = () => {
+  if (!(state.me && ["admin", "group_admin", "editor"].includes(state.me.role))) return false;
+  // 模块级写权限：当前 tab 即模块 key，启用 ACL 后须具备写权限
+  if (state.tab && typeof moduleWritable === "function" && !moduleWritable(state.tab)) return false;
+  return true;
+};
 const canDelete = () => isAdmin() || isGroupAdmin();
 const canBatchDelete = () => isAdmin() || isGroupAdmin();
 

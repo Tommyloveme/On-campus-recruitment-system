@@ -38,6 +38,7 @@ function renderPermTabs() {
   const tabs = [
     { id: "groups", label: "用户分组" },
     { id: "resources", label: "资源分组" },
+    { id: "modules", label: "模块权限" },
     { id: "matrix", label: "权限矩阵" },
     { id: "templates", label: "权限模板" },
     { id: "batch", label: "批量操作" },
@@ -53,6 +54,7 @@ function renderPermPanel(tab) {
     b.classList.toggle("btn-primary", b.dataset.pt === tab));
   if (tab === "groups") renderUserGroupsPanel();
   else if (tab === "resources") renderResourceGroupsPanel();
+  else if (tab === "modules") renderModulesPanel();
   else if (tab === "matrix") renderMatrixPanel();
   else if (tab === "templates") renderTemplatesPanel();
   else if (tab === "batch") renderBatchPanel();
@@ -340,6 +342,192 @@ function openUGTemplateApplyModal(tid) {
       toast(`已创建分组并加入 ${r.added} 人（跳过 ${r.skipped}）`); closeModal(); await reloadPermOptions();
     } catch (e) { toast(e.message, true); }
   });
+}
+
+/* ---------------- 模块权限（板块/模块 可见/读/写/管理） ---------------- */
+
+let moduleSelectedKey = null;
+let moduleAclCache = [];
+
+function renderModulesPanel() {
+  const modules = permOptions?.modules || [];
+  if (!modules.length) {
+    $("#perm-panel").innerHTML = `<div class="empty">暂无模块定义。</div>`;
+    return;
+  }
+  if (!moduleSelectedKey || !findModuleEntry(modules, moduleSelectedKey)) {
+    moduleSelectedKey = firstItemKey(modules);
+  }
+  const tree = modules.map(sec => moduleTreeRow(sec)).join("");
+  $("#perm-panel").innerHTML = `
+    <div class="perm-modules-layout">
+      <div class="perm-module-tree card">
+        <div class="perm-toolbar">
+          <b>板块 / 模块</b>
+          <span style="font-size:11px;color:#94a3b8">勾选「启用」后该模块按 ACL 门禁</span>
+        </div>
+        <div class="perm-module-list">${tree}</div>
+      </div>
+      <div id="perm-module-detail" class="card"></div>
+    </div>`;
+  bindModuleTreeEvents();
+  loadModuleDetail();
+}
+
+function findModuleEntry(modules, key) {
+  for (const s of modules) {
+    if (s.key === key) return s;
+    for (const it of (s.items || [])) if (it.key === key) return it;
+  }
+  return null;
+}
+function firstItemKey(modules) {
+  for (const s of modules) {
+    if (s.type === "item") return s.key;
+    if (s.items && s.items.length) return s.items[0].key;
+  }
+  return null;
+}
+
+function moduleTreeRow(entry) {
+  const enabled = entry.enabled;
+  const selected = entry.key === moduleSelectedKey;
+  const head = `
+    <div class="perm-module-row${entry.type === "section" ? " is-section" : ""}${selected ? " selected" : ""}">
+      <button class="perm-module-pick" data-mk="${esc(entry.key)}">${esc(entry.label)}</button>
+      <label class="perm-enable-toggle" title="启用后该模块按 ACL 门禁，未配置权限的用户将无法访问">
+        <input type="checkbox" data-mk-enable="${esc(entry.key)}" ${enabled ? "checked" : ""}/> 启用
+      </label>
+    </div>`;
+  const children = (entry.items || [])
+    .map(it => `
+      <div class="perm-module-row is-child${it.key === moduleSelectedKey ? " selected" : ""}">
+        <button class="perm-module-pick" data-mk="${esc(it.key)}">· ${esc(it.label)}</button>
+        <label class="perm-enable-toggle" title="启用后该模块按 ACL 门禁">
+          <input type="checkbox" data-mk-enable="${esc(it.key)}" ${it.enabled ? "checked" : ""}/> 启用
+        </label>
+      </div>`).join("");
+  return head + children;
+}
+
+function bindModuleTreeEvents() {
+  $("#perm-panel").querySelectorAll(".perm-module-pick").forEach(b =>
+    b.addEventListener("click", () => { moduleSelectedKey = b.dataset.mk; renderModulesPanel(); }));
+  $("#perm-panel").querySelectorAll("input[data-mk-enable]").forEach(cb =>
+    cb.addEventListener("change", () => toggleModuleEnabled(cb.dataset.mkEnable, cb.checked)));
+}
+
+async function toggleModuleEnabled(key, enabled) {
+  try {
+    await api("/api/module-acl/meta", {
+      method: "PUT", body: JSON.stringify({ module_key: key, enabled }),
+    });
+    if (permOptions?.modules) syncModuleEnabled(permOptions.modules, key, enabled);
+    toast(`${key} 已${enabled ? "启用" : "关闭"} ACL 门禁`);
+  } catch (e) { toast(e.message, true); renderModulesPanel(); }
+}
+function syncModuleEnabled(modules, key, enabled) {
+  for (const s of modules) {
+    if (s.key === key) { s.enabled = enabled; return; }
+    for (const it of (s.items || [])) if (it.key === key) { it.enabled = enabled; return; }
+  }
+}
+
+async function loadModuleDetail() {
+  const el = $("#perm-module-detail");
+  if (!el) return;
+  const entry = findModuleEntry(permOptions?.modules || [], moduleSelectedKey);
+  if (!entry) { el.innerHTML = `<div class="empty">请选择一个模块。</div>`; return; }
+  el.innerHTML = `<div class="perm-toolbar"><b>${esc(entry.label)}</b>
+      <span style="font-size:11px;color:#94a3b8">${entry.enabled ? "已启用 ACL 门禁" : "未启用（沿用角色基线）"}</span>
+      <button class="btn btn-sm" id="module-export-btn">导出</button>
+    </div>
+    <div id="module-matrix-wrap">加载中…</div>`;
+  $("#module-export-btn")?.addEventListener("click", exportModuleAcl);
+  await loadModuleMatrix(entry);
+}
+
+async function loadModuleMatrix(entry) {
+  try {
+    moduleAclCache = await api(`/api/module-acl?module_key=${encodeURIComponent(entry.key)}`);
+  } catch (e) { toast(e.message, true); moduleAclCache = []; }
+  renderModuleMatrix(entry, moduleAclCache);
+}
+
+function renderModuleMatrix(entry, rows) {
+  const users = permOptions?.users || [];
+  const ugs = permOptions?.user_groups || [];
+  const rowsBySubject = {};
+  rows.forEach(r => { rowsBySubject[`${r.subject_type}:${r.subject_id}`] = r; });
+
+  const subjectOpt = (type, id, label) => {
+    const r = rowsBySubject[`${type}:${id}`];
+    const checked = k => r ? !!r[k] : false;
+    return `
+      <tr>
+        <td>${esc(label)}</td>
+        ${PERM_COLS.map(c => `
+          <td class="perm-cell"><input type="checkbox" class="mx-mod-perm"
+            data-st="${type}" data-sid="${id}" data-mk="${esc(entry.key)}" data-perm="${c.key}"
+            ${checked(c.key) ? "checked" : ""}/></td>`).join("")}
+        <td><button class="btn btn-sm btn-danger" data-mod-del-st="${type}" data-mod-del-sid="${id}">清除</button></td>
+      </tr>`;
+  };
+
+  const userRows = users.map(u => subjectOpt("user", u.id, `${u.display_name}（${u.username}）`)).join("");
+  const ugRows = ugs.map(g => subjectOpt("user_group", g.id, `分组：${g.name}`)).join("");
+
+  $("#module-matrix-wrap").innerHTML = `
+    <table class="perm-matrix">
+      <thead><tr><th>主体</th>${PERM_COLS.map(c => `<th title="${esc(c.title)}">${c.label}</th>`).join("")}<th></th></tr></thead>
+      <tbody>${userRows}${ugRows || `<tr><td colspan="6" class="empty">暂无用户分组</td></tr>`}</tbody>
+    </table>
+    <p style="font-size:11px;color:#94a3b8;margin-top:8px">
+      说明：板块权限会向其下子模块继承（如「校招流程」的读权限下发给「简历筛选」「技术面」等）。
+      启用某模块后，未在此处授权的用户将无法访问该模块。
+    </p>`;
+  $("#module-matrix-wrap").querySelectorAll(".mx-mod-perm").forEach(cb =>
+    cb.addEventListener("change", () => onModulePermToggle(cb)));
+  $("#module-matrix-wrap").querySelectorAll("[data-mod-del-st]").forEach(btn =>
+    btn.addEventListener("click", () => deleteModuleAcl(btn.dataset.modDelSt, btn.dataset.modDelSid, entry.key)));
+}
+
+async function onModulePermToggle(cb) {
+  const { st, sid, mk, perm } = cb.dataset;
+  const sidN = parseInt(sid, 10);
+  // 收集该主体当前四个维度的新值
+  const wrap = $("#module-matrix-wrap");
+  const vals = {};
+  PERM_COLS.forEach(c => {
+    const box = wrap.querySelector(`.mx-mod-perm[data-st="${st}"][data-sid="${sid}"][data-mk="${mk}"][data-perm="${c.key}"]`);
+    vals[c.key] = box && box.checked ? 1 : 0;
+  });
+  try {
+    await api("/api/module-acl", { method: "PUT", body: JSON.stringify({
+      subject_type: st, subject_id: sidN, module_key: mk, ...vals,
+    })});
+    toast("已更新模块权限");
+    // 刷新启用态与缓存
+    if (permOptions?.modules) syncModuleEnabled(permOptions.modules, mk, true);
+    await loadModuleMatrix(findModuleEntry(permOptions.modules, mk));
+  } catch (e) { toast(e.message, true); cb.checked = !cb.checked; }
+}
+
+async function deleteModuleAcl(st, sid, mk) {
+  if (!confirm(`确认清除该主体对模块「${mk}」的全部权限？`)) return;
+  try {
+    await api("/api/module-acl", { method: "DELETE", body: JSON.stringify({
+      subject_type: st, subject_id: parseInt(sid, 10), module_key: mk,
+    })});
+    toast("已清除");
+    await loadModuleMatrix(findModuleEntry(permOptions.modules, mk));
+  } catch (e) { toast(e.message, true); }
+}
+
+async function exportModuleAcl() {
+  const url = "/api/module-acl/export";
+  const a = document.createElement("a");
+  a.href = url; a.download = "模块权限矩阵.xlsx"; a.click();
 }
 
 /* ---------------- 资源分组 ---------------- */

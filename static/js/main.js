@@ -12,47 +12,30 @@ const TOOL_TABS = {
 /** 分组 id -> 子菜单 tab id 列表（用于展开与高亮） */
 const NAV_GROUP_CHILDREN = {};
 
-/** 左侧导航结构 */
+/** 模块有效权限（来自 /api/permissions/modules，含 visible/readable/writable）。 */
+let modulePerms = [];
+
+function moduleByKey(key) {
+  for (const s of modulePerms) {
+    if (s.key === key) return s;
+    for (const it of (s.items || [])) if (it.key === key) return it;
+  }
+  return null;
+}
+function moduleVisible(key) { const m = moduleByKey(key); return m ? !!m.visible : false; }
+function moduleReadable(key) { const m = moduleByKey(key); return m ? !!m.readable : false; }
+function moduleWritable(key) { const m = moduleByKey(key); return m ? !!m.writable : false; }
+
+/** 左侧导航结构（依据后端模块注册表与当前用户有效权限过滤） */
 function buildNavStructure() {
   const sections = [];
-
-  sections.push({ type: "item", id: "registration", label: "候选人登记" });
-
-  sections.push({
-    type: "group", id: "recruit_flow", label: "校招流程", items: [
-      { id: "resume_screening", label: "简历筛选" },
-      { id: "qualification", label: "资格审查" },
-      { id: "written_test", label: "笔试" },
-      { id: "tech_interview", label: "技术面" },
-      { id: "manager_interview", label: "主管面" },
-    ],
-  });
-
-  sections.push({
-    type: "group", id: "offer_strategy", label: "Offer策略", items: [
-      { id: "approval", label: "报批" },
-      { id: "salary", label: "谈薪" },
-      { id: "offer", label: "Offer管理" },
-    ],
-  });
-
-  sections.push({ type: "item", id: "onboarding", label: "入职管理" });
-
-  if (canSeeAll() || isGroupAdmin()) {
-    const dataItems = [];
-    if (canSeeAll()) dataItems.push({ id: "overview", label: "全局总览" });
-    dataItems.push({ id: "charts", label: "数据图表" });
-    sections.push({ type: "group", id: "data_board", label: "数据看板", items: dataItems });
-  }
-
-  if (isAdmin()) {
-    sections.push({
-      type: "group", id: "admin_board", label: "管理看板", items: [
-        { id: "logs", label: "操作日志" },
-        { id: "admin", label: "系统管理" },
-        { id: "permissions", label: "权限管理" },
-      ],
-    });
+  for (const entry of modulePerms) {
+    if (entry.type === "item") {
+      if (entry.visible) sections.push({ type: "item", id: entry.key, label: entry.label });
+      continue;
+    }
+    const items = (entry.items || []).filter(it => it.visible).map(it => ({ id: it.key, label: it.label }));
+    if (items.length) sections.push({ type: "group", id: entry.key, label: entry.label, items });
   }
 
   Object.keys(NAV_GROUP_CHILDREN).forEach(k => delete NAV_GROUP_CHILDREN[k]);
@@ -60,6 +43,16 @@ function buildNavStructure() {
     if (s.type === "group") NAV_GROUP_CHILDREN[s.id] = s.items.map(i => i.id);
   });
   return sections;
+}
+
+/** 第一个可见的 tab（用于默认/回退） */
+function firstVisibleTab() {
+  const nav = buildNavStructure();
+  for (const s of nav) {
+    if (s.type === "item") return s.id;
+    if (s.items && s.items.length) return s.items[0].id;
+  }
+  return null;
 }
 
 /** 当前展开的分组 id 集合（默认全部折叠） */
@@ -78,18 +71,19 @@ async function boot() {
   const roleName = ROLE_NAMES[state.me.role] || state.me.role;
   $("#user-info").textContent = `${state.me.display_name}（${roleName}）`;
 
-  const [cfg] = await Promise.all([api("/api/config")]);
+  const [cfg, mods] = await Promise.all([api("/api/config"), api("/api/permissions/modules")]);
   state.stages = cfg.stages;
   state.stageFields = cfg.stage_fields;
   state.masterImport = cfg.master_import || {};
   state.app = cfg.app || {};
+  modulePerms = (mods && mods.modules) || [];
 
   if (state.app.clip_max_width)
     document.documentElement.style.setProperty("--clip-max", state.app.clip_max_width + "px");
 
   navExpandedGroups.clear();
   buildSidebar();
-  switchTab("registration");
+  switchTab(moduleVisible("registration") ? "registration" : (firstVisibleTab() || "registration"));
 }
 
 function buildSidebar() {
@@ -150,6 +144,13 @@ function updateSidebarActive(tab) {
 }
 
 function switchTab(tab) {
+  // 模块级权限拦截：不可见/不可读的模块不允许切换
+  if (!moduleVisible(tab) || !moduleReadable(tab)) {
+    const fallback = firstVisibleTab();
+    if (fallback && fallback !== tab) return switchTab(fallback);
+    $("#main-content").innerHTML = `<div class="empty-state">无可用模块，请联系管理员开通权限。</div>`;
+    return;
+  }
   state.tab = tab;
   const gid = groupForTab(tab);
   if (gid && !navExpandedGroups.has(gid)) {

@@ -22,7 +22,15 @@ from campus.services.acl import (
     accessible_resource_ids,
     acl_row_dict,
     effective_permissions,
+    module_acl_enabled,
+    module_acl_row_dict,
+    module_entry,
+    module_keys,
+    module_readable_for,
+    module_registry_payload,
+    module_writable_for,
     permission_settings,
+    set_module_acl_enabled,
 )
 from campus.services.audit import add_log
 
@@ -62,6 +70,16 @@ def api_permission_options():
     ug_templates = [dict(r) for r in db.execute(
         "SELECT id, name, description, member_usernames, created_at FROM user_group_templates ORDER BY id"
     ).fetchall()]
+    # 模块级 ACL：板块/模块注册表 + 启用状态（不含当前用户有效权限，矩阵页用）
+    module_meta = []
+    from campus.services.acl import MODULE_REGISTRY
+    for entry in MODULE_REGISTRY:
+        e = {"key": entry["key"], "label": entry["label"], "type": entry["type"],
+             "enabled": module_acl_enabled(db, entry["key"])}
+        if "items" in entry:
+            e["items"] = [{"key": c["key"], "label": c["label"], "type": c["type"],
+                           "enabled": module_acl_enabled(db, c["key"])} for c in entry["items"]]
+        module_meta.append(e)
     return jsonify({
         "settings": permission_settings(),
         "users": users,
@@ -71,6 +89,7 @@ def api_permission_options():
         "resource_groups": resource_groups,
         "permission_templates": perm_templates,
         "resource_types": [{"value": RESOURCE_TYPE_GROUP, "label": "数据分组"}],
+        "modules": module_meta,
     })
 
 
@@ -943,3 +962,215 @@ def api_acl_effective():
 # 兼容引用：供 candidates 路由导入使用
 def _accessible_resource_ids(db, user, resource_type=RESOURCE_TYPE_GROUP, perm="visibility"):
     return accessible_resource_ids(db, user, resource_type, perm)
+
+
+# ============================================================================
+# 模块级 ACL：板块/模块的可见性 / 可读性 / 可写性 / 管理
+# ============================================================================
+
+@bp.get("/api/permissions/modules")
+@login_required
+def api_permission_modules():
+    """模块注册表 + 当前用户对各模块的有效权限（供前端导航渲染与切换拦截）。"""
+    return jsonify({"modules": module_registry_payload(g.user)})
+
+
+@bp.get("/api/module-acl")
+@admin_required
+def api_module_acl_query():
+    """查询指定模块的全部 ACL 条目（矩阵数据）。"""
+    module_key = (request.args.get("module_key") or "").strip()
+    if not module_key or module_key not in module_keys():
+        return jsonify({"error": "module_key 不合法"}), 400
+    rows = get_db().execute(
+        "SELECT * FROM module_acl WHERE module_key=? ORDER BY subject_type, subject_id",
+        (module_key,),
+    ).fetchall()
+    return jsonify([module_acl_row_dict(r) for r in rows])
+
+
+def _validate_module_acl_body(b):
+    if b.get("subject_type") not in (SUBJECT_TYPE_USER, SUBJECT_TYPE_USER_GROUP):
+        return "subject_type 不合法"
+    if b.get("subject_id") is None:
+        return "subject_id 不能为空"
+    if not b.get("module_key") or b.get("module_key") not in module_keys():
+        return "module_key 不合法"
+    return None
+
+
+def _module_perms_from_body(b):
+    return {k: 1 if _truthy(b.get(k)) else 0 for k in PERM_FIELDS}
+
+
+def _module_acl_upsert(db, s_type, s_id, module_key, perms):
+    existing = db.execute(
+        "SELECT id FROM module_acl WHERE subject_type=? AND subject_id=? AND module_key=?",
+        (s_type, s_id, module_key),
+    ).fetchone()
+    if existing:
+        db.execute(
+            "UPDATE module_acl SET perm_visibility=?, perm_read=?, perm_write=?, perm_manage=? WHERE id=?",
+            (perms["perm_visibility"], perms["perm_read"], perms["perm_write"], perms["perm_manage"], existing["id"]),
+        )
+    else:
+        db.execute(
+            "INSERT INTO module_acl (subject_type, subject_id, module_key, "
+            "perm_visibility, perm_read, perm_write, perm_manage, created_at) VALUES (?,?,?,?,?,?,?,?)",
+            (s_type, s_id, module_key, perms["perm_visibility"], perms["perm_read"],
+             perms["perm_write"], perms["perm_manage"], now_str()),
+        )
+
+
+def _log_module_acl_change(user, b, perms, action):
+    s_label = f"用户#{b.get('subject_id')}" if b.get("subject_type") == SUBJECT_TYPE_USER else f"用户分组#{b.get('subject_id')}"
+    if perms is None:
+        msg = f"{user['display_name']} 撤销了 {s_label} 对模块「{b.get('module_key')}」的全部权限"
+    else:
+        flags = [k.replace("perm_", "") for k in PERM_FIELDS if perms[k]]
+        msg = f"{user['display_name']} 设置 {s_label} 对模块「{b.get('module_key')}」的权限：{('、'.join(flags)) or '无'}"
+    add_log(user, "permission", msg)
+
+
+@bp.put("/api/module-acl")
+@admin_required
+def api_module_acl_upsert():
+    b = request.get_json(force=True)
+    err = _validate_module_acl_body(b)
+    if err:
+        return jsonify({"error": err}), 400
+    perms = _module_perms_from_body(b)
+    db = get_db()
+    _module_acl_upsert(db, b["subject_type"], int(b["subject_id"]), b["module_key"], perms)
+    # 首次写入自动启用该模块的 ACL 门禁
+    if not module_acl_enabled(db, b["module_key"]):
+        set_module_acl_enabled(db, b["module_key"], True)
+    _log_module_acl_change(g.user, b, perms, action="upsert")
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@bp.delete("/api/module-acl")
+@admin_required
+def api_module_acl_delete():
+    b = request.get_json(force=True)
+    err = _validate_module_acl_body(b)
+    if err:
+        return jsonify({"error": err}), 400
+    db = get_db()
+    db.execute(
+        "DELETE FROM module_acl WHERE subject_type=? AND subject_id=? AND module_key=?",
+        (b["subject_type"], int(b["subject_id"]), b["module_key"]),
+    )
+    _log_module_acl_change(g.user, b, None, action="revoke")
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@bp.put("/api/module-acl/meta")
+@admin_required
+def api_module_acl_meta_update():
+    """启用/关闭某模块的 ACL 门禁。关闭后该模块回退到 role_gate 基线。"""
+    b = request.get_json(force=True)
+    module_key = (b.get("module_key") or "").strip()
+    if module_key not in module_keys():
+        return jsonify({"error": "module_key 不合法"}), 400
+    enabled = bool(b.get("enabled"))
+    db = get_db()
+    set_module_acl_enabled(db, module_key, enabled)
+    add_log(g.user, "permission",
+            f"{g.user['display_name']} {'启用' if enabled else '关闭'}了模块「{module_key}」的 ACL 门禁")
+    db.commit()
+    return jsonify({"ok": True, "module_key": module_key, "enabled": enabled})
+
+
+@bp.post("/api/module-acl/batch")
+@admin_required
+def api_module_acl_batch():
+    """批量设置/撤销模块权限。支持 dry_run 预览与 manage 二次确认。"""
+    b = request.get_json(force=True)
+    entries = b.get("entries") or []
+    if not entries:
+        return jsonify({"error": "entries 不能为空"}), 400
+    mode = b.get("mode", "set")
+    dry_run = bool(b.get("dry_run"))
+    confirm = bool(b.get("confirm"))
+    for e in entries:
+        err = _validate_module_acl_body(e)
+        if err:
+            return jsonify({"error": err}), 400
+    if mode == "set" and not dry_run:
+        for e in entries:
+            if _module_perms_from_body(e)["perm_manage"] and not confirm:
+                return jsonify({"error": "批量授予模块管理权限需二次确认（confirm=true）",
+                                "code": "manage_requires_confirm"}), 400
+
+    subjects = {(e["subject_type"], e["subject_id"]) for e in entries}
+    modules = {e["module_key"] for e in entries}
+    preview = {
+        "subject_count": len(subjects),
+        "module_count": len(modules),
+        "entry_count": len(entries),
+        "subjects": [{"type": s[0], "id": s[1]} for s in sorted(subjects)],
+        "modules": sorted(modules),
+    }
+    if dry_run:
+        return jsonify({"ok": True, "dry_run": True, "preview": preview})
+
+    db = get_db()
+    affected = 0
+    for e in entries:
+        if mode == "revoke":
+            db.execute(
+                "DELETE FROM module_acl WHERE subject_type=? AND subject_id=? AND module_key=?",
+                (e["subject_type"], int(e["subject_id"]), e["module_key"]),
+            )
+            affected += 1
+        else:
+            perms = _module_perms_from_body(e)
+            _module_acl_upsert(db, e["subject_type"], int(e["subject_id"]), e["module_key"], perms)
+            if not module_acl_enabled(db, e["module_key"]):
+                set_module_acl_enabled(db, e["module_key"], True)
+            affected += 1
+    add_log(g.user, "permission",
+            f"{g.user['display_name']} 批量{('撤销' if mode == 'revoke' else '设置')}了 {affected} 条模块权限"
+            f"（影响 {len(subjects)} 个主体、{len(modules)} 个模块）")
+    db.commit()
+    return jsonify({"ok": True, "affected": affected, "preview": preview})
+
+
+@bp.get("/api/module-acl/export")
+@admin_required
+def api_module_acl_export():
+    """导出模块权限矩阵为 Excel。"""
+    db = get_db()
+    users = {u["id"]: dict(u) for u in db.execute(
+        "SELECT id, username, display_name FROM users").fetchall()}
+    ugs = {g_["id"]: dict(g_) for g_ in db.execute(
+        "SELECT id, name FROM user_groups").fetchall()}
+    rows = db.execute("SELECT * FROM module_acl ORDER BY module_key, subject_type, subject_id").fetchall()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "模块权限矩阵"
+    headers = ["模块", "主体类型", "主体ID", "主体名称", "可见性", "读", "写", "管理"]
+    ws.append(headers)
+    for r in rows:
+        if r["subject_type"] == SUBJECT_TYPE_USER:
+            s_name = users.get(r["subject_id"], {}).get("display_name", "")
+        else:
+            s_name = ugs.get(r["subject_id"], {}).get("name", "")
+        ws.append([r["module_key"],
+                   "用户" if r["subject_type"] == SUBJECT_TYPE_USER else "用户分组",
+                   r["subject_id"], s_name,
+                   r["perm_visibility"], r["perm_read"], r["perm_write"], r["perm_manage"]])
+    for i, h in enumerate(headers, start=1):
+        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = max(12, len(h) * 2 + 4)
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    add_log(g.user, "export", f"{g.user['display_name']} 导出了模块权限矩阵（{len(rows)} 条）")
+    db.commit()
+    resp = send_file(buf, as_attachment=True, download_name="模块权限矩阵.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    resp.headers["X-Export-Count"] = str(len(rows))
+    return resp

@@ -426,6 +426,20 @@ th.sortable:hover { color: var(--primary); }
 .checkbox-group { display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .checkbox-item { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
 .checkbox-item input { width: auto; }
+/* 模块权限 */
+.perm-modules-layout { display: grid; grid-template-columns: 320px 1fr; gap: 12px; align-items: start; }
+.perm-module-tree { padding: 10px; }
+.perm-module-list { max-height: 560px; overflow: auto; }
+.perm-module-row { display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 8px; border-radius: 6px; }
+.perm-module-row.is-section { font-weight: 600; background: #f1f5f9; margin-top: 6px; }
+.perm-module-row.is-child { padding-left: 22px; font-weight: 400; }
+.perm-module-row.selected { outline: 2px solid var(--accent, #2563eb); }
+.perm-module-pick { background: none; border: none; cursor: pointer;
+  text-align: left; padding: 2px 4px; border-radius: 4px; font-size: 13px; }
+.perm-module-pick:hover { background: #e2e8f0; }
+.perm-enable-toggle { font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px; }
 @media (max-width: 900px) {
   .perm-batch-grid { grid-template-columns: 1fr; }
+  .perm-modules-layout { grid-template-columns: 1fr; }
 }

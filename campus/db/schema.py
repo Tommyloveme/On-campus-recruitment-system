@@ -113,6 +113,22 @@ CREATE TABLE IF NOT EXISTS acl (
     created_at TEXT NOT NULL,
     UNIQUE(subject_type, subject_id, resource_type, resource_id)
 );
+CREATE TABLE IF NOT EXISTS module_acl (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject_type TEXT NOT NULL,
+    subject_id INTEGER NOT NULL,
+    module_key TEXT NOT NULL,
+    perm_visibility INTEGER NOT NULL DEFAULT 0,
+    perm_read INTEGER NOT NULL DEFAULT 0,
+    perm_write INTEGER NOT NULL DEFAULT 0,
+    perm_manage INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    UNIQUE(subject_type, subject_id, module_key)
+);
+CREATE TABLE IF NOT EXISTS module_acl_meta (
+    module_key TEXT PRIMARY KEY,
+    enabled INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -235,6 +251,22 @@ def migrate(db):
             perm_manage INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             UNIQUE(subject_type, subject_id, resource_type, resource_id)
+        );
+        CREATE TABLE IF NOT EXISTS module_acl (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject_type TEXT NOT NULL,
+            subject_id INTEGER NOT NULL,
+            module_key TEXT NOT NULL,
+            perm_visibility INTEGER NOT NULL DEFAULT 0,
+            perm_read INTEGER NOT NULL DEFAULT 0,
+            perm_write INTEGER NOT NULL DEFAULT 0,
+            perm_manage INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            UNIQUE(subject_type, subject_id, module_key)
+        );
+        CREATE TABLE IF NOT EXISTS module_acl_meta (
+            module_key TEXT PRIMARY KEY,
+            enabled INTEGER NOT NULL DEFAULT 0
         );
     """)
 

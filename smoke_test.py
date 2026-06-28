@@ -808,6 +808,129 @@ with opener.open(req) as r:
     exp_count = r.headers.get("X-Export-Count")
 check("导出权限矩阵Excel", acl_xlsx[:2] == b"PK" and int(exp_count) >= 1)
 
+# 12. 模块级 ACL：主界面板块/模块的可见性、可读性、可写性、管理
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+
+def mod_eff(mods_resp, key):
+    for sec in mods_resp["modules"]:
+        if sec["key"] == key:
+            return sec
+        for it in sec.get("items", []):
+            if it["key"] == key:
+                return it
+    return None
+
+# 12a. 模块注册表下发（含板块与子模块）
+s, mods = call("GET", "/api/permissions/modules")
+check("模块注册表下发", s == 200 and len(mods["modules"]) >= 6)
+mk_keys = set()
+for sec in mods["modules"]:
+    mk_keys.add(sec["key"])
+    for it in sec.get("items", []):
+        mk_keys.add(it["key"])
+check("模块含板块与子模块", {"recruit_flow", "tech_interview", "manager_interview", "admin_board"} <= mk_keys)
+s, opts = call("GET", "/api/permissions/options")
+opts_mk = set()
+for sec in opts["modules"]:
+    opts_mk.add(sec["key"])
+    for it in sec.get("items", []):
+        opts_mk.add(it["key"])
+check("options 下发模块元数据", "tech_interview" in opts_mk and "recruit_flow" in opts_mk)
+
+# 12b. 启用 tech_interview 模块 ACL 并授予 perm_a 读+写
+s, _ = call("PUT", "/api/module-acl/meta", {"module_key": "tech_interview", "enabled": True})
+check("启用模块ACL门禁", s == 200)
+s, _ = call("PUT", "/api/module-acl", {
+    "subject_type": "user", "subject_id": perm_a["id"], "module_key": "tech_interview",
+    "perm_visibility": 1, "perm_read": 1, "perm_write": 1, "perm_manage": 0,
+})
+check("模块ACL单条授权(自动启用)", s == 200)
+s, rows = call("GET", "/api/module-acl?module_key=tech_interview")
+check("模块ACL查询", any(r["subject_id"] == perm_a["id"] and r["perm_write"] for r in rows))
+
+# admin 建一个候选人并推进到技术面
+s, r = call("POST", "/api/candidates", {
+    "stage": "registration",
+    "data": {"name": "模块权限甲", "phone": "13900001111",
+             "sourcer": "hr01", "interface_person": "hr02",
+             "education": "本科", "school": "模块大学", "major": "计算机",
+             "registration_source": "校园宣讲"},
+})
+mod_cid = r["id"]
+s, _ = call("PUT", f"/api/candidates/{mod_cid}",
+            {"stage": "tech_interview", "data": {"tech_interview_time": "2026-07-01 10:00"}})
+check("admin 推进候选人到技术面", s == 200)
+
+# perm_a 视角：tech_interview 可见可写 → 可更新
+call("POST", "/api/login", {"username": "perm_a", "password": "123456"})
+s, mods_a = call("GET", "/api/permissions/modules")
+ti = mod_eff(mods_a, "tech_interview")
+check("perm_a 可见可写 tech_interview", ti["visible"] is True and ti["writable"] is True)
+s, _ = call("PUT", f"/api/candidates/{mod_cid}",
+            {"stage": "tech_interview", "data": {"tech_interview_time": "2026-07-02 14:00"}})
+check("perm_a 有模块写权限可更新技术面", s == 200)
+
+# 12c. 启用 manager_interview 模块 ACL 但不授权 perm_a → 不可见且不可写
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+call("PUT", "/api/module-acl/meta", {"module_key": "manager_interview", "enabled": True})
+s, _ = call("PUT", f"/api/candidates/{mod_cid}",
+            {"stage": "manager_interview", "data": {"manager_interview_time": "2026-07-03 10:00"}})
+check("admin 推进到主管面", s == 200)
+call("POST", "/api/login", {"username": "perm_a", "password": "123456"})
+s, _ = call("PUT", f"/api/candidates/{mod_cid}",
+            {"stage": "manager_interview", "data": {"manager_interview_time": "2026-07-04 10:00"}},
+            expect_error=True)
+check("perm_a 无主管面模块写权限被拒(403)", s == 403)
+s, mods_a2 = call("GET", "/api/permissions/modules")
+mi = mod_eff(mods_a2, "manager_interview")
+check("perm_a 主管面模块不可见", mi["visible"] is False)
+
+# 12d. 板块继承：启用 qualification 子模块 + 授予板块 recruit_flow 读 → 子模块继承读
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+call("PUT", "/api/module-acl/meta", {"module_key": "qualification", "enabled": True})
+call("PUT", "/api/module-acl", {
+    "subject_type": "user", "subject_id": perm_a["id"], "module_key": "recruit_flow",
+    "perm_visibility": 1, "perm_read": 1, "perm_write": 0, "perm_manage": 0,
+})
+call("POST", "/api/login", {"username": "perm_a", "password": "123456"})
+s, mods_a3 = call("GET", "/api/permissions/modules")
+qual = mod_eff(mods_a3, "qualification")
+check("子模块继承板块读权限", qual["visible"] is True and qual["readable"] is True and qual["writable"] is False)
+
+# 12e. 批量撤销模块权限（dry_run 预览 + 执行）
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+entries = [
+    {"subject_type": "user", "subject_id": perm_a["id"], "module_key": "recruit_flow"},
+    {"subject_type": "user", "subject_id": perm_a["id"], "module_key": "manager_interview"},
+]
+s, prev = call("POST", "/api/module-acl/batch", {"mode": "revoke", "entries": entries, "dry_run": True})
+check("模块批量撤销预览", s == 200 and prev["dry_run"] and prev["preview"]["entry_count"] == 2)
+s, bres = call("POST", "/api/module-acl/batch", {"mode": "revoke", "entries": entries, "dry_run": False})
+check("模块批量撤销执行", s == 200 and bres["affected"] == 2)
+
+# 12f. 模块矩阵 Excel 导出
+req = urllib.request.Request(BASE + "/api/module-acl/export")
+with opener.open(req) as r:
+    mod_xlsx = r.read()
+check("导出模块权限矩阵Excel", mod_xlsx[:2] == b"PK")
+
+# 12g. 关闭门禁 → 回退角色基线（editor 重新可见主管面）
+call("PUT", "/api/module-acl/meta", {"module_key": "manager_interview", "enabled": False})
+call("POST", "/api/login", {"username": "perm_a", "password": "123456"})
+s, mods_a4 = call("GET", "/api/permissions/modules")
+mi2 = mod_eff(mods_a4, "manager_interview")
+check("关闭门禁后回退角色基线(editor可见)", mi2["visible"] is True)
+
+# 清理模块 ACL 测试数据
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+for mk in ("tech_interview", "manager_interview", "recruit_flow", "qualification"):
+    call("PUT", "/api/module-acl/meta", {"module_key": mk, "enabled": False})
+    call("DELETE", "/api/module-acl",
+         {"subject_type": "user", "subject_id": perm_a["id"], "module_key": mk})
+s, cands = call("GET", "/api/candidates?q=" + quote("模块权限甲"))
+for c in cands:
+    call("DELETE", f"/api/candidates/{c['id']}")
+
 # 清理权限测试数据
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 s, cands = call("GET", "/api/candidates?q=" + quote("权限隔离甲"))
