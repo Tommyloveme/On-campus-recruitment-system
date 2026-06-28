@@ -453,51 +453,53 @@ th.sortable:hover { color: var(--primary); }
 .perm-flag-toggle span { line-height: 1; }
 .perm-flex { flex: 1; }
 
-.perm-grid-wrap { max-height: 72vh; overflow: auto; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 1px 0 #e2e8f0 inset; }
-.perm-grid { border-collapse: separate; border-spacing: 0; font-size: 12px; table-layout: auto; width: max-content; min-width: 100%; background: #fff; }
-.perm-grid th:not(.sticky-col), .perm-grid td:not(.sticky-col) { width: 1%; white-space: nowrap; box-sizing: border-box; }
-.perm-grid th.sticky-col, .perm-grid td.sticky-col { white-space: nowrap; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; }
+/* 权限矩阵：左表固定（勾选/工号/姓名）+ 右表横向滚动 */
+.perm-grid-shell {
+  display: flex; align-items: flex-start; max-height: 72vh; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 1px 0 #e2e8f0 inset;
+  background: #fff;
+}
+.perm-grid-left-wrap {
+  flex: 0 0 168px; width: 168px; max-width: 168px; overflow: hidden;
+  position: sticky; left: 0; z-index: 5;
+  background: #fff; box-shadow: 2px 0 6px -2px rgba(15, 23, 42, .12);
+}
+.perm-grid-right-wrap { flex: 1; min-width: 0; overflow-x: auto; overflow-y: visible; }
+.perm-grid { border-collapse: separate; border-spacing: 0; font-size: 12px; background: #fff; }
+.perm-grid-left {
+  table-layout: fixed !important; width: 168px !important;
+  min-width: 168px !important; max-width: 168px !important;
+}
+.perm-grid-left .col-check { width: 34px !important; min-width: 34px !important; max-width: 34px !important; text-align: center; }
+.perm-grid-left .col-username { width: 56px !important; min-width: 56px !important; max-width: 56px !important; overflow: hidden; text-overflow: ellipsis; }
+.perm-grid-left .col-name { width: 78px !important; min-width: 78px !important; max-width: 78px !important; overflow: hidden; text-overflow: ellipsis; }
+.perm-grid-left thead .perm-col-filter { padding: 1px 2px; font-size: 10px; min-width: 0 !important; }
+.perm-grid-right { table-layout: auto; width: max-content; min-width: 100%; }
+.perm-grid th, .perm-grid td { white-space: nowrap; box-sizing: border-box; }
+.perm-grid-right th, .perm-grid-right td { width: 1%; }
 .perm-grid thead th {
-  position: sticky; top: 0; background: #f1f5f9; z-index: 3; padding: 5px 4px;
+  position: sticky; top: 0; background: #f1f5f9; z-index: 2; padding: 5px 4px;
   border-bottom: 1px solid var(--border); color: #1e293b; font-weight: 600;
 }
+.perm-grid-left thead th { z-index: 6; background: #f1f5f9; }
 .perm-grid thead tr.perm-filter-row th {
-  position: sticky; top: 28px; background: #eef2f7; z-index: 4; padding: 3px 3px; font-weight: 400;
+  position: sticky; top: 28px; background: #eef2f7; z-index: 3; padding: 3px 3px; font-weight: 400;
   border-bottom: 1px solid var(--border);
 }
+.perm-grid-left thead tr.perm-filter-row th { z-index: 7; background: #eef2f7; }
 .perm-grid thead .perm-col-filter {
   box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 5px;
-  padding: 2px 4px; font-size: 11px; background: #fff; width: 100%; min-width: 0; max-width: 100%;
+  padding: 2px 4px; font-size: 11px; background: #fff;
+  width: 100%; min-width: 0; max-width: 100%;
 }
 .perm-grid thead .perm-role-filter { font-size: 11px; }
 .perm-grid thead .perm-mod-filter { padding: 2px 1px; font-size: 10px; }
 .perm-grid tbody td { padding: 3px 4px; border-bottom: 1px solid #eef2f6; }
 .perm-grid tbody tr:nth-child(odd) td { background: #fbfcfe; }
 .perm-grid tbody tr:hover td { background: #eff6ff !important; }
-
 .perm-col-check { text-align: center; padding: 3px 2px; }
-/* 冻结左侧三列：左列 z-index 最高，避免横向滚动时被右侧冻结列盖住 */
-.perm-grid .sticky-col { position: sticky; background-clip: padding-box; }
-.perm-grid .col-check { left: 0; z-index: 16; border-right: 1px solid #e2e8f0; background: #fff; }
-.perm-grid .col-username { left: var(--perm-user-left, 34px); z-index: 15; border-right: 1px solid #e2e8f0; background: #fff; }
-.perm-grid .col-name { left: var(--perm-name-left, 66px); z-index: 14; box-shadow: 2px 0 4px -2px rgba(15, 23, 42, .12); background: #fff; }
-.perm-grid thead th.col-check { z-index: 26; background: #f1f5f9; }
-.perm-grid thead th.col-username { z-index: 25; background: #f1f5f9; }
-.perm-grid thead th.col-name { z-index: 24; background: #f1f5f9; }
-.perm-grid thead tr.perm-filter-row th.col-check { z-index: 36; background: #eef2f7; }
-.perm-grid thead tr.perm-filter-row th.col-username { z-index: 35; background: #eef2f7; }
-.perm-grid thead tr.perm-filter-row th.col-name { z-index: 34; background: #eef2f7; }
-.perm-grid tbody tr:nth-child(odd) td.col-check { background: #fbfcfe; }
-.perm-grid tbody tr:nth-child(odd) td.col-username { background: #fbfcfe; }
-.perm-grid tbody tr:nth-child(odd) td.col-name { background: #fbfcfe; }
-.perm-grid tbody tr:hover td.col-check,
-.perm-grid tbody tr:hover td.col-username,
-.perm-grid tbody tr:hover td.col-name { background: #eff6ff !important; }
-.perm-grid tbody .col-username, .perm-grid tbody .col-name {
-  font-weight: 500; color: #0f172a;
-}
-.perm-grid thead tr.perm-filter-row .perm-sticky-filter {
-  width: 100%; min-width: 0; max-width: 100%; padding: 2px 3px; font-size: 10px;
+.perm-grid-left tbody .col-username, .perm-grid-left tbody .col-name {
+  font-weight: 500; color: #0f172a; overflow: hidden; text-overflow: ellipsis;
 }
 
 /* 模块列：四勾选紧凑排列，宽度随表头文字自适应 */

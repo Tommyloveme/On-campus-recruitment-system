@@ -13,10 +13,11 @@ GLOBAL_VIEW_ROLES = ("admin",)
 def is_admin(user):
     if not user:
         return False
-    if user.get("role") == "admin":
+    role = user["role"]
+    if role == "admin":
         return True
     from campus.services.roles import role_bypass
-    return role_bypass(user.get("role"))
+    return role_bypass(role)
 
 
 def can_edit(user, group_id=None):

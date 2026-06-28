@@ -71,7 +71,10 @@ async function renderPermissions() {
         <span id="perm-row-count" class="muted"></span>
       </div>
 
-      <div class="perm-grid-wrap"><table id="perm-grid" class="perm-grid"></table></div>
+      <div class="perm-grid-shell">
+        <div class="perm-grid-left-wrap"><table id="perm-grid-left" class="perm-grid perm-grid-left"></table></div>
+        <div class="perm-grid-right-wrap"><table id="perm-grid-right" class="perm-grid perm-grid-right"></table></div>
+      </div>
 
       <div id="perm-roles" class="perm-embed"></div>
       <div id="perm-field-config" class="perm-embed"></div>
@@ -151,146 +154,50 @@ function rowPassesFilter(u, cols) {
   return true;
 }
 
-/* ---------- 渲染 ---------- */
-function renderPermGrid() {
-  const cols = permColumns();
-  const fields = userFieldsForGrid();
+/* ---------- 渲染（左表冻结：勾选/工号/姓名；右表横向滚动） ---------- */
+const PERM_FROZEN_COUNT = 3;
 
-  // 表头：第1行标签，第2行筛选
-  const labelRow = cols.map(c => {
-    if (c.kind === "check") return `<th class="perm-col-check sticky-col col-check"><input type="checkbox" id="perm-check-all" title="全选"></th>`;
+function permSplitCols(cols) {
+  return { frozen: cols.slice(0, PERM_FROZEN_COUNT), scroll: cols.slice(PERM_FROZEN_COUNT) };
+}
+
+function permLabelRow(cols) {
+  return cols.map(c => {
+    if (c.kind === "check") return `<th class="col-check perm-col-check"><input type="checkbox" id="perm-check-all" title="全选"></th>`;
     if (c.kind === "actions") return `<th class="perm-actions-col">操作</th>`;
-    const sticky = (c.id === "username") ? " sticky-col col-username" : (c.id === "display_name" ? " sticky-col col-name" : "");
+    if (c.id === "username") return `<th class="col-username mono" title="${esc(c.label)}">${esc(c.label)}</th>`;
+    if (c.id === "display_name") return `<th class="col-name" title="${esc(c.label)}">${esc(c.label)}</th>`;
     const modCls = c.kind === "module" ? ` col-module perm-mod-head${c.module.type === "section" ? " is-section" : ""}` : "";
     const fieldCls = c.kind === "field" ? " col-field" : "";
     const roleCls = c.kind === "role" ? " col-role-h" : "";
-    return `<th class="${sticky}${modCls}${fieldCls}${roleCls}" title="${esc(c.label)}">${esc(c.label)}</th>`;
+    return `<th class="${modCls}${fieldCls}${roleCls}" title="${esc(c.label)}">${esc(c.label)}</th>`;
   }).join("");
+}
 
-  const filterRow = cols.map(c => {
-    if (c.kind === "check") return `<th class="perm-col-check sticky-col col-check"></th>`;
+function permFilterRow(cols) {
+  return cols.map(c => {
+    if (c.kind === "check") return `<th class="col-check perm-col-check"></th>`;
     if (c.kind === "actions") return `<th class="perm-actions-col"></th>`;
-    const sticky = (c.id === "username") ? " sticky-col col-username" : (c.id === "display_name" ? " sticky-col col-name" : "");
     if (c.kind === "role") {
       const ro = (permOptions.roles || []).map(r =>
         `<option value="${esc(r.key)}">${esc(r.label)}</option>`).join("");
-      return `<th class="col-role-h${sticky}"><select class="perm-col-filter perm-role-filter" data-col="${c.id}">
+      return `<th class="col-role-h"><select class="perm-col-filter perm-role-filter" data-col="${c.id}">
         <option value="">全部</option>${ro}</select></th>`;
     }
     if (c.kind === "module") {
       const opts = MOD_FILTERS.map(([v, label]) =>
         `<option value="${v}">${label}</option>`).join("");
-      return `<th class="col-module${sticky} perm-mod-head"><select class="perm-col-filter perm-mod-filter" data-col="${c.id}">${opts}</select></th>`;
+      return `<th class="col-module perm-mod-head"><select class="perm-col-filter perm-mod-filter" data-col="${c.id}">${opts}</select></th>`;
     }
     const fieldCls = c.kind === "field" ? " col-field" : "";
-    const stickyFilter = sticky ? " perm-sticky-filter" : "";
-    return `<th class="${sticky}${fieldCls}"><input type="text" class="perm-col-filter${stickyFilter}" data-col="${c.id}" placeholder="筛选" value="${esc(permFilters[c.id] || "")}"></th>`;
+    const sz = (c.id === "username" || c.id === "display_name") ? ' size="3"' : "";
+    return `<th class="${fieldCls}"><input type="text" class="perm-col-filter" data-col="${c.id}" placeholder="筛选"${sz} value="${esc(permFilters[c.id] || "")}"></th>`;
   }).join("");
-
-  $("#perm-grid").innerHTML = `<thead><tr>${labelRow}</tr><tr class="perm-filter-row">${filterRow}</tr></thead><tbody></tbody>`;
-
-  $("#perm-grid").querySelectorAll(".perm-col-filter").forEach(el => {
-    const col = el.dataset.col;
-    const handler = () => { permFilters[col] = el.value; renderPermGridBody(cols); };
-    el.addEventListener("input", handler);
-    el.addEventListener("change", handler);
-  });
-  $("#perm-check-all").addEventListener("change", e => {
-    $("#perm-grid").querySelectorAll(".perm-row-check").forEach(cb => cb.checked = e.target.checked);
-    refreshPermBatchBtn();
-  });
-  renderPermGridBody(cols);
-  syncPermStickyCols(cols);
 }
 
-function renderPermGridBody(cols) {
-  const users = permUsersCache.filter(u => rowPassesFilter(u, cols));
-  const tbody = $("#perm-grid tbody");
-  if (!tbody) return;
-  if (!users.length) {
-    tbody.innerHTML = `<tr><td colspan="${cols.length}" class="empty" style="padding:24px">没有符合筛选条件的用户</td></tr>`;
-    $("#perm-row-count") && ($("#perm-row-count").textContent = "0 / " + permUsersCache.length + " 人");
-    syncPermStickyCols(cols);
-    return;
-  }
-  tbody.innerHTML = users.map(u => permUserRow(u, cols)).join("");
-  $("#perm-row-count") && ($("#perm-row-count").textContent = `${users.length} / ${permUsersCache.length} 人`);
-
-  tbody.querySelectorAll(".perm-row-check").forEach(cb => cb.addEventListener("change", refreshPermBatchBtn));
-  tbody.querySelectorAll(".perm-flag-cb").forEach(cb =>
-    cb.addEventListener("change", () => onPermFlagToggle(+cb.dataset.uid, cb.dataset.mk, cb.dataset.flag, cb.checked)));
-  tbody.querySelectorAll("[data-uedit]").forEach(b =>
-    b.addEventListener("click", () => openUserModal(permUsersCache.find(u => u.id === +b.dataset.uedit))));
-  tbody.querySelectorAll("[data-udel]").forEach(b =>
-    b.addEventListener("click", async () => {
-      if (!confirm("确认删除该用户？其模块权限将一并清除。")) return;
-      try {
-        await api(`/api/users/${b.dataset.udel}`, { method: "DELETE" });
-        toast("用户已删除");
-        await loadPermData();
-        renderPermGrid();
-        refreshPermBatchBtn();
-      } catch (e) { toast(e.message, true); }
-    }));
-  $("#perm-check-all").checked = false;
-  syncPermStickyCols(cols);
-}
-
-/** 冻结列：勾选列固定宽；工号/姓名按内容紧凑计算，colgroup 强制列宽 */
-const PERM_CHECK_W = 34;
-const PERM_COL_PAD = 6;
-
-function permDisplayUnits(s) {
-  let u = 0;
-  for (const ch of String(s ?? "")) u += ch.codePointAt(0) > 255 ? 1 : 0.55;
-  return u;
-}
-
-function permCompactColPx(label, values, minPx, maxPx) {
-  let units = permDisplayUnits(label);
-  for (const v of values) {
-    if (v != null && v !== "") units = Math.max(units, permDisplayUnits(v));
-  }
-  return Math.min(maxPx, Math.max(minPx, Math.ceil(units * 11 + PERM_COL_PAD)));
-}
-
-function ensurePermColgroup(grid, colCount, checkW, userW, nameW) {
-  let cg = grid.querySelector("colgroup");
-  if (!cg) {
-    cg = document.createElement("colgroup");
-    grid.insertBefore(cg, grid.firstChild);
-  }
-  while (cg.children.length < colCount) cg.appendChild(document.createElement("col"));
-  while (cg.children.length > colCount) cg.removeChild(cg.lastChild);
-  cg.children[0].style.width = checkW + "px";
-  cg.children[1].style.width = userW + "px";
-  cg.children[2].style.width = nameW + "px";
-  for (let i = 3; i < colCount; i++) cg.children[i].style.width = "";
-}
-
-function syncPermStickyCols(cols) {
-  const grid = $("#perm-grid");
-  if (!grid) return;
-  cols = cols || permColumns();
-  const users = permUsersCache.filter(u => rowPassesFilter(u, cols));
-  const checkW = PERM_CHECK_W;
-  const userW = permCompactColPx("工号", users.map(u => u.username), 32, 48);
-  const nameW = permCompactColPx("姓名", users.map(u => u.display_name), 32, 40);
-  ensurePermColgroup(grid, cols.length, checkW, userW, nameW);
-  grid.style.setProperty("--perm-user-left", checkW + "px");
-  grid.style.setProperty("--perm-name-left", (checkW + userW) + "px");
-  for (const [cls, w] of [["col-check", checkW], ["col-username", userW], ["col-name", nameW]]) {
-    grid.querySelectorAll("." + cls).forEach(el => {
-      el.style.width = w + "px";
-      el.style.minWidth = w + "px";
-      el.style.maxWidth = w + "px";
-    });
-  }
-}
-
-function permUserRow(u, cols) {
-  const tds = cols.map(c => {
-    if (c.kind === "check") return `<td class="perm-col-check sticky-col col-check"><input type="checkbox" class="perm-row-check" value="${u.id}"></td>`;
+function permRowCells(u, cols) {
+  return cols.map(c => {
+    if (c.kind === "check") return `<td class="col-check perm-col-check"><input type="checkbox" class="perm-row-check" value="${u.id}"></td>`;
     if (c.kind === "actions") return `<td class="perm-actions-col"><div class="perm-actions">
       <button class="btn btn-sm" data-uedit="${u.id}">编辑</button>
       ${u.id !== state.me.id ? `<button class="btn btn-sm btn-danger" data-udel="${u.id}">删除</button>` : ""}</div></td>`;
@@ -307,12 +214,96 @@ function permUserRow(u, cols) {
           data-uid="${u.id}" data-mk="${c.module.key}" data-flag="${s}" ${a[s] ? "checked" : ""}
           style="--flag-color:${color}"></label>`).join("")}</td>`;
     }
-    const sticky = (c.id === "username") ? " sticky-col col-username mono" : (c.id === "display_name" ? " sticky-col col-name" : "");
-    const cls = c.kind === "field" ? "perm-info-cell col-field" : "";
     const val = cellValue(u, c);
-    return `<td class="${sticky} ${cls}" title="${val === "" ? "" : esc(val)}">${val === "" ? `<span class="perm-dash">—</span>` : esc(val)}</td>`;
+    const inner = val === "" ? `<span class="perm-dash">—</span>` : esc(val);
+    if (c.id === "username") return `<td class="col-username mono" title="${val === "" ? "" : esc(val)}">${inner}</td>`;
+    if (c.id === "display_name") return `<td class="col-name" title="${val === "" ? "" : esc(val)}">${inner}</td>`;
+    const cls = c.kind === "field" ? "perm-info-cell col-field" : "";
+    return `<td class="${cls}" title="${val === "" ? "" : esc(val)}">${inner}</td>`;
   }).join("");
-  return `<tr>${tds}</tr>`;
+}
+
+function permBuildThead(cols) {
+  return `<thead><tr>${permLabelRow(cols)}</tr><tr class="perm-filter-row">${permFilterRow(cols)}</tr></thead>`;
+}
+
+function permLeftColgroup() {
+  return `<colgroup><col span="1" style="width:34px"><col span="1" style="width:56px"><col span="1" style="width:78px"></colgroup>`;
+}
+
+function bindPermColFilters(cols) {
+  document.querySelectorAll("#perm-grid-left .perm-col-filter, #perm-grid-right .perm-col-filter").forEach(el => {
+    const col = el.dataset.col;
+    const handler = () => { permFilters[col] = el.value; renderPermGridBody(cols); };
+    el.addEventListener("input", handler);
+    el.addEventListener("change", handler);
+  });
+}
+
+function syncPermGridLayout() {
+  const leftRows = $("#perm-grid-left")?.tBodies[0]?.rows;
+  const rightRows = $("#perm-grid-right")?.tBodies[0]?.rows;
+  if (!leftRows || !rightRows) return;
+  const n = Math.min(leftRows.length, rightRows.length);
+  for (let i = 0; i < n; i++) {
+    leftRows[i].style.height = rightRows[i].style.height = "";
+    const h = Math.max(leftRows[i].offsetHeight, rightRows[i].offsetHeight);
+    if (h) leftRows[i].style.height = rightRows[i].style.height = h + "px";
+  }
+}
+
+function renderPermGrid() {
+  const cols = permColumns();
+  const { frozen, scroll } = permSplitCols(cols);
+  const left = $("#perm-grid-left");
+  left.innerHTML = permLeftColgroup() + permBuildThead(frozen) + "<tbody></tbody>";
+  left.style.width = "168px";
+  left.style.tableLayout = "fixed";
+  $("#perm-grid-right").innerHTML = permBuildThead(scroll) + "<tbody></tbody>";
+  bindPermColFilters(cols);
+  const checkAll = $("#perm-check-all");
+  if (checkAll) checkAll.addEventListener("change", e => {
+    document.querySelectorAll(".perm-row-check").forEach(cb => cb.checked = e.target.checked);
+    refreshPermBatchBtn();
+  });
+  renderPermGridBody(cols);
+}
+
+function renderPermGridBody(cols) {
+  const { frozen, scroll } = permSplitCols(cols);
+  const users = permUsersCache.filter(u => rowPassesFilter(u, cols));
+  const leftTb = $("#perm-grid-left tbody");
+  const rightTb = $("#perm-grid-right tbody");
+  if (!leftTb || !rightTb) return;
+  if (!users.length) {
+    leftTb.innerHTML = `<tr><td colspan="${frozen.length}" class="empty" style="padding:24px">没有符合筛选条件的用户</td></tr>`;
+    rightTb.innerHTML = `<tr><td colspan="${scroll.length}"></td></tr>`;
+    $("#perm-row-count") && ($("#perm-row-count").textContent = "0 / " + permUsersCache.length + " 人");
+    return;
+  }
+  leftTb.innerHTML = users.map(u => `<tr>${permRowCells(u, frozen)}</tr>`).join("");
+  rightTb.innerHTML = users.map(u => `<tr>${permRowCells(u, scroll)}</tr>`).join("");
+  $("#perm-row-count") && ($("#perm-row-count").textContent = `${users.length} / ${permUsersCache.length} 人`);
+
+  leftTb.querySelectorAll(".perm-row-check").forEach(cb => cb.addEventListener("change", refreshPermBatchBtn));
+  rightTb.querySelectorAll(".perm-flag-cb").forEach(cb =>
+    cb.addEventListener("change", () => onPermFlagToggle(+cb.dataset.uid, cb.dataset.mk, cb.dataset.flag, cb.checked)));
+  rightTb.querySelectorAll("[data-uedit]").forEach(b =>
+    b.addEventListener("click", () => openUserModal(permUsersCache.find(u => u.id === +b.dataset.uedit))));
+  rightTb.querySelectorAll("[data-udel]").forEach(b =>
+    b.addEventListener("click", async () => {
+      if (!confirm("确认删除该用户？其模块权限将一并清除。")) return;
+      try {
+        await api(`/api/users/${b.dataset.udel}`, { method: "DELETE" });
+        toast("用户已删除");
+        await loadPermData();
+        renderPermGrid();
+        refreshPermBatchBtn();
+      } catch (e) { toast(e.message, true); }
+    }));
+  const checkAll = $("#perm-check-all");
+  if (checkAll) checkAll.checked = false;
+  requestAnimationFrame(() => syncPermGridLayout());
 }
 
 function refreshPermBatchBtn() {
