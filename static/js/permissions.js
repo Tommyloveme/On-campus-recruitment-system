@@ -43,6 +43,7 @@ async function renderPermissions() {
     return;
   }
   permFilters = {};
+  roleFilters = {};
   permLoadColWidths();
   $("#main").innerHTML = `
     <div class="card perm-card">
@@ -79,7 +80,29 @@ async function renderPermissions() {
         <div class="perm-grid-right-wrap"><table id="perm-grid-right" class="perm-grid perm-grid-right"></table></div>
       </div>
 
-      <div id="perm-roles" class="perm-embed"></div>
+      <div id="perm-roles" class="perm-embed">
+        <div class="perm-embed-title">角色管理 <span class="muted" style="font-weight:400;font-size:12px">（角色=权限模板，应用角色时写入对应用户的模块权限）</span></div>
+        <div class="perm-embed-sub">默认角色配置承载于 <code>config/roles.json</code>；勾选即保存。在用户新增/编辑弹窗中选择角色并勾选「应用角色权限」即可把模板写入该用户。</div>
+        <div class="perm-head-actions" style="margin-bottom:10px">
+          <button class="btn btn-primary btn-sm" id="role-add">+ 新增角色</button>
+        </div>
+        <div class="perm-batch-bar">
+          <span class="perm-batch-label">批量授权</span>
+          <span class="perm-batch-field"><label class="perm-batch-cap">模块</label><select id="role-batch-module" class="perm-select"></select></span>
+          <span class="perm-batch-flags">
+            ${PERM_FLAGS.map(([s, , label, color]) =>
+              `<label class="perm-flag-toggle" style="--flag-color:${color}"><input type="checkbox" id="role-batch-${s}"><span>${label}</span></label>`).join("")}
+          </span>
+          <button class="btn btn-primary btn-sm" id="role-batch-apply">应用到所选角色</button>
+          <button class="btn btn-sm" id="role-batch-revoke">清空所选角色该模块</button>
+          <span class="perm-flex"></span>
+          <span id="role-row-count" class="muted"></span>
+        </div>
+        <div class="perm-grid-shell">
+          <div class="perm-grid-left-wrap"><table id="role-grid-left" class="perm-grid perm-grid-left"></table></div>
+          <div class="perm-grid-right-wrap"><table id="role-grid-right" class="perm-grid perm-grid-right"></table></div>
+        </div>
+      </div>
     </div>`;
 
   $("#perm-add-user").addEventListener("click", () => openUserModal(null));
@@ -87,13 +110,18 @@ async function renderPermissions() {
   $("#perm-batch-apply").addEventListener("click", () => permBatchApply(false));
   $("#perm-batch-revoke").addEventListener("click", () => permBatchApply(true));
   $("#perm-export").addEventListener("click", () => { window.location.href = "/api/module-acl/export"; });
+  $("#role-add").addEventListener("click", () => openRoleModal(null));
+  $("#role-batch-apply").addEventListener("click", () => roleBatchApply(false));
+  $("#role-batch-revoke").addEventListener("click", () => roleBatchApply(true));
 
   await loadPermData();
   $("#perm-batch-module").innerHTML = permModuleCols
     .map(m => `<option value="${m.key}">${esc(m.label)}${m.type === "section" ? "（板块）" : ""}</option>`).join("");
+  $("#role-batch-module").innerHTML = $("#perm-batch-module").innerHTML;
+  roleLoadColWidths();
   renderPermGrid();
   refreshPermBatchBtn();
-  renderRolesSection();
+  renderRoleGrid();
   renderFieldConfigInto($("#perm-field-config"));
 }
 
@@ -647,7 +675,7 @@ function openUserModal(user) {
       closeModal();
       await loadPermData();
       renderPermGrid();
-      renderRolesSection();
+      renderRoleGrid();
       refreshPermBatchBtn();
     } catch (e) { toast(e.message, true); }
   });
@@ -688,49 +716,333 @@ function openBatchEditModal() {
   });
 }
 
-/* ---------- 角色管理（角色=权限模板，持久化到 config/roles.json） ---------- */
+/* ---------- 角色管理（与用户矩阵同构：Excel 式表格 + 内联勾选 + 批量授权） ---------- */
 
-function roleFlagMatrix(role) {
-  const perms = role.perms || {};
-  return permModuleCols.map(m => {
-    const p = perms[m.key] || {v:0,r:0,w:0,m:0};
-    const flags = PERM_FLAGS.map(([s, , , color]) =>
-      `<span class="role-flag${p[s] ? " on" : ""}" style="--flag-color:${color}">${p[s] ? "✓" : "·"}</span>`).join("");
-    return `<tr><td class="role-mod-name${m.type === "section" ? " is-section" : ""}">${esc(m.label)}</td>
-      <td class="role-flag-cell">${flags}</td></tr>`;
+const ROLE_FROZEN_COUNT = 3;
+const ROLE_COL_WIDTH_KEY = "role_col_widths_v1";
+let roleFilters = {};
+let roleColWidths = {};
+let roleComputedDefaults = {};
+
+function rolesCache() { return permOptions.roles || []; }
+
+function roleColumns() {
+  const cols = [
+    { id: "rcheck", kind: "check", label: "" },
+    { id: "r_label", kind: "text", label: "角色名称" },
+    { id: "r_key", kind: "text", label: "角色key" },
+    { id: "r_bypass", kind: "bool", label: "全权" },
+    { id: "r_builtin", kind: "bool", label: "内置" },
+    { id: "r_actions", kind: "actions", label: "操作" },
+  ];
+  for (const m of permModuleCols) cols.push({ id: `rm_${m.key}`, kind: "module", module: m, label: m.label });
+  return cols;
+}
+
+function roleCellValue(role, col) {
+  if (col.id === "r_label") return role.label || "";
+  if (col.id === "r_key") return role.key || "";
+  if (col.id === "r_bypass") return role.bypass ? "1" : "0";
+  if (col.id === "r_builtin") return role.builtin ? "1" : "0";
+  return "";
+}
+
+function rolePermOf(roleKey, mk) {
+  const role = rolesCache().find(r => r.key === roleKey);
+  const p = role?.perms?.[mk] || {};
+  return { v: +(p.v || 0), r: +(p.r || 0), w: +(p.w || 0), m: +(p.m || 0) };
+}
+
+function rowPassesRoleFilter(role, cols) {
+  for (const col of cols) {
+    const f = roleFilters[col.id];
+    if (!f) continue;
+    if (col.kind === "text") {
+      if (!String(roleCellValue(role, col)).toLowerCase().includes(String(f).toLowerCase())) return false;
+    } else if (col.kind === "bool") {
+      if (roleCellValue(role, col) !== f) return false;
+    } else if (col.kind === "module") {
+      if (role.bypass) {
+        if (f === "none") return false;
+        if (f && f !== "any") return false;
+        continue;
+      }
+      const a = rolePermOf(role.key, col.module.key);
+      const match = {
+        v: a.v, r: a.r, w: a.w, m: a.m,
+        none: (a.v === 0 && a.r === 0 && a.w === 0 && a.m === 0),
+        any: (a.v || a.r || a.w || a.m),
+      };
+      if (!match[f]) return false;
+    }
+  }
+  return true;
+}
+
+function roleLoadColWidths() {
+  try {
+    const raw = localStorage.getItem(ROLE_COL_WIDTH_KEY);
+    if (raw) roleColWidths = JSON.parse(raw);
+  } catch (_) { roleColWidths = {}; }
+}
+
+function roleSaveColWidths() {
+  try { localStorage.setItem(ROLE_COL_WIDTH_KEY, JSON.stringify(roleColWidths)); } catch (_) {}
+}
+
+function roleRecomputeDefaultColWidths(cols) {
+  const cellPad = 8;
+  const filterPad = 22;
+  const roles = rolesCache();
+  roleComputedDefaults = {};
+
+  for (const col of cols) {
+    let maxW = 0;
+    const header = col.label || "";
+
+    if (col.kind === "check") {
+      roleComputedDefaults[col.id] = 34;
+      continue;
+    }
+
+    if (col.id === "r_label") {
+      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureText("一二三四", false) + cellPad);
+      for (const r of roles) maxW = Math.max(maxW, permMeasureText(r.label || "", false) + cellPad);
+      maxW = Math.max(maxW, permMeasureText("筛选", false, 10) + filterPad);
+    } else if (col.id === "r_key") {
+      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      for (const r of roles) maxW = Math.max(maxW, permMeasureText(r.key || "", true) + cellPad);
+      maxW = Math.max(maxW, permMeasureText("筛选", false, 10) + filterPad);
+    } else if (col.kind === "bool") {
+      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureBadge(col.id === "r_bypass" ? "全权" : "内置") + cellPad);
+      maxW = Math.max(maxW, permMeasureText("普通", false, 11) + filterPad);
+    } else if (col.kind === "actions") {
+      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureActions() + cellPad);
+    } else if (col.kind === "module") {
+      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureModuleCell() + cellPad);
+      for (const t of MOD_FILTERS.map(([, label]) => label)) maxW = Math.max(maxW, permMeasureText(t, false, 10) + filterPad);
+    } else {
+      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+    }
+
+    roleComputedDefaults[col.id] = Math.max(32, Math.ceil(maxW));
+  }
+}
+
+function roleDefaultColWidth(col) {
+  if (roleComputedDefaults[col.id] != null) return roleComputedDefaults[col.id];
+  return permDefaultColWidth(col);
+}
+
+function roleColWidth(col) {
+  const w = roleColWidths[col.id];
+  return (w != null && w > 0) ? w : roleDefaultColWidth(col);
+}
+
+function roleSplitCols(cols) {
+  return { frozen: cols.slice(0, ROLE_FROZEN_COUNT), scroll: cols.slice(ROLE_FROZEN_COUNT) };
+}
+
+function roleBuildColgroup(cols) {
+  return `<colgroup>${cols.map(c =>
+    `<col data-col-id="${c.id}" style="width:${roleColWidth(c)}px">`).join("")}</colgroup>`;
+}
+
+function roleUpdateLeftLayout(frozen) {
+  const total = frozen.reduce((s, c) => s + roleColWidth(c), 0);
+  const left = $("#role-grid-left");
+  const wrap = left?.closest(".perm-grid-left-wrap");
+  if (left) {
+    left.style.width = total + "px";
+    left.style.minWidth = total + "px";
+    left.style.maxWidth = total + "px";
+  }
+  if (wrap) {
+    wrap.style.width = total + "px";
+    wrap.style.maxWidth = total + "px";
+    wrap.style.flex = `0 0 ${total}px`;
+  }
+}
+
+function applyRoleColWidths(cols) {
+  const { frozen, scroll } = roleSplitCols(cols);
+  roleUpdateLeftLayout(frozen);
+  for (const [table, partCols] of [[$("#role-grid-left"), frozen], [$("#role-grid-right"), scroll]]) {
+    if (!table) continue;
+    table.querySelectorAll("colgroup col").forEach((colEl, i) => {
+      if (partCols[i]) colEl.style.width = roleColWidth(partCols[i]) + "px";
+    });
+    if (table.id === "role-grid-right") {
+      const total = partCols.reduce((s, c) => s + roleColWidth(c), 0);
+      table.style.width = Math.max(total, table.parentElement?.clientWidth || 0) + "px";
+    }
+  }
+}
+
+function bindRoleColResize(cols) {
+  const { frozen, scroll } = roleSplitCols(cols);
+  [[$("#role-grid-left"), frozen], [$("#role-grid-right"), scroll]].forEach(([table, partCols]) => {
+    if (!table) return;
+    table.querySelectorAll("thead tr:first-child th").forEach((th, idx) => {
+      const col = partCols[idx];
+      if (!col) return;
+      let handle = th.querySelector(".th-resize");
+      if (!handle) {
+        handle = document.createElement("span");
+        handle.className = "th-resize";
+        handle.title = "拖动调整列宽";
+        th.appendChild(handle);
+      }
+      handle.onclick = e => e.stopPropagation();
+      handle.onmousedown = e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.pageX, startW = roleColWidth(col);
+        const onMove = ev => {
+          roleColWidths[col.id] = Math.max(32, startW + ev.pageX - startX);
+          applyRoleColWidths(cols);
+        };
+        const onUp = () => {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          document.body.style.cursor = "";
+          roleSaveColWidths();
+          requestAnimationFrame(() => syncRoleGridLayout());
+        };
+        document.body.style.cursor = "col-resize";
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      };
+    });
+  });
+}
+
+function roleLabelRow(cols) {
+  return cols.map(c => {
+    if (c.kind === "check") return `<th class="col-check perm-col-check"><input type="checkbox" id="role-check-all" title="全选"></th>`;
+    if (c.kind === "actions") return `<th class="perm-actions-col">操作</th>`;
+    if (c.id === "r_key") return `<th class="col-username mono" title="${esc(c.label)}">${esc(c.label)}</th>`;
+    if (c.id === "r_label") return `<th class="col-name" title="${esc(c.label)}">${esc(c.label)}</th>`;
+    const modCls = c.kind === "module" ? ` col-module perm-mod-head${c.module.type === "section" ? " is-section" : ""}` : "";
+    return `<th class="${modCls}" title="${esc(c.label)}">${esc(c.label)}</th>`;
   }).join("");
 }
 
-function renderRolesSection() {
-  const box = $("#perm-roles");
-  if (!box) return;
-  const roles = permOptions.roles || [];
-  const cards = roles.map(r => `
-    <div class="role-card${r.bypass ? " is-bypass" : ""}" data-role="${esc(r.key)}">
-      <div class="role-card-head">
-        <div class="role-card-title">
-          <span class="role-name">${esc(r.label)}</span>
-          ${r.bypass ? `<span class="badge badge-blue">全权(绕过)</span>` : ""}
-          ${r.builtin ? `<span class="badge badge-gray">内置</span>` : ""}
-          <span class="role-key mono">${esc(r.key)}</span>
-        </div>
-        <div class="role-card-actions">
-          <button class="btn btn-sm" data-role-edit="${esc(r.key)}">编辑</button>
-          ${r.builtin ? "" : `<button class="btn btn-sm btn-danger" data-role-del="${esc(r.key)}">删除</button>`}
-        </div>
-      </div>
-      ${r.bypass ? `<p class="role-bypass-note">该角色绕过所有模块权限，无需逐项配置。</p>`
-        : `<table class="role-matrix"><tbody>${roleFlagMatrix(r)}</tbody></table>`}
-    </div>`).join("");
-  box.innerHTML = `
-    <div class="perm-embed-title">角色管理 <span class="muted" style="font-weight:400;font-size:12px">（角色=权限模板，应用角色时写入对应用户的模块权限）</span></div>
-    <div class="perm-embed-sub">默认角色配置承载于 <code>config/roles.json</code>；新增/编辑角色会写回该文件。在用户新增/编辑弹窗中选择角色并勾选"应用角色权限"即可把模板写入该用户。</div>
-    <div class="perm-toolbar" style="margin-bottom:10px"><button class="btn btn-primary btn-sm" id="role-add">+ 新增角色</button></div>
-    <div class="role-grid">${cards}</div>`;
-  $("#role-add").addEventListener("click", () => openRoleModal(null));
-  box.querySelectorAll("[data-role-edit]").forEach(b =>
-    b.addEventListener("click", () => openRoleModal(roles.find(r => r.key === b.dataset.roleEdit))));
-  box.querySelectorAll("[data-role-del]").forEach(b =>
+function roleFilterRow(cols) {
+  return cols.map(c => {
+    if (c.kind === "check") return `<th class="col-check perm-col-check"></th>`;
+    if (c.kind === "actions") return `<th class="perm-actions-col"></th>`;
+    if (c.kind === "bool") {
+      const opts = c.id === "r_bypass"
+        ? `<option value="">全部</option><option value="1">全权</option><option value="0">普通</option>`
+        : `<option value="">全部</option><option value="1">内置</option><option value="0">自定义</option>`;
+      return `<th><select class="perm-col-filter role-col-filter" data-col="${c.id}">${opts}</select></th>`;
+    }
+    if (c.kind === "module") {
+      const opts = MOD_FILTERS.map(([v, label]) => `<option value="${v}">${label}</option>`).join("");
+      return `<th class="col-module perm-mod-head"><select class="perm-col-filter role-col-filter perm-mod-filter" data-col="${c.id}">${opts}</select></th>`;
+    }
+    const sz = (c.id === "r_label" || c.id === "r_key") ? ' size="3"' : "";
+    return `<th><input type="text" class="perm-col-filter role-col-filter" data-col="${c.id}" placeholder="筛选"${sz} value="${esc(roleFilters[c.id] || "")}"></th>`;
+  }).join("");
+}
+
+function roleRowCells(role, cols) {
+  return cols.map(c => {
+    if (c.kind === "check") return `<td class="col-check perm-col-check"><input type="checkbox" class="role-row-check" value="${esc(role.key)}"></td>`;
+    if (c.kind === "actions") return `<td class="perm-actions-col"><div class="perm-actions">
+      <button class="btn btn-sm" data-role-edit="${esc(role.key)}">编辑</button>
+      ${role.builtin ? "" : `<button class="btn btn-sm btn-danger" data-role-del="${esc(role.key)}">删除</button>`}
+    </div></td>`;
+    if (c.id === "r_bypass") return `<td><span class="badge badge-${role.bypass ? "blue" : "gray"}">${role.bypass ? "全权" : "—"}</span></td>`;
+    if (c.id === "r_builtin") return `<td><span class="badge badge-${role.builtin ? "gray" : "blue"}">${role.builtin ? "内置" : "自定义"}</span></td>`;
+    if (c.kind === "module") {
+      if (role.bypass) return `<td class="col-module perm-mod-cell"><span class="perm-dash" title="全权角色">—</span></td>`;
+      const a = rolePermOf(role.key, c.module.key);
+      return `<td class="col-module perm-mod-cell">${PERM_FLAGS.map(([s, , label, color]) =>
+        `<label class="perm-flag" title="${label}"><input type="checkbox" class="role-flag-cb"
+          data-rkey="${esc(role.key)}" data-mk="${c.module.key}" data-flag="${s}" ${a[s] ? "checked" : ""}
+          style="--flag-color:${color}"></label>`).join("")}</td>`;
+    }
+    const val = roleCellValue(role, c);
+    const inner = val === "" ? `<span class="perm-dash">—</span>` : esc(val);
+    if (c.id === "r_key") return `<td class="col-username mono" title="${esc(val)}">${inner}</td>`;
+    if (c.id === "r_label") return `<td class="col-name" title="${esc(val)}">${inner}</td>`;
+    return `<td title="${esc(val)}">${inner}</td>`;
+  }).join("");
+}
+
+function roleBuildThead(cols) {
+  return `<thead><tr>${roleLabelRow(cols)}</tr><tr class="perm-filter-row">${roleFilterRow(cols)}</tr></thead>`;
+}
+
+function bindRoleColFilters(cols) {
+  document.querySelectorAll("#role-grid-left .role-col-filter, #role-grid-right .role-col-filter").forEach(el => {
+    const col = el.dataset.col;
+    const handler = () => { roleFilters[col] = el.value; renderRoleGridBody(cols); };
+    el.addEventListener("input", handler);
+    el.addEventListener("change", handler);
+  });
+}
+
+function syncRoleGridLayout() {
+  const leftRows = $("#role-grid-left")?.tBodies[0]?.rows;
+  const rightRows = $("#role-grid-right")?.tBodies[0]?.rows;
+  if (!leftRows || !rightRows) return;
+  const n = Math.min(leftRows.length, rightRows.length);
+  for (let i = 0; i < n; i++) {
+    leftRows[i].style.height = rightRows[i].style.height = "";
+    const h = Math.max(leftRows[i].offsetHeight, rightRows[i].offsetHeight);
+    if (h) leftRows[i].style.height = rightRows[i].style.height = h + "px";
+  }
+}
+
+function renderRoleGrid() {
+  const cols = roleColumns();
+  roleRecomputeDefaultColWidths(cols);
+  const { frozen, scroll } = roleSplitCols(cols);
+  const left = $("#role-grid-left");
+  if (!left) return;
+  left.innerHTML = roleBuildColgroup(frozen) + roleBuildThead(frozen) + "<tbody></tbody>";
+  left.style.tableLayout = "fixed";
+  const right = $("#role-grid-right");
+  right.innerHTML = roleBuildColgroup(scroll) + roleBuildThead(scroll) + "<tbody></tbody>";
+  right.style.tableLayout = "fixed";
+  applyRoleColWidths(cols);
+  bindRoleColFilters(cols);
+  bindRoleColResize(cols);
+  const checkAll = $("#role-check-all");
+  if (checkAll) checkAll.addEventListener("change", e => {
+    document.querySelectorAll(".role-row-check").forEach(cb => cb.checked = e.target.checked);
+  });
+  renderRoleGridBody(cols);
+}
+
+function renderRoleGridBody(cols) {
+  const { frozen, scroll } = roleSplitCols(cols);
+  const roles = rolesCache().filter(r => rowPassesRoleFilter(r, cols));
+  const leftTb = $("#role-grid-left tbody");
+  const rightTb = $("#role-grid-right tbody");
+  if (!leftTb || !rightTb) return;
+  if (!roles.length) {
+    leftTb.innerHTML = `<tr><td colspan="${frozen.length}" class="empty" style="padding:24px">没有符合筛选条件的角色</td></tr>`;
+    rightTb.innerHTML = `<tr><td colspan="${scroll.length}"></td></tr>`;
+    $("#role-row-count") && ($("#role-row-count").textContent = "0 / " + rolesCache().length + " 个");
+    return;
+  }
+  leftTb.innerHTML = roles.map(r => `<tr>${roleRowCells(r, frozen)}</tr>`).join("");
+  rightTb.innerHTML = roles.map(r => `<tr>${roleRowCells(r, scroll)}</tr>`).join("");
+  $("#role-row-count") && ($("#role-row-count").textContent = `${roles.length} / ${rolesCache().length} 个`);
+
+  rightTb.querySelectorAll(".role-flag-cb").forEach(cb =>
+    cb.addEventListener("change", () => onRoleFlagToggle(cb.dataset.rkey, cb.dataset.mk, cb.dataset.flag, cb.checked)));
+  rightTb.querySelectorAll("[data-role-edit]").forEach(b =>
+    b.addEventListener("click", () => openRoleModal(rolesCache().find(r => r.key === b.dataset.roleEdit))));
+  rightTb.querySelectorAll("[data-role-del]").forEach(b =>
     b.addEventListener("click", async () => {
       if (!confirm(`确认删除角色「${b.dataset.roleDel}」？已分配该角色的用户不会被删除，但其模块权限不会自动变更。`)) return;
       try {
@@ -738,22 +1050,70 @@ function renderRolesSection() {
         toast("角色已删除");
         await loadPermData();
         renderPermGrid();
-        renderRolesSection();
+        renderRoleGrid();
       } catch (e) { toast(e.message, true); }
     }));
+  const checkAll = $("#role-check-all");
+  if (checkAll) checkAll.checked = false;
+  requestAnimationFrame(() => syncRoleGridLayout());
+}
+
+function roleSelectedKeys() {
+  return [...document.querySelectorAll(".role-row-check:checked")].map(cb => cb.value);
+}
+
+async function onRoleFlagToggle(roleKey, mk, flag, checked) {
+  const role = rolesCache().find(r => r.key === roleKey);
+  if (!role || role.bypass) return;
+  const perms = JSON.parse(JSON.stringify(role.perms || {}));
+  if (!perms[mk]) perms[mk] = { v: 0, r: 0, w: 0, m: 0 };
+  perms[mk][flag] = checked ? 1 : 0;
+  if (!perms[mk].v && !perms[mk].r && !perms[mk].w && !perms[mk].m) delete perms[mk];
+  try {
+    await api(`/api/roles/${encodeURIComponent(roleKey)}`, { method: "PUT", json: { perms } });
+    role.perms = perms;
+  } catch (e) {
+    toast(e.message, true);
+    await loadPermData();
+    renderRoleGrid();
+  }
+}
+
+async function roleBatchApply(revoke) {
+  const keys = roleSelectedKeys();
+  if (!keys.length) { toast("请先勾选角色"); return; }
+  const mk = $("#role-batch-module").value;
+  const flags = { v: 0, r: 0, w: 0, m: 0 };
+  if (!revoke) {
+    flags.v = $("#role-batch-v").checked ? 1 : 0;
+    flags.r = $("#role-batch-r").checked ? 1 : 0;
+    flags.w = $("#role-batch-w").checked ? 1 : 0;
+    flags.m = $("#role-batch-m").checked ? 1 : 0;
+    if (!flags.v && !flags.r && !flags.w && !flags.m) { toast("请至少勾选一项权限"); return; }
+    if (flags.m && !confirm("确认批量授予「管理」权限？")) return;
+  }
+  let affected = 0;
+  try {
+    for (const key of keys) {
+      const role = rolesCache().find(r => r.key === key);
+      if (!role || role.bypass) continue;
+      const perms = JSON.parse(JSON.stringify(role.perms || {}));
+      if (revoke) {
+        delete perms[mk];
+      } else {
+        perms[mk] = { ...flags };
+      }
+      await api(`/api/roles/${encodeURIComponent(key)}`, { method: "PUT", json: { perms } });
+      role.perms = perms;
+      affected++;
+    }
+    toast(`${revoke ? "已清空" : "已应用"} ${affected} 个角色的模块权限`);
+    renderRoleGrid();
+  } catch (e) { toast(e.message, true); await loadPermData(); renderRoleGrid(); }
 }
 
 function openRoleModal(role) {
   const isNew = !role;
-  const modules = permModuleCols;
-  const perms = isNew ? {} : (role.perms || {});
-  const rows = modules.map(m => {
-    const p = perms[m.key] || {v:0,r:0,w:0,m:0};
-    const flags = PERM_FLAGS.map(([s, , label, color]) =>
-      `<label class="perm-flag-toggle" style="--flag-color:${color}"><input type="checkbox" class="rf-cb" data-mk="${m.key}" data-flag="${s}" ${p[s] ? "checked" : ""}><span>${label}</span></label>`).join("");
-    return `<tr><td class="role-mod-name${m.type === "section" ? " is-section" : ""}">${esc(m.label)}</td>
-      <td class="role-flag-cell">${flags}</td></tr>`;
-  }).join("");
   openModal(isNew ? "新增角色" : `编辑角色 - ${esc(role.label)}`, `
     <div class="form-grid" style="grid-template-columns:1fr 1fr">
       <div class="form-item"><label>角色名称 *</label>
@@ -761,34 +1121,20 @@ function openRoleModal(role) {
       <div class="form-item"><label>角色key ${isNew ? "（唯一，英文/数字/下划线）" : "（不可修改）"}</label>
         <input id="rf-key" value="${role ? esc(role.key) : ""}" ${isNew ? "" : "disabled"}></div>
     </div>
-    <label class="perm-flag-toggle" style="margin:6px 0 10px"><input type="checkbox" id="rf-bypass" ${role?.bypass ? "checked" : ""}>
+    <label class="perm-flag-toggle" style="margin:6px 0 4px"><input type="checkbox" id="rf-bypass" ${role?.bypass ? "checked" : ""}>
       <span>全权角色（绕过所有模块权限，如系统管理员）</span></label>
-    <div class="role-modal-matrix"><table class="role-matrix"><tbody>${rows}</tbody></table></div>`,
+    <p style="font-size:12px;color:#64748b;margin:0">模块权限请在下方表格中勾选；勾选即保存。</p>`,
     `<button class="btn" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="rf-save">保存</button>`);
-
-  const toggleMatrix = () => {
-    const dis = $("#rf-bypass").checked;
-    document.querySelectorAll(".rf-cb").forEach(cb => cb.disabled = dis);
-    const m = document.querySelector(".role-modal-matrix");
-    if (m) m.style.opacity = dis ? ".5" : "1";
-  };
-  $("#rf-bypass").addEventListener("change", toggleMatrix);
-  toggleMatrix();
 
   $("#rf-save").addEventListener("click", async () => {
     const label = $("#rf-label").value.trim();
     const bypass = $("#rf-bypass").checked;
-    const permsBody = {};
-    document.querySelectorAll(".rf-cb").forEach(cb => {
-      if (!cb.checked) return;
-      const mk = cb.dataset.mk, f = cb.dataset.flag;
-      (permsBody[mk] = permsBody[mk] || {v:0,r:0,w:0,m:0})[f] = 1;
-    });
-    const body = { label, perms: permsBody, bypass };
+    const body = { label, bypass };
     try {
       if (isNew) {
         body.key = $("#rf-key").value.trim();
+        body.perms = {};
         await api("/api/roles", { method: "POST", json: body });
       } else {
         await api(`/api/roles/${encodeURIComponent(role.key)}`, { method: "PUT", json: body });
@@ -797,7 +1143,7 @@ function openRoleModal(role) {
       closeModal();
       await loadPermData();
       renderPermGrid();
-      renderRolesSection();
+      renderRoleGrid();
     } catch (e) { toast(e.message, true); }
   });
 }

@@ -36,7 +36,7 @@
     "allowed_ext": [".pdf", ".docx"]
   },
   "logs": {
-    "page_size": 30
+    "page_size": 50
   },
   "interview": {
     "slot_minutes": 45,

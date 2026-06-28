@@ -358,12 +358,8 @@ th.sortable:hover { color: var(--primary); }
 .chart-canvas-wrap { position: relative; height: 420px; }
 @media (max-width: 1100px) { .chart-grid { grid-template-columns: 1fr; } }
 
-/* ---------- 日志 ---------- */
-.log-item { display: flex; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--border); align-items: baseline; }
-.log-item:last-child { border-bottom: none; }
-.log-time { color: var(--muted); font-size: 12px; white-space: nowrap; }
-.log-msg { flex: 1; line-height: 1.6; }
-.pager { display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 14px; color: var(--muted); }
+/* ---------- 日志（总览等复用） ---------- */
+.pager { display: flex; gap: 8px; align-items: center; color: var(--muted); }
 
 /* ---------- 管理页 ---------- */
 .admin-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; align-items: start; }
@@ -535,39 +531,70 @@ th.sortable:hover { color: var(--primary); }
 .fc-table tbody tr:hover { background: #f8fafc; }
 .table-wrap { overflow-x: auto; }
 
-/* ---------- 操作日志 / 备份 列表 ---------- */
-.log-list { display: flex; flex-direction: column; gap: 6px; max-height: 70vh; overflow: auto; }
-.log-item { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px; font-size: 13px; }
-.log-item:hover { background: #f1f5f9; }
-.log-time { color: #64748b; font-family: ui-monospace, monospace; font-size: 12px; white-space: nowrap; }
-.log-msg { color: #1e293b; }
-.pager { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 13px; color: #64748b; }
+/* ---------- 操作日志（紧凑表格） ---------- */
+.log-card { padding: 12px 14px; margin-bottom: 12px; }
+.log-card .section-title { margin-bottom: 0; font-size: 14px; }
+.log-head { margin-bottom: 8px; }
+.log-sub { font-size: 11px; color: #64748b; margin: 2px 0 0; line-height: 1.4; }
+.log-table-wrap {
+  overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: #fff;
+  max-height: calc(100vh - 180px);
+}
+.log-table { width: 100%; min-width: 480px; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+.log-table th, .log-table td { padding: 4px 8px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.log-table thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: #f8fafc; color: #64748b; font-size: 11px; font-weight: 600; padding: 4px 8px;
+}
+.log-table th:nth-child(1) { width: 132px; }
+.log-table th:nth-child(2) { width: 52px; }
+.log-table tbody tr:last-child td { border-bottom: none; }
+.log-table tbody tr:hover td { background: #f8fafc; }
+.log-table .log-time {
+  color: #64748b; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px; white-space: nowrap;
+}
+.log-table .log-type { white-space: nowrap; }
+.log-table .log-type .badge { font-size: 10px; padding: 1px 6px; }
+.log-table .log-msg {
+  color: #1e293b; font-size: 12px; line-height: 1.35;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.log-empty { padding: 14px 8px !important; text-align: center; color: #64748b; font-size: 12px; white-space: normal; }
+.log-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 6px; font-size: 11px; color: #64748b;
+}
+.log-foot .log-pager { margin: 0; padding: 0; }
+.log-foot .btn-sm { padding: 2px 8px; font-size: 11px; }
 .pager .btn[disabled] { opacity: .5; cursor: not-allowed; }
-.backup-list { display: flex; flex-direction: column; gap: 6px; }
-.backup-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
-.backup-row .muted { color: #64748b; font-size: 12px; flex: 1; }
+/* ---------- 数据备份（紧凑表格） ---------- */
+.bk-card { padding: 12px 14px; margin-bottom: 12px; }
+.bk-card .section-title { margin-bottom: 0; font-size: 14px; }
+.bk-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
+.bk-sub { font-size: 11px; color: #64748b; margin: 2px 0 0; line-height: 1.4; }
+.bk-table-wrap {
+  overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: #fff;
+  max-height: 72vh;
+}
+.bk-table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 12px; }
+.bk-table th, .bk-table td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.bk-table thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: #f8fafc; color: #64748b; font-size: 11px; font-weight: 600; padding: 4px 8px;
+}
+.bk-table tbody tr:last-child td { border-bottom: none; }
+.bk-table tbody tr:hover td { background: #f8fafc; }
+.bk-table .mono { font-size: 11px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+.bk-table .bk-time, .bk-table .bk-size { color: #64748b; font-size: 11px; }
+.bk-table .badge { font-size: 10px; padding: 1px 6px; }
+.bk-table .bk-act { text-align: right; width: 1%; padding-right: 6px; }
+.bk-table .bk-act .btn-sm { padding: 2px 8px; font-size: 11px; }
+.bk-empty { padding: 14px 8px !important; text-align: center; color: #64748b; font-size: 12px; white-space: normal; }
 
-/* 角色管理（嵌入权限页） */
-.role-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-.role-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: #fff; }
-.role-card.is-bypass { border-color: #bfdbfe; background: #eff6ff; }
-.role-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
-.role-card-title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.role-name { font-weight: 600; color: #1e293b; }
-.role-key { font-size: 11px; color: #94a3b8; }
-.role-card-actions { display: flex; gap: 4px; }
-.role-bypass-note { font-size: 12px; color: #1d4ed8; margin: 0; }
-.role-matrix { width: 100%; border-collapse: collapse; font-size: 12px; }
-.role-matrix td { padding: 3px 4px; border-bottom: 1px solid #f1f5f9; }
-.role-mod-name { color: #334155; }
-.role-mod-name.is-section { font-weight: 600; color: #1d4ed8; }
-.role-flag-cell { white-space: nowrap; }
-.role-flag { display: inline-block; width: 14px; text-align: center; color: #cbd5e1; font-size: 11px; }
-.role-flag.on { color: var(--flag-color, #2563eb); font-weight: 700; }
-.role-modal-matrix { max-height: 46vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 4px; }
+/* 角色管理表格复用 .perm-grid 样式（见 permissions.js renderRoleGrid） */
 
 @media (max-width: 900px) {
   .perm-batch-bar { font-size: 11px; gap: 6px; }
   .perm-batch-flags { gap: 6px; padding: 0; border: 0; }
-  .role-grid { grid-template-columns: 1fr; }
 }

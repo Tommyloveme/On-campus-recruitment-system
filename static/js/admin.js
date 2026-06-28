@@ -15,35 +15,47 @@ async function renderLogs(page = 1) {
   }
   state.logPage = page;
   $("#main").innerHTML = `
-    <div class="card">
-      <div class="section-title">操作日志</div>
-      <p style="font-size:12px;color:#64748b;margin-bottom:10px">按时间倒序记录所有用户操作，便于审计追溯。</p>
-      <div id="log-list" class="empty">加载中…</div>
+    <div class="card log-card">
+      <div class="log-head">
+        <div>
+          <div class="section-title">操作日志</div>
+          <p class="log-sub">按时间倒序记录用户操作，便于审计追溯。</p>
+        </div>
+      </div>
+      <div class="log-table-wrap">
+        <table class="log-table">
+          <thead><tr><th>时间</th><th>类型</th><th>详情</th></tr></thead>
+          <tbody id="log-list"><tr><td colspan="3" class="log-empty">加载中…</td></tr></tbody>
+        </table>
+      </div>
+      <div id="log-foot" class="log-foot"></div>
     </div>`;
-  const box = $("#log-list");
+  const list = $("#log-list");
+  const foot = $("#log-foot");
   try {
     const r = await api(`/api/logs?page=${page}`);
     const items = r.items.map(l => {
       const [txt, color] = ACTION_BADGE[l.action] || ["操作", "gray"];
       return `
-        <div class="log-item">
-          <span class="log-time">${esc(l.created_at)}</span>
-          <span class="badge badge-${color}">${txt}</span>
-          <span class="log-msg">${esc(l.message)}</span>
-        </div>`;
+        <tr>
+          <td class="log-time">${esc(l.created_at)}</td>
+          <td class="log-type"><span class="badge badge-${color}">${txt}</span></td>
+          <td class="log-msg" title="${esc(l.message)}">${esc(l.message)}</td>
+        </tr>`;
     }).join("");
     const pages = Math.max(1, Math.ceil(r.total / r.size));
-    box.className = "log-list";
-    box.innerHTML = (items || `<div class="empty">暂无日志</div>`) + `
-      <div class="pager">
+    list.innerHTML = items || `<tr><td colspan="3" class="log-empty">暂无日志</td></tr>`;
+    foot.innerHTML = `
+      <span class="log-count">${r.total} 条 · 第 ${page}/${pages} 页</span>
+      <div class="pager log-pager">
         <button class="btn btn-sm" data-log-prev ${page <= 1 ? "disabled" : ""}>上一页</button>
-        <span>第 ${page} / ${pages} 页（共 ${r.total} 条）</span>
         <button class="btn btn-sm" data-log-next ${page >= pages ? "disabled" : ""}>下一页</button>
       </div>`;
-    box.querySelector("[data-log-prev]")?.addEventListener("click", () => renderLogs(page - 1));
-    box.querySelector("[data-log-next]")?.addEventListener("click", () => renderLogs(page + 1));
+    foot.querySelector("[data-log-prev]")?.addEventListener("click", () => renderLogs(page - 1));
+    foot.querySelector("[data-log-next]")?.addEventListener("click", () => renderLogs(page + 1));
   } catch (e) {
-    box.innerHTML = `<div class="empty">日志加载失败：${esc(e.message)}</div>`;
+    list.innerHTML = `<tr><td colspan="3" class="log-empty">日志加载失败：${esc(e.message)}</td></tr>`;
+    foot.innerHTML = "";
   }
 }
 
@@ -54,28 +66,38 @@ async function renderBackups() {
     return;
   }
   $("#main").innerHTML = `
-    <div class="card">
-      <div class="section-title">数据备份与恢复</div>
-      <p style="font-size:12px;color:#64748b;margin-bottom:10px">手动创建数据库快照，可在误操作后一键恢复至指定备份（恢复前会自动保存当前状态）。</p>
-      <div class="perm-toolbar" style="margin-bottom:12px">
+    <div class="card bk-card">
+      <div class="bk-head">
+        <div>
+          <div class="section-title">数据备份与恢复</div>
+          <p class="bk-sub">手动创建数据库快照；恢复前会自动保存当前状态。</p>
+        </div>
         <button class="btn btn-primary btn-sm" id="bk-now">立即备份</button>
       </div>
-      <div id="bk-list" class="empty">加载中…</div>
+      <div class="bk-table-wrap">
+        <table class="bk-table">
+          <thead><tr>
+            <th>备份文件</th><th>时间</th><th>大小</th><th>类型</th><th></th>
+          </tr></thead>
+          <tbody id="bk-list"><tr><td colspan="5" class="bk-empty">加载中…</td></tr></tbody>
+        </table>
+      </div>
     </div>`;
   const list = $("#bk-list");
   const load = async () => {
     try {
       const backups = await api("/api/backups");
-      list.className = "backup-list";
       list.innerHTML = backups.length
         ? backups.map(b => `
-          <div class="backup-row">
-            <span class="mono">${esc(b.name)}</span>
-            <span class="muted">${esc(b.time)} · ${b.size_kb} KB${b.manual ? " · 手动" : ""}</span>
-            <button class="btn btn-sm btn-danger" data-restore="${esc(b.name)}">恢复</button>
-          </div>`).join("")
-        : `<div class="empty" style="padding:12px">暂无备份</div>`;
-      list.querySelectorAll("[data-restore]").forEach(b =>
+          <tr>
+            <td class="mono" title="${esc(b.name)}">${esc(b.name)}</td>
+            <td class="bk-time">${esc(b.time)}</td>
+            <td class="bk-size">${b.size_kb} KB</td>
+            <td><span class="badge badge-${b.manual ? "gray" : "blue"}">${b.manual ? "手动" : "自动"}</span></td>
+            <td class="bk-act"><button class="btn btn-sm btn-danger" data-restore="${esc(b.name)}">恢复</button></td>
+          </tr>`).join("")
+        : `<tr><td colspan="5" class="bk-empty">暂无备份</td></tr>`;
+      list.closest(".bk-table-wrap")?.querySelectorAll("[data-restore]").forEach(b =>
         b.addEventListener("click", async () => {
           if (!confirm(`确定恢复到备份「${b.dataset.restore}」？当前数据将被覆盖。`)) return;
           try {
@@ -83,7 +105,7 @@ async function renderBackups() {
             toast("备份已恢复，请刷新页面");
           } catch (e) { toast(e.message, true); }
         }));
-    } catch (e) { list.innerHTML = `<div class="empty">备份加载失败：${esc(e.message)}</div>`; }
+    } catch (e) { list.innerHTML = `<tr><td colspan="5" class="bk-empty">备份加载失败：${esc(e.message)}</td></tr>`; }
   };
   await load();
   $("#bk-now").addEventListener("click", async () => {
