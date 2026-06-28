@@ -62,12 +62,56 @@ def _load_stage_display_overrides(stage_key):
 
 
 def load_stage_table_config(stage_key):
-    """阶段表格 UI 配置：列顺序（仅影响网页表格）、左侧冻结列数（含勾选列）。"""
+    """阶段表格 UI 配置：列顺序（仅影响网页表格）、左侧冻结列数（含勾选列）、默认排序。"""
     display = _load_stage_display_overrides(stage_key)
+    default_sort = display.get("default_sort") or {}
+    sort_dir = default_sort.get("dir", "asc")
     return {
         "column_order": list(display.get("column_order") or []),
         "frozen_column_count": int(display.get("frozen_column_count") or 0),
+        "default_sort": {
+            "key": default_sort.get("key", ""),
+            "dir": -1 if str(sort_dir).lower() in ("desc", "descending", "-1") else 1,
+        } if default_sort.get("key") else None,
     }
+
+
+def _registration_hidden_field_keys(display=None):
+    """登记页：主数据映射中从三层部门到入职风险（含）的字段不在网页展示（保留登记核心列）。"""
+    display = display or _load_stage_display_overrides("registration")
+    hide_range = display.get("hide_field_range") or {}
+    hide_from = hide_range.get("from", "dept_level3")
+    hide_through = hide_range.get("through", "onboard_risk")
+    keep_visible = set(display.get("keep_visible_in_range") or [])
+    keep_visible.update({
+        "sourcer", "sourcer_dept", "interface_person", "interface_dept",
+        "registration_source", "registration_status",
+    })
+    extra_hidden = set(display.get("hidden_keys") or [])
+    extra_hidden.update({
+        "physical_exam_time", "physical_exam_done", "onboard_booked", "onboard_booked_time",
+    })
+    try:
+        from campus.services.master_import import load_master_import_config
+        fields = (load_master_import_config("registration").get("field_mappings") or {}).get("fields", [])
+        keys = [f["field_key"] for f in fields]
+        start = keys.index(hide_from)
+        end = keys.index(hide_through)
+        hidden = {k for k in keys[start:end + 1] if not k.startswith("_") and k not in keep_visible}
+        hidden |= extra_hidden
+        return hidden
+    except (ValueError, ImportError, OSError, json.JSONDecodeError):
+        return extra_hidden
+
+
+def _apply_registration_hidden_fields(fields, display=None):
+    hidden = _registration_hidden_field_keys(display)
+    if not hidden:
+        return fields
+    for field in fields:
+        if field["key"] in hidden:
+            field["visible"] = False
+    return fields
 
 
 def load_stage_fields(stage_key, group_id=None):
@@ -96,7 +140,10 @@ def load_stage_fields(stage_key, group_id=None):
             for field in fields:
                 if field["key"] in visible_map:
                     field["visible"] = bool(visible_map[field["key"]])
-    return _apply_master_import_field_rules(fields)
+    fields = _apply_master_import_field_rules(fields)
+    if stage_key == "registration":
+        fields = _apply_registration_hidden_fields(fields, display)
+    return fields
 
 
 def _apply_master_import_field_rules(fields):

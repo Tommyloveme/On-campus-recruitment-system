@@ -13,6 +13,7 @@ from campus.routes.pages import bp as pages_bp
 from campus.routes.resumes import bp as resumes_bp
 from campus.routes.roles import bp as roles_bp
 from campus.routes.users import bp as users_bp
+from campus.routes.feedback import bp as feedback_bp
 
 
 def register_routes(app):
@@ -30,5 +31,6 @@ def register_routes(app):
         backups_bp,
         pages_bp,
         acl_bp,
+        feedback_bp,
     ):
         app.register_blueprint(bp)

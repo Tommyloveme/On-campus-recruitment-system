@@ -12,6 +12,7 @@ ROLES_PATH = os.path.join(CONFIG_DIR, "roles.json")
 SECRET_PATH = os.path.join(BASE_DIR, "data", ".secret_key")
 RESUME_DIR = os.path.join(BASE_DIR, "data", "resumes")
 BACKUP_DIR = os.path.join(BASE_DIR, "data", "backups")
+FEEDBACK_DIR = os.path.join(BASE_DIR, "data", "feedback_images")
 
 
 def load_app_config():

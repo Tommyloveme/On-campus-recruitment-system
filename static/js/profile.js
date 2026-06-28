@@ -107,6 +107,4 @@ function openProfileModal() {
   });
 }
 
-$("#profile-btn")?.addEventListener("click", () => openProfileModal());
-
 loadAccountOptions();

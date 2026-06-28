@@ -3,10 +3,17 @@
 
 const stageStates = new Map();
 
+function defaultStageSort(stageKey) {
+  const cfg = stageTableCfg(stageKey).default_sort;
+  if (cfg && cfg.key) return { key: cfg.key, dir: cfg.dir === -1 ? -1 : 1 };
+  if (stageKey === "registration") return { key: "registration_time", dir: -1 };
+  return null;
+}
+
 function getStageState(stageKey) {
   if (!stageStates.has(stageKey)) {
     stageStates.set(stageKey, {
-      list: [], sort: null, selected: new Set(),
+      list: [], sort: defaultStageSort(stageKey), selected: new Set(),
       uploadTarget: null, page: 1,
       pageSize: state.app.page_size ?? 15,
       duplicatePhones: null,
@@ -124,7 +131,11 @@ async function renderStageList(stageKey) {
   $("#btn-clear-filter").addEventListener("click", () => {
     $("#cand-search").value = "";
     document.querySelectorAll("[data-filter]").forEach(el => { el.value = ""; });
-    ss.sort = null;
+    ss.sort = defaultStageSort(stageKey);
+    document.querySelectorAll("[data-arrow]").forEach(el => {
+      el.textContent = (ss.sort && ss.sort.key === el.dataset.arrow)
+        ? (ss.sort.dir === 1 ? " ↑" : " ↓") : "";
+    });
     onFilterChange();
   });
   document.querySelectorAll("[data-filter]").forEach(el =>
@@ -137,6 +148,13 @@ async function renderStageList(stageKey) {
     else ids.forEach(id => ss.selected.delete(id));
     renderCandidateRows(stageKey);
   });
+
+  if (ss.sort) {
+    document.querySelectorAll("[data-arrow]").forEach(el => {
+      el.textContent = ss.sort.key === el.dataset.arrow
+        ? (ss.sort.dir === 1 ? " ↑" : " ↓") : "";
+    });
+  }
 
   await loadCandidateTable(stageKey);
   applyCandFrozenColumns(stageKey);

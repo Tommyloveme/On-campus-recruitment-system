@@ -345,6 +345,32 @@ th.sortable:hover { color: var(--primary); }
 #cand-table .cand-frozen-last {
   box-shadow: 4px 0 6px -3px rgba(15, 23, 42, .12);
 }
+/* 问题反馈 */
+.feedback-hint { font-size: 13px; color: var(--muted); margin: 0 0 10px; line-height: 1.5; }
+.feedback-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; align-items: center; }
+.feedback-img-btn { cursor: pointer; margin: 0; }
+.feedback-editor {
+  min-height: 180px; max-height: 360px; overflow: auto;
+  border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+  font-size: 14px; line-height: 1.6; background: #fff;
+}
+.feedback-editor:empty::before {
+  content: attr(data-placeholder); color: #94a3b8; pointer-events: none;
+}
+.feedback-editor img { max-width: 100%; height: auto; border-radius: 6px; margin: 6px 0; }
+.fb-card { margin-bottom: 16px; }
+.fb-head { margin-bottom: 12px; }
+.fb-sub { font-size: 13px; color: var(--muted); margin: 4px 0 0; }
+.fb-list { display: flex; flex-direction: column; gap: 14px; }
+.fb-item {
+  border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; background: #fbfcfe;
+}
+.fb-item-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; margin-bottom: 10px; }
+.fb-meta { font-size: 12px; color: var(--muted); }
+.fb-content.rich-html { font-size: 14px; line-height: 1.65; word-break: break-word; }
+.fb-content.rich-html img { max-width: 100%; height: auto; border-radius: 6px; margin: 8px 0; }
+.fb-empty { padding: 32px; text-align: center; color: var(--muted); }
+
 .resume-actions { display: inline-flex; gap: 4px; }
 
 /* 过长内容截断：悬浮可见完整内容 */

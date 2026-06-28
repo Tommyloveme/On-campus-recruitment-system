@@ -7,7 +7,7 @@ import sqlite3
 from werkzeug.security import generate_password_hash
 
 from campus.db.connection import now_str
-from campus.settings import DB_PATH, RESUME_DIR
+from campus.settings import DB_PATH, FEEDBACK_DIR, RESUME_DIR
 from campus.stage_engine import compute_current_stage
 
 SCHEMA = """
@@ -210,6 +210,17 @@ def migrate(db):
         ON candidates(phone) WHERE phone IS NOT NULL AND phone != ''
     """)
 
+    db.executescript("""
+    CREATE TABLE IF NOT EXISTS feedback (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        username TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        content_html TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    """)
+
     # ---- 取消用户分组/资源分组/模板/资源ACL：删除相关表 ----
     db.executescript("""
         DROP TABLE IF EXISTS user_group_members;
@@ -348,6 +359,7 @@ def seed_demo(db):
 def init_db(demo=False):
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     os.makedirs(RESUME_DIR, exist_ok=True)
+    os.makedirs(FEEDBACK_DIR, exist_ok=True)
     db = sqlite3.connect(DB_PATH)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA journal_mode = WAL")

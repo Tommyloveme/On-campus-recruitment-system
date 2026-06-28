@@ -107,6 +107,7 @@ MODULE_REGISTRY = [
         {"key": "permissions", "label": "权限管理", "type": "item", "parent_key": "admin_board"},
         {"key": "op_logs", "label": "操作日志", "type": "item", "parent_key": "admin_board"},
         {"key": "backups", "label": "数据备份", "type": "item", "parent_key": "admin_board"},
+        {"key": "feedback", "label": "问题反馈", "type": "item", "parent_key": "admin_board"},
     ]},
 ]
 

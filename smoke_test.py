@@ -123,13 +123,16 @@ check("读取10个流程阶段", len(cfg["stages"]) == 10)
 check("界面配置下发(每页15条)", cfg["app"]["page_size"] == 15)
 check("含登记与入职阶段", "registration" in cfg["stage_fields"] and "onboarding" in cfg["stage_fields"])
 reg_fields = cfg["stage_fields"]["registration"]
+check("登记阶段默认按登记时间倒序", cfg.get("stage_table", {}).get("registration", {}).get("default_sort")
+      == {"key": "registration_time", "dir": -1})
 reg_keys = [f["key"] for f in reg_fields if f["visible"]]
-check("登记阶段不含三层部门", "dept_level3" not in reg_keys)
+check("登记阶段不含三层部门至入职风险", "dept_level3" not in reg_keys and "onboard_risk" not in reg_keys
+      and "work_location" not in reg_keys and "offer_status" not in reg_keys)
 check("登记阶段表格列顺序配置",
       cfg.get("stage_table", {}).get("registration", {}).get("column_order")[:2]
       == ["registration_time", "delivery_time"])
-check("登记阶段默认冻结3列",
-      cfg.get("stage_table", {}).get("registration", {}).get("frozen_column_count") == 3)
+check("登记阶段默认冻结列数可配置",
+      cfg.get("stage_table", {}).get("registration", {}).get("frozen_column_count") == 5)
 onb_fields = cfg["stage_fields"]["onboarding"]
 check("入职阶段含三层部门", any(f["key"] == "dept_level3" and f["visible"] for f in onb_fields))
 from openpyxl import load_workbook
@@ -657,8 +660,12 @@ check("模块含板块与子模块", {"recruit_flow", "tech_interview", "manager
 check("模块元数据不含 enabled 开关", "enabled" not in mods["modules"][0])
 ab = find_mod(mods, "admin_board")
 ab_keys = {it["key"] for it in (ab or {}).get("items", [])} if ab else set()
-check("管理看板含权限管理/操作日志/数据备份同级",
-      {"permissions", "op_logs", "backups"} <= ab_keys)
+check("管理看板含权限管理/操作日志/数据备份/问题反馈同级",
+      {"permissions", "op_logs", "backups", "feedback"} <= ab_keys)
+s, fb = call("POST", "/api/feedback", {"content_html": "<p>冒烟测试反馈</p>"})
+check("用户可提交问题反馈", s == 200 and fb.get("ok"))
+s, fb_list = call("GET", "/api/feedback")
+check("管理员可查看问题反馈", s == 200 and fb_list.get("total", 0) >= 1)
 check("字段配置已合并进权限管理", "field_config" not in ab_keys)
 
 # 12b. 授予 perm_a tech_interview 可见+读+写

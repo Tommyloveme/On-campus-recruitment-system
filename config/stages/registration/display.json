@@ -1,50 +1,34 @@
 {
-
-  "comment": "候选人登记界面：列顺序、冻结列数与字段可见性",
-
+  "comment": "候选人登记界面：列顺序、冻结列、默认排序、字段可见性与隐藏区间",
   "column_order": [
-
     "registration_time",
-
     "delivery_time",
-
     "resume_id",
-
     "name",
-
     "phone",
-
     "sourcer",
-
     "sourcer_dept",
-
     "interface_person",
-
     "interface_dept",
-
     "education",
-
     "school",
-
     "major",
-
     "registration_source",
-
     "registration_status",
-
     "registration_remark"
-
   ],
-
   "frozen_column_count": 5,
-
+  "default_sort": {
+    "key": "registration_time",
+    "dir": "desc"
+  },
+  "hide_field_range": {
+    "from": "dept_level3",
+    "through": "onboard_risk"
+  },
+  "hidden_keys": ["progress"],
   "visible": {
-
     "resume_id": true,
-
     "registration_remark": true
-
   }
-
 }
-

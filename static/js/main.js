@@ -7,6 +7,7 @@ const TOOL_TABS = {
   permissions: { label: "权限管理", render: renderPermissions },
   op_logs: { label: "操作日志", render: renderLogs },
   backups: { label: "数据备份", render: renderBackups },
+  feedback: { label: "问题反馈", render: renderFeedback },
 };
 
 /** 分组 id -> 子菜单 tab id 列表（用于展开与高亮） */
