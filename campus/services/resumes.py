@@ -4,8 +4,8 @@ import secrets
 
 from flask import g, jsonify
 
-from campus.auth.permissions import can_delete_group, can_edit_group, can_view_group
 from campus.db.connection import get_db
+from campus.services.acl import can_delete_candidate, can_edit_candidate, can_see_candidate
 from campus.settings import RESUME_DIR
 
 
@@ -34,12 +34,13 @@ def remove_resume_file(stored_name):
 
 
 def get_candidate_or_403(cid, need="edit"):
-    row = get_db().execute("SELECT * FROM candidates WHERE id=?", (cid,)).fetchone()
+    db = get_db()
+    row = db.execute("SELECT * FROM candidates WHERE id=?", (cid,)).fetchone()
     if not row:
         return None, (jsonify({"error": "候选人不存在"}), 404)
-    check = {"view": can_view_group, "edit": can_edit_group, "delete": can_delete_group}[need]
-    if not check(g.user, row["group_id"]):
-        return None, (jsonify({"error": "无该分组的操作权限"}), 403)
+    check = {"view": can_see_candidate, "edit": can_edit_candidate, "delete": can_delete_candidate}[need]
+    if not check(db, g.user, row):
+        return None, (jsonify({"error": "无该候选人的操作权限"}), 403)
     return row, None
 
 

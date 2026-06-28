@@ -36,3 +36,37 @@ def admin_required(fn):
         g.user = user
         return fn(*a, **kw)
     return wrapper
+
+
+def module_read_required(module_key):
+    """要求当前用户对模块具备读权限（admin 直通）。"""
+    def deco(fn):
+        @wraps(fn)
+        def wrapper(*a, **kw):
+            from campus.services.acl import module_readable_for
+            user = current_user()
+            if not user:
+                return jsonify({"error": "未登录"}), 401
+            g.user = user
+            if not module_readable_for(user, module_key):
+                return jsonify({"error": f"无「{module_key}」模块的访问权限"}), 403
+            return fn(*a, **kw)
+        return wrapper
+    return deco
+
+
+def module_write_required(module_key):
+    """要求当前用户对模块具备写权限（admin 直通）。"""
+    def deco(fn):
+        @wraps(fn)
+        def wrapper(*a, **kw):
+            from campus.services.acl import module_writable_for
+            user = current_user()
+            if not user:
+                return jsonify({"error": "未登录"}), 401
+            g.user = user
+            if not module_writable_for(user, module_key):
+                return jsonify({"error": f"无「{module_key}」模块的写入权限"}), 403
+            return fn(*a, **kw)
+        return wrapper
+    return deco

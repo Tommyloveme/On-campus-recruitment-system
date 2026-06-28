@@ -5,10 +5,10 @@ import json
 from flask import Blueprint, g, jsonify, request
 
 from campus.auth.decorators import login_required
-from campus.auth.permissions import GLOBAL_VIEW_ROLES, can_edit_group
 from campus.config_loader import get_stage_meta
 from campus.db.connection import get_db, now_str
 from campus.interview_schedule import expand_availability_windows, generate_time_options, parse_hm, fmt_hm
+from campus.services.acl import can_edit_candidate, is_admin
 from campus.services.audit import add_log
 from campus.services.interviews import interview_cfg, validate_interview_type
 from campus.stage_engine import compute_current_stage
@@ -39,9 +39,6 @@ def api_interview_availability_list():
     sql = ("SELECT a.*, u.display_name FROM interviewer_availability a "
            "JOIN users u ON u.id=a.user_id WHERE a.interview_type=?")
     params = [itype]
-    if g.user["role"] not in GLOBAL_VIEW_ROLES:
-        sql += " AND a.group_id=?"
-        params.append(g.user["group_id"])
     if user_id:
         sql += " AND a.user_id=?"
         params.append(user_id)
@@ -74,12 +71,7 @@ def api_interview_availability_create():
     if parse_hm(start_time) + interview_cfg()["slot_minutes"] > parse_hm(end_time):
         return jsonify({"error": "起止时间间隔至少为一个面试时长（45分钟）"}), 400
 
-    group_id = g.user["group_id"]
-    if not group_id and g.user["role"] == "admin":
-        group_id = b.get("group_id")
-    if not group_id:
-        return jsonify({"error": "请归属分组后再设置可面试时间"}), 400
-
+    group_id = b.get("group_id")
     db = get_db()
     db.execute(
         "INSERT INTO interviewer_availability (user_id, interview_type, avail_date, start_time, end_time, group_id, created_at) "
@@ -100,7 +92,7 @@ def api_interview_availability_delete(aid):
     row = db.execute("SELECT * FROM interviewer_availability WHERE id=?", (aid,)).fetchone()
     if not row:
         return jsonify({"error": "记录不存在"}), 404
-    if row["user_id"] != g.user["id"] and g.user["role"] not in ("admin", "group_admin"):
+    if row["user_id"] != g.user["id"] and not is_admin(g.user):
         return jsonify({"error": "只能删除自己的可面试时间"}), 403
     db.execute("DELETE FROM interviewer_availability WHERE id=?", (aid,))
     db.commit()
@@ -125,9 +117,6 @@ def api_interview_calendar():
            "FROM interviewer_availability a JOIN users u ON u.id=a.user_id "
            "WHERE a.interview_type=? AND a.avail_date>=? AND a.avail_date<=?")
     params = [itype, date_from, date_to]
-    if g.user["role"] not in GLOBAL_VIEW_ROLES:
-        sql += " AND a.group_id=?"
-        params.append(g.user["group_id"])
     windows = [dict(r) for r in db.execute(sql, params).fetchall()]
 
     bookings = db.execute(
@@ -169,7 +158,7 @@ def api_interview_book():
     cand = db.execute("SELECT * FROM candidates WHERE id=?", (candidate_id,)).fetchone()
     if not cand:
         return jsonify({"error": "候选人不存在"}), 404
-    if not can_edit_group(g.user, cand["group_id"]):
+    if not can_edit_candidate(db, g.user, cand):
         return jsonify({"error": "无该候选人编辑权限"}), 403
 
     ic = interview_cfg()
@@ -220,7 +209,7 @@ def api_interview_book_cancel(bid):
     if not row:
         return jsonify({"error": "预约不存在"}), 404
     cand = db.execute("SELECT * FROM candidates WHERE id=?", (row["candidate_id"],)).fetchone()
-    if not can_edit_group(g.user, cand["group_id"]):
+    if not can_edit_candidate(db, g.user, cand):
         return jsonify({"error": "无权限"}), 403
     db.execute("DELETE FROM interview_bookings WHERE id=?", (bid,))
     db.commit()

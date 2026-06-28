@@ -13,8 +13,6 @@ from campus.logging_util import log, who
 from campus.services.audit import add_log
 from campus.services.users import (
     account_options_payload,
-    default_job_roles,
-    parse_job_roles,
     parse_user_profile_body,
     user_dict,
 )
@@ -68,10 +66,6 @@ def api_profile_update():
 
     db = get_db()
     user = g.user
-    keys = user.keys() if hasattr(user, "keys") else []
-    job_roles = parse_job_roles(user["job_roles"] if "job_roles" in keys else None)
-    if not job_roles:
-        job_roles = list(default_job_roles())
 
     db.execute(
         "UPDATE users SET display_name=?, supervisor=?, department=?, dept_level2=?, dept_level3=? WHERE id=?",

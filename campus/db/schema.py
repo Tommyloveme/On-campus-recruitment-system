@@ -283,6 +283,58 @@ def migrate(db):
                 ("完全不可见", "在列表与搜索中均不展示", 0, 0, 0, 0, now),
             ],
         )
+
+    # ---- 取消业务角色：role 收敛为 admin/user；建默认分组；存量用户入组；基线模块授权 ----
+    # 1) role 收敛（admin 保留，其余一律 user）
+    db.execute("UPDATE users SET role='user' WHERE role IS NULL OR role != 'admin'")
+    # 2) 确保默认分组存在
+    dg = db.execute("SELECT id FROM user_groups WHERE name=?", ("默认分组",)).fetchone()
+    if not dg:
+        db.execute(
+            "INSERT INTO user_groups (name, description, parent_id, created_at) VALUES (?,?,?,?)",
+            ("默认分组", "新建用户默认归属，基线权限由管理员配置", None, now_str()),
+        )
+        dg = db.execute("SELECT id FROM user_groups WHERE name=?", ("默认分组",)).fetchone()
+    dg_id = dg["id"]
+    # 3) 所有非 admin 用户加入默认分组
+    existing_members = {
+        (r["group_id"], r["user_id"]) for r in db.execute(
+            "SELECT group_id, user_id FROM user_group_members WHERE group_id=?", (dg_id,)
+        ).fetchall()
+    }
+    for u in db.execute("SELECT id, role FROM users").fetchall():
+        if u["role"] == "admin":
+            continue
+        if (dg_id, u["id"]) not in existing_members:
+            db.execute(
+                "INSERT INTO user_group_members (group_id, user_id, created_at) VALUES (?,?,?)",
+                (dg_id, u["id"], now_str()),
+            )
+    # 4) 默认分组基线模块授权（仅当该分组尚无任何 module_acl 时写入，幂等）
+    cnt = db.execute(
+        "SELECT COUNT(*) AS c FROM module_acl WHERE subject_type='user_group' AND subject_id=?", (dg_id,)
+    ).fetchone()["c"]
+    if cnt == 0:
+        baseline = [
+            ("registration", 1, 1, 1, 0),
+            ("recruit_flow", 1, 1, 1, 0),
+            ("resume_screening", 1, 1, 1, 0),
+            ("qualification", 1, 1, 1, 0),
+            ("written_test", 1, 1, 1, 0),
+            ("tech_interview", 1, 1, 1, 0),
+            ("manager_interview", 1, 1, 1, 0),
+            ("offer_strategy", 1, 1, 1, 0),
+            ("approval", 1, 1, 1, 0),
+            ("salary", 1, 1, 1, 0),
+            ("offer", 1, 1, 1, 0),
+            ("onboarding", 1, 1, 1, 0),
+        ]
+        db.executemany(
+            "INSERT INTO module_acl (subject_type, subject_id, module_key, "
+            "perm_visibility, perm_read, perm_write, perm_manage, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            [("user_group", dg_id, k, v, r, w, m, now_str()) for (k, v, r, w, m) in baseline],
+        )
     db.commit()
 
 
@@ -293,23 +345,23 @@ def seed_demo(db):
     db.execute(
         "INSERT INTO users (username, display_name, password_hash, role, group_id, supervisor, department, dept_level2, dept_level3, job_roles, created_at) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-        ("lead01", "组管理员老张", generate_password_hash("123456"), "group_admin", None,
+        ("lead01", "招聘主管老张", generate_password_hash("123456"), "user", None,
          "李主管", "软件部/研发一组", "软件部", "研发一组",
-         json.dumps(["接口人", "HR"], ensure_ascii=False), now_str()),
+         json.dumps([], ensure_ascii=False), now_str()),
     )
     db.execute(
         "INSERT INTO users (username, display_name, password_hash, role, group_id, supervisor, department, dept_level2, dept_level3, job_roles, created_at) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-        ("hr01", "招聘专员小王", generate_password_hash("123456"), "editor", None,
+        ("hr01", "招聘专员小王", generate_password_hash("123456"), "user", None,
          "李主管", "存储部", "存储部", "",
-         json.dumps(["拓源人", "接口人"], ensure_ascii=False), now_str()),
+         json.dumps([], ensure_ascii=False), now_str()),
     )
     db.execute(
         "INSERT INTO users (username, display_name, password_hash, role, group_id, supervisor, department, dept_level2, dept_level3, job_roles, created_at) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-        ("hr02", "招聘专员小李", generate_password_hash("123456"), "editor", None,
+        ("hr02", "招聘专员小李", generate_password_hash("123456"), "user", None,
          "王主管", "软件部", "软件部", "",
-         json.dumps(["拓源人"], ensure_ascii=False), now_str()),
+         json.dumps([], ensure_ascii=False), now_str()),
     )
     samples = [
         {"name": "张伟", "phone": "13800000001", "interface_person": "刘洋",
@@ -344,8 +396,18 @@ def seed_demo(db):
             "INSERT INTO candidates (group_id, data, created_at, updated_at) VALUES (?,?,?,?)",
             (None, json.dumps(data, ensure_ascii=False), now_str(), now_str()),
         )
+    # 示例用户加入默认分组以获得基线模块权限
+    dg = db.execute("SELECT id FROM user_groups WHERE name=?", ("默认分组",)).fetchone()
+    if dg:
+        for uname in ("lead01", "hr01", "hr02"):
+            u = db.execute("SELECT id FROM users WHERE username=?", (uname,)).fetchone()
+            if u:
+                db.execute(
+                    "INSERT OR IGNORE INTO user_group_members (group_id, user_id, created_at) VALUES (?,?,?)",
+                    (dg["id"], u["id"], now_str()),
+                )
     db.commit()
-    print("已写入示例分组/用户/候选人数据（lead01 组管理员、hr01、hr02 / 123456）。")
+    print("已写入示例用户/候选人数据（lead01、hr01、hr02 / 123456）。")
 
 
 def init_db(demo=False):

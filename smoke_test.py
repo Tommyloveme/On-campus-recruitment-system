@@ -62,8 +62,8 @@ call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 req = urllib.request.Request(BASE + "/api/account/options")
 with opener.open(req) as r:
     acct_opts = json.loads(r.read().decode())
-check("账户选项下发业务角色", "拓源人" in acct_opts["job_roles"] and "接口人" in acct_opts["default_job_roles"])
 check("账户选项下发部门配置", "存储部" in acct_opts.get("dept_level2_options", []))
+check("账户选项不再下发业务角色", "job_roles" not in acct_opts)
 
 # 自助注册接口已移除
 req = urllib.request.Request(BASE + "/api/register", data=b"{}",
@@ -75,35 +75,39 @@ except urllib.error.HTTPError as e:
     s = e.code
 check("自助注册接口已关闭(404)", s == 404)
 
-# 管理员统一创建测试用户
+# 管理员统一创建测试用户（角色仅 admin/user，新建用户自动加入默认分组）
 test_emp = f"{uuid.uuid4().int % 100000000:08d}"
 s, _ = call("POST", "/api/users", {
     "username": test_emp, "display_name": "Test", "supervisor": "张主管",
-    "dept_level2": "存储部", "password": "123456", "role": "editor",
-    "job_roles": ["拓源人"],
+    "dept_level2": "存储部", "password": "123456", "role": "user",
 }, expect_error=True)
 check("管理员创建用户姓名须中文", s == 400)
 s, _ = call("POST", "/api/users", {
     "username": "admin", "display_name": "假管理员", "supervisor": "张主管",
-    "dept_level2": "存储部", "password": "123456", "role": "editor",
-    "job_roles": ["拓源人"],
+    "dept_level2": "存储部", "password": "123456", "role": "user",
 }, expect_error=True)
 check("重复账号创建被拒", s == 400)
 s, crt = call("POST", "/api/users", {
     "username": test_emp, "display_name": "管理员创建", "supervisor": "张主管",
-    "dept_level2": "存储部", "password": "123456", "role": "editor",
-    "job_roles": ["拓源人", "接口人"],
+    "dept_level2": "存储部", "password": "123456", "role": "user",
 })
 check("管理员创建用户成功", s == 200 and crt.get("ok"))
 s, me_reg = call("POST", "/api/login", {"username": test_emp, "password": "123456"})
 check("管理员创建的用户可登录", s == 200 and me_reg["display_name"] == "管理员创建")
+check("新建用户角色为user", me_reg["role"] == "user")
 s, me_up = call("PUT", "/api/profile", {
     "display_name": "管理员创建改", "supervisor": "王主管", "dept_level2": "存储部",
-    "job_roles": ["拓源人", "HR"],
 })
 check("用户可更新个人资料", me_up["display_name"] == "管理员创建改")
-check("普通用户不可在账户页改业务角色", "HR" not in me_up.get("job_roles", []))
+# 新建用户自动加入默认分组
+s, opts_dg = call("GET", "/api/permissions/options")
+dg = next((g for g in opts_dg["user_groups"] if g["name"] == "默认分组"), None)
+check("默认分组存在", dg is not None)
+dg_members = [m for m in opts_dg["user_group_members"] if m["group_id"] == dg["id"]]
+check("新建用户已自动加入默认分组", any(m["user_id"] == crt["id"] for m in dg_members))
+# 清理本节创建的临时用户（需管理员权限）
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+call("DELETE", f"/api/users/{crt['id']}")
 
 # 2. 配置与分组
 s, cfg = call("GET", "/api/config")
@@ -149,13 +153,13 @@ hr01 = next((u for u in users if u["username"] == "hr01"), None)
 if hr01:
     call("PUT", f"/api/users/{hr01['id']}", {
         "display_name": "招聘专员小王", "role": hr01["role"],
-        "supervisor": "李主管", "dept_level2": "存储部", "job_roles": ["拓源人", "接口人"],
+        "supervisor": "李主管", "dept_level2": "存储部",
     })
 hr02 = next((u for u in users if u["username"] == "hr02"), None)
 if hr02:
     call("PUT", f"/api/users/{hr02['id']}", {
         "display_name": "招聘专员小李", "role": hr02["role"],
-        "supervisor": "王主管", "dept_level2": "软件部", "job_roles": ["拓源人", "接口人"],
+        "supervisor": "王主管", "dept_level2": "软件部",
     })
 call("POST", "/api/login", {"username": "hr01", "password": "123456"})
 s, r_auto = call("POST", "/api/candidates", {
@@ -448,85 +452,89 @@ s, logs = call("GET", "/api/logs")
 resume_logs = [l["message"] for l in logs["items"][:6]]
 check("简历操作已记录日志", any("简历" in m for m in resume_logs))
 
-# 8. 普通用户权限
+# 8. 普通用户权限（默认分组成员：可访问基线模块、共享池可读写、无管理员模块）
 call("POST", "/api/login", {"username": "hr02", "password": "123456"})
 s, cands = call("GET", "/api/candidates")
-check("组成员可见全部候选人", len(cands) >= 1)
+check("默认分组成员可见候选人", len(cands) >= 1)
 s, r = call("PUT", f"/api/candidates/{cid}", {"stage": "registration", "data": {"sourcer": "hr02"}})
-check("组成员可修改候选人", s == 200 and r.get("changed") == 1)
+check("默认分组成员可修改共享池候选人", s == 200 and r.get("changed") == 1)
 s, _ = call("GET", "/api/overview", expect_error=True)
-check("组成员无法访问管理员总览", s == 403)
+check("默认分组成员无全局总览模块权限", s == 403)
+s, _ = call("GET", "/api/logs", expect_error=True)
+check("默认分组成员无操作日志模块权限", s == 403)
+s, _ = call("GET", "/api/users", expect_error=True)
+check("普通用户无用户管理权限", s == 403)
 
-# 9. 细化权限：组管理员（增删改查+添加成员）/ 组成员（无删除权）
+# 9. 纯分组授权：移出默认分组的用户无任何模块权限；按分组授予模块权限
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 s, users = call("GET", "/api/users")
 for u in users:
-    if u["username"] in ("t_lead", "t_member", "t_admin2"):
+    if u["username"] in ("t_user", "t_isolated"):
         call("DELETE", f"/api/users/{u['id']}")
-s, _ = call("POST", "/api/users", {"username": "t_lead", "display_name": "测试组管",
-                                   "password": "pw123", "role": "group_admin",
+# 创建一个隔离用户并移出默认分组
+s, r_iso = call("POST", "/api/users", {"username": "t_isolated", "display_name": "隔离用户",
+                                       "password": "pw123", "role": "user",
+                                       "supervisor": "张主管", "dept_level2": "存储部"})
+check("创建隔离用户", s == 200 and r_iso.get("ok"))
+iso_id = r_iso["id"]
+s, opts_dg = call("GET", "/api/permissions/options")
+dg = next(g for g in opts_dg["user_groups"] if g["name"] == "默认分组")
+call("DELETE", f"/api/user-groups/{dg['id']}/members/{iso_id}")
+check("移出默认分组成功", s == 200)
+
+call("POST", "/api/login", {"username": "t_isolated", "password": "pw123"})
+s, mods_iso = call("GET", "/api/permissions/modules")
+def find_mod(mods_resp, key):
+    for sec in mods_resp["modules"]:
+        if sec["key"] == key:
+            return sec
+        for it in sec.get("items", []):
+            if it["key"] == key:
+                return it
+    return None
+check("隔离用户无登记模块权限", find_mod(mods_iso, "registration")["visible"] is False)
+s, _ = call("POST", "/api/candidates", {"stage": "registration", "data": sample_reg_data("隔离新增")}, expect_error=True)
+check("隔离用户不可新增候选人(无模块写)", s == 403)
+
+# 管理员可创建系统管理员
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+s, users = call("GET", "/api/users")
+for u in users:
+    if u["username"] == "t_admin2":
+        call("DELETE", f"/api/users/{u['id']}")
+s, _ = call("POST", "/api/users", {"username": "t_admin2", "display_name": "测试管理员",
+                                   "password": "pw123", "role": "admin",
                                    "supervisor": "张主管", "dept_level2": "存储部"})
-check("管理员创建组管理员", s == 200)
+check("系统管理员可创建管理员", s == 200)
 
-call("POST", "/api/login", {"username": "t_lead", "password": "pw123"})
-s, r = call("POST", "/api/candidates", {"stage": "registration", "data": sample_reg_data("组管新增")})
-check("组管理员新增候选人", s == 200)
-lead_cid = r["id"]
-s, _ = call("POST", "/api/users", {"username": "t_member", "display_name": "测试组员",
-                                   "role": "editor", "supervisor": "张主管", "dept_level2": "存储部"})
-check("组管理员添加成员", s == 200)
-s, _ = call("POST", "/api/users", {"username": "t_admin2", "password": "pw123", "role": "admin",
-            "supervisor": "张主管", "dept_level2": "存储部"},
-            expect_error=True)
-check("组管理员不能创建管理员", s == 403)
-s, members = call("GET", "/api/users")
-check("组管理员可见用户列表", len(members) >= 1)
-
-call("POST", "/api/login", {"username": "t_member", "password": "123456"})
-s, me2 = call("GET", "/api/me")
-check("默认密码123456登录成功", s == 200 and me2["username"] == "t_member")
-s, _ = call("PUT", f"/api/candidates/{lead_cid}", {
-    "stage": "registration", "data": {"phone": "13099998888"},
-})
-check("组成员可编辑候选人", s == 200)
-s, _ = call("DELETE", f"/api/candidates/{lead_cid}", expect_error=True)
-check("组成员无删除权限", s == 403)
-s, _ = call("GET", "/api/users", expect_error=True)
-check("组成员无用户管理权限", s == 403)
-
-call("POST", "/api/login", {"username": "t_lead", "password": "pw123"})
-s, _ = call("DELETE", f"/api/candidates/{lead_cid}")
-check("组管理员可删除候选人", s == 200)
-
-# 9b. 全局查看员：只读、无系统管理
+# 9b. 按分组授予模块读权限：授予默认分组 overview 读 → 默认分组成员可访问总览
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
-s, users = call("GET", "/api/users")
-for u in users:
-    if u["username"] == "t_gv":
-        call("DELETE", f"/api/users/{u['id']}")
-s, _ = call("POST", "/api/users", {"username": "t_gv", "display_name": "测试查看员",
-                                   "role": "global_viewer", "supervisor": "张主管", "dept_level2": "存储部"})
-check("管理员创建全局查看员", s == 200)
-
-call("POST", "/api/login", {"username": "t_gv", "password": "123456"})
-s, cands = call("GET", "/api/candidates")
-check("全局查看员可见候选人数据", len(cands) >= 1)
+s, opts_dg = call("GET", "/api/permissions/options")
+dg = next(g for g in opts_dg["user_groups"] if g["name"] == "默认分组")
+s, _ = call("PUT", "/api/module-acl", {
+    "subject_type": "user_group", "subject_id": dg["id"], "module_key": "overview",
+    "perm_visibility": 1, "perm_read": 1, "perm_write": 0, "perm_manage": 0,
+})
+check("授予默认分组 overview 读权限", s == 200)
+call("POST", "/api/login", {"username": "hr02", "password": "123456"})
 s, ov = call("GET", "/api/overview")
-check("全局查看员可看全局总览", s == 200 and len(ov) >= 1)
-s, logs = call("GET", "/api/logs")
-check("全局查看员可看全部日志", s == 200)
-any_cid = cands[0]["id"]
-s, _ = call("PUT", f"/api/candidates/{any_cid}", {"data": {"name": "越权改名"}}, expect_error=True)
-check("全局查看员不能修改数据", s == 403)
-s, _ = call("POST", "/api/candidates/batch_delete", {"ids": [any_cid]}, expect_error=True)
-check("全局查看员不能批量删除", s == 403)
-s, _ = call("GET", "/api/users", expect_error=True)
-check("全局查看员无用户管理权限", s == 403)
+check("默认分组成员获 overview 读后可访问总览", s == 200 and len(ov) >= 1)
+# 撤销 overview 权限
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+call("DELETE", "/api/module-acl", {
+    "subject_type": "user_group", "subject_id": dg["id"], "module_key": "overview",
+})
+call("POST", "/api/login", {"username": "hr02", "password": "123456"})
+s, _ = call("GET", "/api/overview", expect_error=True)
+check("撤销 overview 后默认分组成员被拒(403)", s == 403)
 
-# 9c. 批量删除：组成员被拒，组管理员/管理员可用
+# 9c. 批量删除：普通用户被拒，仅系统管理员可用
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+s, any_cands = call("GET", "/api/candidates")
+any_cid = any_cands[0]["id"]
 call("POST", "/api/login", {"username": "hr01", "password": "123456"})
 s, _ = call("POST", "/api/candidates/batch_delete", {"ids": [any_cid]}, expect_error=True)
-check("组成员不能批量删除", s == 403)
+check("普通用户不能批量删除", s == 403)
 
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 s, batch = call("GET", "/api/candidates?q=" + quote("压测"))
@@ -648,19 +656,19 @@ s, users = call("GET", "/api/users")
 for u in users:
     if u["username"] in ("perm_a", "perm_b"):
         call("DELETE", f"/api/users/{u['id']}")
-call("POST", "/api/users", {"username": "perm_a", "display_name": "权限甲", "role": "editor",
+call("POST", "/api/users", {"username": "perm_a", "display_name": "权限甲", "role": "user",
                             "supervisor": "张主管", "dept_level2": "存储部"})
-call("POST", "/api/users", {"username": "perm_b", "display_name": "权限乙", "role": "editor",
+call("POST", "/api/users", {"username": "perm_b", "display_name": "权限乙", "role": "user",
                             "supervisor": "张主管", "dept_level2": "计算部"})
 s, users = call("GET", "/api/users")
 perm_a = next(u for u in users if u["username"] == "perm_a")
 perm_b = next(u for u in users if u["username"] == "perm_b")
 
-# 添加成员（按工号 + 按角色筛选）
+# 添加成员（按工号 + 按部门筛选）
 s, r = call("POST", f"/api/user-groups/{mkt_ug['id']}/members", {"usernames": ["perm_a"]})
 check("按工号添加成员", s == 200 and r["added"] == 1)
-s, r = call("POST", f"/api/user-groups/{mkt_sub['id']}/members", {"filter": {"role": "editor"}})
-check("按角色筛选添加成员", s == 200 and r["added"] >= 1)
+s, r = call("POST", f"/api/user-groups/{mkt_sub['id']}/members", {"filter": {"dept_level2": "计算部"}})
+check("按部门筛选添加成员", s == 200 and r["added"] >= 1)
 s, members = call("GET", f"/api/user-groups/{mkt_ug['id']}/members")
 check("成员列表正确", any(m["username"] == "perm_a" for m in members))
 
@@ -808,7 +816,7 @@ with opener.open(req) as r:
     exp_count = r.headers.get("X-Export-Count")
 check("导出权限矩阵Excel", acl_xlsx[:2] == b"PK" and int(exp_count) >= 1)
 
-# 12. 模块级 ACL：主界面板块/模块的可见性、可读性、可写性、管理
+# 12. 模块级 ACL：主界面板块/模块的可见性、可读性、可写性、管理（恒门禁，纯分组授权）
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 
 def mod_eff(mods_resp, key):
@@ -820,7 +828,7 @@ def mod_eff(mods_resp, key):
                 return it
     return None
 
-# 12a. 模块注册表下发（含板块与子模块）
+# 12a. 模块注册表下发（含板块与子模块；不再含 enabled 开关）
 s, mods = call("GET", "/api/permissions/modules")
 check("模块注册表下发", s == 200 and len(mods["modules"]) >= 6)
 mk_keys = set()
@@ -829,6 +837,7 @@ for sec in mods["modules"]:
     for it in sec.get("items", []):
         mk_keys.add(it["key"])
 check("模块含板块与子模块", {"recruit_flow", "tech_interview", "manager_interview", "admin_board"} <= mk_keys)
+check("模块元数据不含 enabled 开关", "enabled" not in mods["modules"][0])
 s, opts = call("GET", "/api/permissions/options")
 opts_mk = set()
 for sec in opts["modules"]:
@@ -837,14 +846,17 @@ for sec in opts["modules"]:
         opts_mk.add(it["key"])
 check("options 下发模块元数据", "tech_interview" in opts_mk and "recruit_flow" in opts_mk)
 
-# 12b. 启用 tech_interview 模块 ACL 并授予 perm_a 读+写
-s, _ = call("PUT", "/api/module-acl/meta", {"module_key": "tech_interview", "enabled": True})
-check("启用模块ACL门禁", s == 200)
+# 12-prep. 将 perm_a 移出默认分组，使其模块权限仅来自显式授权（避免基线干扰）
+s, opts_dg = call("GET", "/api/permissions/options")
+dg = next(g for g in opts_dg["user_groups"] if g["name"] == "默认分组")
+call("DELETE", f"/api/user-groups/{dg['id']}/members/{perm_a['id']}")
+
+# 12b. 授予 perm_a tech_interview 读+写
 s, _ = call("PUT", "/api/module-acl", {
     "subject_type": "user", "subject_id": perm_a["id"], "module_key": "tech_interview",
     "perm_visibility": 1, "perm_read": 1, "perm_write": 1, "perm_manage": 0,
 })
-check("模块ACL单条授权(自动启用)", s == 200)
+check("模块ACL单条授权", s == 200)
 s, rows = call("GET", "/api/module-acl?module_key=tech_interview")
 check("模块ACL查询", any(r["subject_id"] == perm_a["id"] and r["perm_write"] for r in rows))
 
@@ -870,9 +882,8 @@ s, _ = call("PUT", f"/api/candidates/{mod_cid}",
             {"stage": "tech_interview", "data": {"tech_interview_time": "2026-07-02 14:00"}})
 check("perm_a 有模块写权限可更新技术面", s == 200)
 
-# 12c. 启用 manager_interview 模块 ACL 但不授权 perm_a → 不可见且不可写
+# 12c. 未授权 manager_interview → perm_a 不可见且不可写
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
-call("PUT", "/api/module-acl/meta", {"module_key": "manager_interview", "enabled": True})
 s, _ = call("PUT", f"/api/candidates/{mod_cid}",
             {"stage": "manager_interview", "data": {"manager_interview_time": "2026-07-03 10:00"}})
 check("admin 推进到主管面", s == 200)
@@ -885,9 +896,8 @@ s, mods_a2 = call("GET", "/api/permissions/modules")
 mi = mod_eff(mods_a2, "manager_interview")
 check("perm_a 主管面模块不可见", mi["visible"] is False)
 
-# 12d. 板块继承：启用 qualification 子模块 + 授予板块 recruit_flow 读 → 子模块继承读
+# 12d. 板块继承：授予板块 recruit_flow 读 → 子模块 qualification 继承读
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
-call("PUT", "/api/module-acl/meta", {"module_key": "qualification", "enabled": True})
 call("PUT", "/api/module-acl", {
     "subject_type": "user", "subject_id": perm_a["id"], "module_key": "recruit_flow",
     "perm_visibility": 1, "perm_read": 1, "perm_write": 0, "perm_manage": 0,
@@ -901,7 +911,7 @@ check("子模块继承板块读权限", qual["visible"] is True and qual["readab
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 entries = [
     {"subject_type": "user", "subject_id": perm_a["id"], "module_key": "recruit_flow"},
-    {"subject_type": "user", "subject_id": perm_a["id"], "module_key": "manager_interview"},
+    {"subject_type": "user", "subject_id": perm_a["id"], "module_key": "tech_interview"},
 ]
 s, prev = call("POST", "/api/module-acl/batch", {"mode": "revoke", "entries": entries, "dry_run": True})
 check("模块批量撤销预览", s == 200 and prev["dry_run"] and prev["preview"]["entry_count"] == 2)
@@ -914,19 +924,30 @@ with opener.open(req) as r:
     mod_xlsx = r.read()
 check("导出模块权限矩阵Excel", mod_xlsx[:2] == b"PK")
 
-# 12g. 关闭门禁 → 回退角色基线（editor 重新可见主管面）
-call("PUT", "/api/module-acl/meta", {"module_key": "manager_interview", "enabled": False})
-call("POST", "/api/login", {"username": "perm_a", "password": "123456"})
-s, mods_a4 = call("GET", "/api/permissions/modules")
-mi2 = mod_eff(mods_a4, "manager_interview")
-check("关闭门禁后回退角色基线(editor可见)", mi2["visible"] is True)
+# 12g. 应用到分组及子分组：对市场部(父)及其子分组「市场部-华东」批量授予 onboarding 读
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+s, r = call("POST", "/api/module-acl/apply-to-subgroups", {
+    "group_id": mkt_ug["id"], "module_keys": ["onboarding"],
+    "perm_visibility": 1, "perm_read": 1, "perm_write": 0, "perm_manage": 0,
+})
+check("应用到分组及子分组", s == 200 and r["group_count"] >= 2 and r["affected"] >= 2)
+# perm_b 属于子分组 mkt_sub → 应继承 onboarding 读
+call("POST", "/api/login", {"username": "perm_b", "password": "123456"})
+s, mods_b = call("GET", "/api/permissions/modules")
+ob = mod_eff(mods_b, "onboarding")
+check("子分组成员继承 onboarding 读", ob["visible"] is True and ob["readable"] is True)
 
 # 清理模块 ACL 测试数据
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
-for mk in ("tech_interview", "manager_interview", "recruit_flow", "qualification"):
-    call("PUT", "/api/module-acl/meta", {"module_key": mk, "enabled": False})
+for mk in ("tech_interview", "manager_interview", "recruit_flow", "qualification", "onboarding"):
     call("DELETE", "/api/module-acl",
          {"subject_type": "user", "subject_id": perm_a["id"], "module_key": mk})
+# 清理应用到子分组的 onboarding 授权
+for ug_id in (mkt_ug["id"], mkt_sub["id"]):
+    call("DELETE", "/api/module-acl",
+         {"subject_type": "user_group", "subject_id": ug_id, "module_key": "onboarding"})
+# 把 perm_a 重新加入默认分组，恢复基线（避免影响后续清理）
+call("POST", f"/api/user-groups/{dg['id']}/members", {"user_ids": [perm_a["id"]]})
 s, cands = call("GET", "/api/candidates?q=" + quote("模块权限甲"))
 for c in cands:
     call("DELETE", f"/api/candidates/{c['id']}")
@@ -954,7 +975,7 @@ for u in users:
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 s, users = call("GET", "/api/users")
 for u in users:
-    if u["username"] in ("t_lead", "t_member", "t_gv") or u["username"].startswith("emp"):
+    if u["username"] in ("t_isolated", "t_admin2", "t_user") or u["username"].startswith("emp"):
         call("DELETE", f"/api/users/{u['id']}")
 s, cands = call("GET", "/api/candidates?q=" + quote("压测"))
 for c in cands:

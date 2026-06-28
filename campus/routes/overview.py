@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
-"""全局总览接口（管理员/全局查看员）。"""
+"""全局总览接口（具备「全局总览」模块读权限的用户）。"""
 import json
 
 from flask import Blueprint, g, jsonify
 
 from campus.auth.decorators import login_required
-from campus.auth.permissions import GLOBAL_VIEW_ROLES
 from campus.db.connection import get_db
-from campus.services.acl import module_endpoint_read_ok
+from campus.services.acl import module_readable_for
 from campus.services.candidates import candidate_dict
 
 bp = Blueprint("overview", __name__)
@@ -16,9 +15,7 @@ bp = Blueprint("overview", __name__)
 @bp.get("/api/overview")
 @login_required
 def api_overview():
-    if g.user["role"] not in GLOBAL_VIEW_ROLES:
-        return jsonify({"error": "需要管理员或全局查看员权限"}), 403
-    if not module_endpoint_read_ok(g.user, "overview"):
+    if not module_readable_for(g.user, "overview"):
         return jsonify({"error": "无「全局总览」模块的访问权限"}), 403
     db = get_db()
     rows = db.execute("SELECT * FROM candidates ORDER BY updated_at DESC").fetchall()

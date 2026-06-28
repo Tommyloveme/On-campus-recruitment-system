@@ -49,7 +49,7 @@ async function renderInterviewCalendar(stageKey) {
       <button class="btn btn-sm" id="iv-prev-wk">上一周</button>
       <span style="font-weight:600">${from} ~ ${to}</span>
       <button class="btn btn-sm" id="iv-next-wk">下一周</button>
-      ${canCreate() ? `<button class="btn btn-primary btn-sm" id="iv-set-avail">+ 设置我的可面试时间</button>` : ""}
+      ${(typeof moduleWritable === "function" && moduleWritable(state.tab)) ? `<button class="btn btn-primary btn-sm" id="iv-set-avail">+ 设置我的可面试时间</button>` : ""}
     </div>
     <div class="iv-cal-grid">
       ${days.map(d => {

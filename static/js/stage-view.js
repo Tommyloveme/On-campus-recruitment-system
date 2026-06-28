@@ -49,8 +49,8 @@ async function renderStageList(stageKey) {
   const ss = getStageState(stageKey);
   const fields = visibleFields(stageKey);
   const showResume = stageKey === "registration";
-  const canAdd = canCreate() && meta.can_create;
-  const showMasterImport = stageKey === "registration" && canCreate();
+  const canAdd = typeof moduleWritable === "function" && moduleWritable(stageKey) && meta.can_create;
+  const showMasterImport = stageKey === "registration" && canAdd;
 
   const headCells = fields.map(f => f.type === "date"
     ? `<th class="sortable" data-sortkey="${f.key}" title="点击排序">${esc(f.label)}<span class="sort-arrow" data-arrow="${f.key}"></span></th>`
@@ -74,7 +74,7 @@ async function renderStageList(stageKey) {
       ${canBatchDelete() && stageKey === "registration" ? `<button class="btn btn-danger" id="btn-batch-del" disabled>删除选中 (0)</button>` : ""}
       <button class="btn" id="btn-export-excel" disabled>导出选中Excel (0)</button>
       ${showResume ? `<button class="btn" id="btn-export-resume" disabled>导出选中简历 (0)</button>` : ""}
-      ${canCreate() ? `
+      ${canAdd ? `
         <button class="btn" id="btn-template">下载导入模板</button>
         <button class="btn" id="btn-import">Excel 导入</button>
         ${canAdd ? `<button class="btn btn-primary" id="btn-add">+ 新增候选人</button>` : ""}` : ""}
@@ -104,7 +104,7 @@ async function renderStageList(stageKey) {
     ss.page = 1;
     loadCandidateTable(stageKey);
   });
-  if (canCreate()) {
+  if (canAdd) {
     if ($("#btn-template")) $("#btn-template").addEventListener("click", () => {
       location.href = `/api/import/template?stage=${stageKey}`;
     });

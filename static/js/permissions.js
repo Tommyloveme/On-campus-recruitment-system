@@ -161,41 +161,75 @@ async function openUGMembersModal(gid) {
   const group = (permOptions?.user_groups || []).find(g => g.id === gid);
   if (!group) return;
   openModal(`成员管理 - ${esc(group.name)}`, `
-    <div style="margin-bottom:10px">
+    <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input type="text" id="ugm-q" placeholder="搜索工号/姓名/主管/部门" style="flex:1;min-width:200px">
       <button class="btn btn-primary btn-sm" id="ugm-add">+ 添加成员</button>
-      <button class="btn btn-sm" id="ugm-add-filter">按部门/角色筛选</button>
+      <button class="btn btn-sm" id="ugm-add-filter">按部门/主管筛选</button>
+      <button class="btn btn-sm" id="ugm-batch-edit" disabled>批量修改所选</button>
     </div>
     <div id="ugm-list" class="perm-member-list">加载中…</div>`,
     `<button class="btn" onclick="closeModal()">关闭</button>`);
   await refreshUGMembers(gid);
   $("#ugm-add").addEventListener("click", () => openUGAddMembersModal(gid));
   $("#ugm-add-filter").addEventListener("click", () => openUGAddByFilterModal(gid));
+  $("#ugm-q").addEventListener("input", () => renderUGMembersTable(gid));
 }
 
+let ugmMembersCache = [];
 async function refreshUGMembers(gid) {
   const list = $("#ugm-list");
   if (!list) return;
   try {
-    const members = await api(`/api/user-groups/${gid}/members`);
-    if (!members.length) {
-      list.innerHTML = `<div class="empty" style="padding:16px">暂无成员</div>`;
-      return;
-    }
-    list.innerHTML = `<div class="table-wrap"><table>
-      <thead><tr><th>工号</th><th>姓名</th><th>系统角色</th><th>部门</th><th></th></tr></thead>
-      <tbody>${members.map(m => `
-        <tr>
-          <td>${esc(m.username)}</td><td>${esc(m.display_name)}</td>
-          <td>${esc(ROLE_NAMES[m.role] || m.role)}</td><td>${esc(m.department || "—")}</td>
-          <td><button class="btn btn-sm btn-danger" data-ugm-rm="${m.id}">移除</button></td>
-        </tr>`).join("")}</tbody></table></div>`;
-    list.querySelectorAll("[data-ugm-rm]").forEach(b =>
-      b.addEventListener("click", async () => {
-        try { await api(`/api/user-groups/${gid}/members/${b.dataset.ugmRm}`, { method: "DELETE" });
-          toast("已移除"); refreshUGMembers(gid); await reloadPermOptions();
-        } catch (e) { toast(e.message, true); }
-      }));
+    ugmMembersCache = await api(`/api/user-groups/${gid}/members`);
+    renderUGMembersTable(gid);
   } catch (e) { list.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+
+function renderUGMembersTable(gid) {
+  const list = $("#ugm-list");
+  if (!list) return;
+  const q = ($("#ugm-q")?.value || "").trim().toLowerCase();
+  let members = ugmMembersCache;
+  if (q) {
+    members = members.filter(m =>
+      (m.username || "").toLowerCase().includes(q) ||
+      (m.display_name || "").toLowerCase().includes(q) ||
+      (m.supervisor || "").toLowerCase().includes(q) ||
+      (m.department || "").toLowerCase().includes(q));
+  }
+  if (!members.length) {
+    list.innerHTML = `<div class="empty" style="padding:16px">${q ? "没有匹配的成员" : "暂无成员"}</div>`;
+    return;
+  }
+  list.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr>
+      <th><input type="checkbox" id="ugm-check-all"></th>
+      <th>工号</th><th>姓名</th><th>主管</th><th>部门</th><th></th>
+    </tr></thead>
+    <tbody>${members.map(m => `
+      <tr>
+        <td><input type="checkbox" class="ugm-check" value="${m.id}"></td>
+        <td>${esc(m.username)}</td><td>${esc(m.display_name)}</td>
+        <td>${esc(m.supervisor || "—")}</td><td>${esc(m.department || "—")}</td>
+        <td><button class="btn btn-sm btn-danger" data-ugm-rm="${m.id}">移除</button></td>
+      </tr>`).join("")}</tbody></table></div>`;
+  list.querySelectorAll("[data-ugm-rm]").forEach(b =>
+    b.addEventListener("click", async () => {
+      try { await api(`/api/user-groups/${gid}/members/${b.dataset.ugmRm}`, { method: "DELETE" });
+        toast("已移除"); refreshUGMembers(gid); await reloadPermOptions();
+      } catch (e) { toast(e.message, true); }
+    }));
+  const refreshBatchBtn = () => {
+    const ids = [...list.querySelectorAll(".ugm-check:checked")].map(cb => +cb.value);
+    const btn = $("#ugm-batch-edit");
+    if (btn) { btn.disabled = ids.length === 0; btn.textContent = ids.length ? `批量修改所选(${ids.length})` : "批量修改所选"; btn.dataset.ids = ids.join(","); }
+  };
+  list.querySelectorAll(".ugm-check").forEach(cb => cb.addEventListener("change", refreshBatchBtn));
+  $("#ugm-check-all")?.addEventListener("change", e => {
+    list.querySelectorAll(".ugm-check").forEach(cb => cb.checked = e.target.checked);
+    refreshBatchBtn();
+  });
+  $("#ugm-batch-edit").onclick = () => openUGBatchEditModal(gid, ($("#ugm-batch-edit").dataset.ids || "").split(",").filter(Boolean).map(Number));
 }
 
 function openUGAddMembersModal(gid) {
@@ -205,7 +239,7 @@ function openUGAddMembersModal(gid) {
   const items = users.map(u => `
     <label class="checkbox-item">
       <input type="checkbox" class="ugm-pick" value="${u.id}" ${existing.has(u.id) ? "disabled" : ""}>
-      <span>${esc(u.display_name)}（${esc(u.username)}）<span class="muted">·${esc(ROLE_NAMES[u.role] || u.role)}</span></span>
+      <span>${esc(u.display_name)}（${esc(u.username)}）<span class="muted">·${esc(u.department || "")}</span></span>
     </label>`).join("");
   openModal("添加成员", `
     <p class="field-hint">勾选要加入的用户（已加入的已禁用）。批量离职清退请在成员列表中操作。</p>
@@ -223,26 +257,62 @@ function openUGAddMembersModal(gid) {
 }
 
 function openUGAddByFilterModal(gid) {
-  const roleOpts = [["", "全部角色"], ...Object.entries(ROLE_NAMES)];
-  openModal("按部门/角色筛选添加", `
+  const cfg = window.accountOptions || {};
+  const l2Opts = ["", ...(cfg.dept_level2_options || [])];
+  openModal("按部门/主管筛选添加", `
     <div class="form-grid" style="grid-template-columns:1fr 1fr">
-      <div class="form-item"><label>部门（精确匹配）</label>
-        <input id="ugf-dept" placeholder="如：存储部"></div>
-      <div class="form-item"><label>系统角色</label>
-        <select id="ugf-role">${roleOpts.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("")}</select></div>
+      <div class="form-item"><label>二层部门</label>
+        <select id="ugf-dept-level2">${l2Opts.map(o => `<option value="${esc(o)}">${o || "（不限）"}</option>`).join("")}</select></div>
+      <div class="form-item"><label>主管（精确匹配）</label>
+        <input id="ugf-supervisor" placeholder="如：李主管"></div>
     </div>
-    <p class="field-hint">将同时满足条件的用户加入本分组；与已加入成员自动去重。</p>`,
+    <p class="field-hint">将满足条件的用户加入本分组；与已加入成员自动去重。</p>`,
     `<button class="btn" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="ugf-go">添加</button>`);
   $("#ugf-go").addEventListener("click", async () => {
     const filter = {
-      department: $("#ugf-dept").value.trim(),
-      role: $("#ugf-role").value,
+      dept_level2: $("#ugf-dept-level2").value,
+      supervisor: $("#ugf-supervisor").value.trim(),
     };
-    if (!filter.department && !filter.role) return toast("请至少填一项条件", true);
+    if (!filter.dept_level2 && !filter.supervisor) return toast("请至少填一项条件", true);
     try {
       const r = await api(`/api/user-groups/${gid}/members`, { method: "POST", json: { filter } });
       toast(`已添加 ${r.added} 名`); closeModal(); await refreshUGMembers(gid); await reloadPermOptions();
+    } catch (e) { toast(e.message, true); }
+  });
+}
+
+function openUGBatchEditModal(gid, ids) {
+  if (!ids || !ids.length) { toast("请先勾选成员"); return; }
+  const cfg = window.accountOptions || {};
+  const l2Opts = ["", ...(cfg.dept_level2_options || [])];
+  const l3Opts = ["", ...(cfg.dept_level3_options || [])];
+  openModal(`批量修改 ${ids.length} 个成员`, `
+    <p class="field-hint">仅填写并保存的字段会被批量更新；留空字段保持不变。</p>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr">
+      <div class="form-item"><label>主管（留空不变）</label><input id="ugbe-supervisor"></div>
+      <div class="form-item"><label>二层部门（留空不变）</label>
+        <select id="ugbe-dept-level2">${l2Opts.map(o => `<option value="${esc(o)}">${o || "（不变）"}</option>`).join("")}</select></div>
+      <div class="form-item"><label>三层部门（留空不变）</label>
+        <select id="ugbe-dept-level3">${l3Opts.map(o => `<option value="${esc(o)}">${o || "（不变）"}</option>`).join("")}</select></div>
+    </div>`,
+    `<button class="btn" onclick="closeModal()">取消</button>
+     <button class="btn btn-primary" id="ugbe-save">批量保存</button>`);
+  $("#ugbe-save").addEventListener("click", async () => {
+    const patch = {};
+    const sup = $("#ugbe-supervisor").value.trim();
+    const dl2 = $("#ugbe-dept-level2").value;
+    const dl3 = $("#ugbe-dept-level3").value;
+    if (sup) patch.supervisor = sup;
+    if (dl2) patch.dept_level2 = dl2;
+    if (dl3) patch.dept_level3 = dl3;
+    if (!Object.keys(patch).length) { toast("未填写任何字段"); return; }
+    try {
+      const r = await api("/api/users/batch", { method: "PUT", json: { ids, patch } });
+      toast(`已批量修改 ${r.updated} 个成员`);
+      closeModal();
+      await refreshUGMembers(gid);
+      await reloadPermOptions();
     } catch (e) { toast(e.message, true); }
   });
 }
@@ -364,7 +434,7 @@ function renderModulesPanel() {
       <div class="perm-module-tree card">
         <div class="perm-toolbar">
           <b>板块 / 模块</b>
-          <span style="font-size:11px;color:#94a3b8">勾选「启用」后该模块按 ACL 门禁</span>
+          <span style="font-size:11px;color:#94a3b8">所有模块恒按 ACL 门禁，按分组授权</span>
         </div>
         <div class="perm-module-list">${tree}</div>
       </div>
@@ -390,22 +460,15 @@ function firstItemKey(modules) {
 }
 
 function moduleTreeRow(entry) {
-  const enabled = entry.enabled;
   const selected = entry.key === moduleSelectedKey;
   const head = `
     <div class="perm-module-row${entry.type === "section" ? " is-section" : ""}${selected ? " selected" : ""}">
       <button class="perm-module-pick" data-mk="${esc(entry.key)}">${esc(entry.label)}</button>
-      <label class="perm-enable-toggle" title="启用后该模块按 ACL 门禁，未配置权限的用户将无法访问">
-        <input type="checkbox" data-mk-enable="${esc(entry.key)}" ${enabled ? "checked" : ""}/> 启用
-      </label>
     </div>`;
   const children = (entry.items || [])
     .map(it => `
       <div class="perm-module-row is-child${it.key === moduleSelectedKey ? " selected" : ""}">
         <button class="perm-module-pick" data-mk="${esc(it.key)}">· ${esc(it.label)}</button>
-        <label class="perm-enable-toggle" title="启用后该模块按 ACL 门禁">
-          <input type="checkbox" data-mk-enable="${esc(it.key)}" ${it.enabled ? "checked" : ""}/> 启用
-        </label>
       </div>`).join("");
   return head + children;
 }
@@ -413,24 +476,6 @@ function moduleTreeRow(entry) {
 function bindModuleTreeEvents() {
   $("#perm-panel").querySelectorAll(".perm-module-pick").forEach(b =>
     b.addEventListener("click", () => { moduleSelectedKey = b.dataset.mk; renderModulesPanel(); }));
-  $("#perm-panel").querySelectorAll("input[data-mk-enable]").forEach(cb =>
-    cb.addEventListener("change", () => toggleModuleEnabled(cb.dataset.mkEnable, cb.checked)));
-}
-
-async function toggleModuleEnabled(key, enabled) {
-  try {
-    await api("/api/module-acl/meta", {
-      method: "PUT", body: JSON.stringify({ module_key: key, enabled }),
-    });
-    if (permOptions?.modules) syncModuleEnabled(permOptions.modules, key, enabled);
-    toast(`${key} 已${enabled ? "启用" : "关闭"} ACL 门禁`);
-  } catch (e) { toast(e.message, true); renderModulesPanel(); }
-}
-function syncModuleEnabled(modules, key, enabled) {
-  for (const s of modules) {
-    if (s.key === key) { s.enabled = enabled; return; }
-    for (const it of (s.items || [])) if (it.key === key) { it.enabled = enabled; return; }
-  }
 }
 
 async function loadModuleDetail() {
@@ -439,11 +484,13 @@ async function loadModuleDetail() {
   const entry = findModuleEntry(permOptions?.modules || [], moduleSelectedKey);
   if (!entry) { el.innerHTML = `<div class="empty">请选择一个模块。</div>`; return; }
   el.innerHTML = `<div class="perm-toolbar"><b>${esc(entry.label)}</b>
-      <span style="font-size:11px;color:#94a3b8">${entry.enabled ? "已启用 ACL 门禁" : "未启用（沿用角色基线）"}</span>
+      <span style="font-size:11px;color:#94a3b8">板块权限向子模块继承</span>
       <button class="btn btn-sm" id="module-export-btn">导出</button>
+      <button class="btn btn-sm" id="module-apply-sub-btn">应用到分组及子分组</button>
     </div>
     <div id="module-matrix-wrap">加载中…</div>`;
   $("#module-export-btn")?.addEventListener("click", exportModuleAcl);
+  $("#module-apply-sub-btn")?.addEventListener("click", () => openApplyToSubgroupsModal(entry));
   await loadModuleMatrix(entry);
 }
 
@@ -484,7 +531,7 @@ function renderModuleMatrix(entry, rows) {
     </table>
     <p style="font-size:11px;color:#94a3b8;margin-top:8px">
       说明：板块权限会向其下子模块继承（如「校招流程」的读权限下发给「简历筛选」「技术面」等）。
-      启用某模块后，未在此处授权的用户将无法访问该模块。
+      未授权的用户将无法访问该模块；新建用户默认属于「默认分组」。
     </p>`;
   $("#module-matrix-wrap").querySelectorAll(".mx-mod-perm").forEach(cb =>
     cb.addEventListener("change", () => onModulePermToggle(cb)));
@@ -507,8 +554,6 @@ async function onModulePermToggle(cb) {
       subject_type: st, subject_id: sidN, module_key: mk, ...vals,
     })});
     toast("已更新模块权限");
-    // 刷新启用态与缓存
-    if (permOptions?.modules) syncModuleEnabled(permOptions.modules, mk, true);
     await loadModuleMatrix(findModuleEntry(permOptions.modules, mk));
   } catch (e) { toast(e.message, true); cb.checked = !cb.checked; }
 }
@@ -528,6 +573,43 @@ async function exportModuleAcl() {
   const url = "/api/module-acl/export";
   const a = document.createElement("a");
   a.href = url; a.download = "模块权限矩阵.xlsx"; a.click();
+}
+
+function openApplyToSubgroupsModal(entry) {
+  const ugs = permOptions?.user_groups || [];
+  const ugOpts = ugs.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join("");
+  openModal(`将「${entry.label}」权限应用到分组及子分组`, `
+    <p style="font-size:12px;color:#64748b;margin-bottom:10px">
+      选择一个分组，将该模块的权限批量写入该分组及其全部子孙分组。
+    </p>
+    <div class="form-item"><label>选择分组</label><select id="as-group">${ugOpts}</select></div>
+    <div class="form-item" style="margin-top:8px">
+      <label>权限维度</label>
+      <div class="checkbox-group">
+        ${PERM_COLS.map(c => `<label class="checkbox-item"><input type="checkbox" class="as-perm" value="${c.key}" ${c.key !== "perm_manage" ? "checked" : ""}>${c.label}</label>`).join("")}
+      </div>
+    </div>`,
+    `<button class="btn" onclick="closeModal()">取消</button>
+     <button class="btn btn-primary" id="as-save">应用</button>`);
+  $("#as-save").addEventListener("click", async () => {
+    const gid = +$("#as-group").value;
+    const perms = {};
+    $("#modal-body").querySelectorAll(".as-perm:checked").forEach(cb => perms[cb.value] = 1);
+    if (!Object.keys(perms).length) { toast("请至少选择一个权限维度"); return; }
+    const confirmManage = perms["perm_manage"];
+    if (confirmManage && !confirm("确认授予「管理」权限并应用到该分组及其全部子分组？")) return;
+    try {
+      const r = await api("/api/module-acl/apply-to-subgroups", {
+        method: "POST", json: {
+          group_id: gid, module_keys: [entry.key], ...perms,
+          confirm: !!confirmManage,
+        },
+      });
+      toast(`已应用到 ${r.group_count} 个分组（${r.affected} 条）`);
+      closeModal();
+      await loadModuleMatrix(entry);
+    } catch (e) { toast(e.message, true); }
+  });
 }
 
 /* ---------------- 资源分组 ---------------- */

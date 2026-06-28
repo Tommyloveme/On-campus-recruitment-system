@@ -9,9 +9,9 @@ from datetime import datetime
 from flask import Blueprint, g, jsonify, request, send_file
 
 from campus.auth.decorators import login_required
-from campus.auth.permissions import can_view_group
 from campus.db.connection import get_db, now_str
 from campus.logging_util import log, who
+from campus.services.acl import can_see_candidate
 from campus.services.audit import add_log
 from campus.services.resumes import (
     get_candidate_or_403,
@@ -129,7 +129,7 @@ def api_resumes_export():
     exported, used_names = 0, set()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for row in rows:
-            if not can_view_group(g.user, row["group_id"]) or not row["resume_file"]:
+            if not can_see_candidate(db, g.user, row) or not row["resume_file"]:
                 continue
             path = os.path.join(RESUME_DIR, row["resume_file"])
             if not os.path.exists(path):

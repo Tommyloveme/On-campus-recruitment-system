@@ -6,7 +6,6 @@ from datetime import datetime
 from flask import Blueprint, g, jsonify, request
 
 from campus.auth.decorators import login_required
-from campus.auth.permissions import can_delete_group, can_edit_group
 from campus.config_loader import editable_fields, field_labels, get_stage_meta, validate_stage
 from campus.db.connection import get_db, now_str
 from campus.logging_util import log, who
@@ -40,7 +39,7 @@ bp = Blueprint("candidates", __name__)
 def api_candidates():
     db = get_db()
     rows = db.execute("SELECT * FROM candidates ORDER BY updated_at DESC").fetchall()
-    # ACL 过滤：仅保留当前用户可见的候选人（admin/global_viewer 不受限）
+    # ACL 过滤：仅保留当前用户可见的候选人（admin 不受限）
     visible_ids = accessible_resource_ids(db, g.user, RESOURCE_TYPE_GROUP, "visibility")
     if visible_ids is not None:
         rows = [r for r in rows if can_see_candidate(db, g.user, r)]
@@ -70,13 +69,10 @@ def api_candidate_create():
     meta = get_stage_meta(stage)
     if not meta.get("can_create"):
         return jsonify({"error": f"「{meta['label']}」阶段不支持新增候选人，请在登记阶段新增"}), 400
-    # 模块级写权限：阶段 key 即模块 key，启用 ACL 后须具备写权限
+    # 模块级写权限：阶段 key 即模块 key，须具备写权限
     if not module_writable_for(g.user, stage):
         log.warning("新增候选人模块写权限拒绝 %s stage=%s", who(g.user), stage)
         return jsonify({"error": f"无「{meta['label']}」模块的写入权限"}), 403
-    if not can_edit_group(g.user):
-        log.warning("新增候选人权限拒绝 %s", who(g.user))
-        return jsonify({"error": "无新增候选人权限"}), 403
     # 可选 group_id：将候选人归入指定资源分组（需具备该分组的 write/manage 权限）
     group_id = b.get("group_id")
     if group_id is not None:
@@ -115,7 +111,7 @@ def api_candidate_create():
     if stage == "registration" and phone:
         _, by_phone, _ = build_global_candidate_index(db)
         match = by_phone.get(phone)
-        if match and can_edit_group(g.user):
+        if match and module_writable_for(g.user, "registration"):
             old = json.loads(match["data"])
             if not confirm_overwrite:
                 sourcer = (old.get("sourcer") or "").strip()
@@ -258,9 +254,9 @@ def api_candidate_delete(cid):
 @bp.post("/api/candidates/batch_delete")
 @login_required
 def api_candidates_batch_delete():
-    if g.user["role"] not in ("admin", "group_admin"):
+    if g.user["role"] != "admin":
         log.warning("批量删除权限拒绝 %s", who(g.user))
-        return jsonify({"error": "仅系统管理员和组管理员可批量删除"}), 403
+        return jsonify({"error": "仅系统管理员可批量删除"}), 403
     ids = request.get_json(force=True).get("ids") or []
     if not ids:
         return jsonify({"error": "请先勾选候选人"}), 400
@@ -291,8 +287,8 @@ def api_candidates_batch_delete():
 @bp.post("/api/candidates/recompute-stages")
 @login_required
 def api_recompute_stages():
-    if g.user["role"] not in ("admin", "group_admin"):
-        return jsonify({"error": "无权限"}), 403
+    if g.user["role"] != "admin":
+        return jsonify({"error": "仅系统管理员可执行"}), 403
     db = get_db()
     rows = db.execute("SELECT * FROM candidates").fetchall()
     n = 0

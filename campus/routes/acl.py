@@ -21,8 +21,8 @@ from campus.services.acl import (
     SUBJECT_TYPE_USER_GROUP,
     accessible_resource_ids,
     acl_row_dict,
+    descendant_user_group_ids,
     effective_permissions,
-    module_acl_enabled,
     module_acl_row_dict,
     module_entry,
     module_keys,
@@ -30,7 +30,7 @@ from campus.services.acl import (
     module_registry_payload,
     module_writable_for,
     permission_settings,
-    set_module_acl_enabled,
+    user_group_ids_of,
 )
 from campus.services.audit import add_log
 
@@ -70,15 +70,14 @@ def api_permission_options():
     ug_templates = [dict(r) for r in db.execute(
         "SELECT id, name, description, member_usernames, created_at FROM user_group_templates ORDER BY id"
     ).fetchall()]
-    # 模块级 ACL：板块/模块注册表 + 启用状态（不含当前用户有效权限，矩阵页用）
+    # 模块级 ACL：板块/模块注册表（恒门禁，无 enabled 开关）
     module_meta = []
     from campus.services.acl import MODULE_REGISTRY
     for entry in MODULE_REGISTRY:
-        e = {"key": entry["key"], "label": entry["label"], "type": entry["type"],
-             "enabled": module_acl_enabled(db, entry["key"])}
+        e = {"key": entry["key"], "label": entry["label"], "type": entry["type"]}
         if "items" in entry:
-            e["items"] = [{"key": c["key"], "label": c["label"], "type": c["type"],
-                           "enabled": module_acl_enabled(db, c["key"])} for c in entry["items"]]
+            e["items"] = [{"key": c["key"], "label": c["label"], "type": c["type"]}
+                          for c in entry["items"]]
         module_meta.append(e)
     return jsonify({
         "settings": permission_settings(),
@@ -211,7 +210,8 @@ def api_user_group_delete(gid):
 def api_user_group_members(gid):
     db = get_db()
     rows = db.execute(
-        "SELECT u.id, u.username, u.display_name, u.role, u.department "
+        "SELECT u.id, u.username, u.display_name, u.role, u.supervisor, u.department, "
+        "u.dept_level2, u.dept_level3 "
         "FROM user_group_members m JOIN users u ON u.id=m.user_id "
         "WHERE m.group_id=? ORDER BY u.id", (gid,)
     ).fetchall()
@@ -226,7 +226,7 @@ def api_user_group_members_add(gid):
     支持三种方式（可组合）：
       - user_ids: [1,2,3]
       - usernames: ["hr01","hr02"]
-      - filter: {department, role} 按部门/角色筛选批量加入
+      - filter: {dept_level2, supervisor, department} 按部门/主管筛选批量加入
     """
     db = get_db()
     row = db.execute("SELECT name FROM user_groups WHERE id=?", (gid,)).fetchone()
@@ -241,15 +241,18 @@ def api_user_group_members_add(gid):
         ph = ",".join("?" * len(usernames))
         rows = db.execute(f"SELECT id FROM users WHERE username IN ({ph})", usernames).fetchall()
         user_ids = user_ids + [r["id"] for r in rows]
-    if flt and (flt.get("department") or flt.get("role") or flt.get("job_role")):
+    if flt and (flt.get("dept_level2") or flt.get("supervisor") or flt.get("department")):
         sql = "SELECT id FROM users WHERE 1=1"
         args = []
+        if flt.get("dept_level2"):
+            sql += " AND dept_level2=?"
+            args.append(flt["dept_level2"])
+        if flt.get("supervisor"):
+            sql += " AND supervisor=?"
+            args.append(flt["supervisor"])
         if flt.get("department"):
             sql += " AND department=?"
             args.append(flt["department"])
-        if flt.get("role"):
-            sql += " AND role=?"
-            args.append(flt["role"])
         rows = db.execute(sql, args).fetchall()
         user_ids = user_ids + [r["id"] for r in rows]
     user_ids = [int(i) for i in user_ids if i is not None]
@@ -1042,9 +1045,6 @@ def api_module_acl_upsert():
     perms = _module_perms_from_body(b)
     db = get_db()
     _module_acl_upsert(db, b["subject_type"], int(b["subject_id"]), b["module_key"], perms)
-    # 首次写入自动启用该模块的 ACL 门禁
-    if not module_acl_enabled(db, b["module_key"]):
-        set_module_acl_enabled(db, b["module_key"], True)
     _log_module_acl_change(g.user, b, perms, action="upsert")
     db.commit()
     return jsonify({"ok": True})
@@ -1067,21 +1067,75 @@ def api_module_acl_delete():
     return jsonify({"ok": True})
 
 
-@bp.put("/api/module-acl/meta")
+@bp.get("/api/user-groups/<int:gid>/members-info")
 @admin_required
-def api_module_acl_meta_update():
-    """启用/关闭某模块的 ACL 门禁。关闭后该模块回退到 role_gate 基线。"""
-    b = request.get_json(force=True)
-    module_key = (b.get("module_key") or "").strip()
-    if module_key not in module_keys():
-        return jsonify({"error": "module_key 不合法"}), 400
-    enabled = bool(b.get("enabled"))
+def api_user_group_members_info(gid):
+    """查看指定分组下所有成员的完整信息（工号/姓名/主管/部门），支持搜索与多选过滤。
+
+    查询参数：
+      q: 关键字（匹配工号/姓名/主管/部门）
+      ids: 逗号分隔的用户 id，仅返回这些用户（多选搜索）
+    """
     db = get_db()
-    set_module_acl_enabled(db, module_key, enabled)
+    ug = db.execute("SELECT id FROM user_groups WHERE id=?", (gid,)).fetchone()
+    if not ug:
+        return jsonify({"error": "分组不存在"}), 404
+    sql = ("SELECT u.id, u.username, u.display_name, u.role, u.supervisor, u.department, "
+           "u.dept_level2, u.dept_level3 FROM users u "
+           "JOIN user_group_members m ON m.user_id=u.id WHERE m.group_id=? ORDER BY u.id")
+    rows = db.execute(sql, (gid,)).fetchall()
+    q = (request.args.get("q") or "").strip().lower()
+    sel_ids = request.args.get("ids")
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["dept_display"] = (r["department"] or "").strip()
+        if q and not (q in (r["username"] or "").lower()
+                      or q in (r["display_name"] or "").lower()
+                      or q in (r["supervisor"] or "").lower()
+                      or q in (r["department"] or "").lower()):
+            continue
+        out.append(d)
+    if sel_ids:
+        idset = {int(x) for x in sel_ids.split(",") if x.strip().isdigit()}
+        out = [d for d in out if d["id"] in idset]
+    return jsonify(out)
+
+
+@bp.post("/api/module-acl/apply-to-subgroups")
+@admin_required
+def api_module_acl_apply_to_subgroups():
+    """将一组模块权限批量应用到一个分组及其全部子分组。
+
+    body: {group_id, module_keys:[...], perms:{perm_visibility,perm_read,perm_write,perm_manage}, confirm}
+    """
+    b = request.get_json(force=True)
+    gid = int(b.get("group_id") or 0)
+    if not gid:
+        return jsonify({"error": "group_id 不能为空"}), 400
+    db = get_db()
+    if not db.execute("SELECT 1 FROM user_groups WHERE id=?", (gid,)).fetchone():
+        return jsonify({"error": "分组不存在"}), 404
+    mks = b.get("module_keys") or []
+    for mk in mks:
+        if mk not in module_keys():
+            return jsonify({"error": f"module_key 不合法: {mk}"}), 400
+    perms = {k: 1 if _truthy(b.get(k)) else 0 for k in PERM_FIELDS}
+    if perms["perm_manage"] and not b.get("confirm"):
+        return jsonify({"error": "批量授予管理权限需二次确认（confirm=true）",
+                        "code": "manage_requires_confirm"}), 400
+    target_ids = descendant_user_group_ids(db, gid)
+    affected = 0
+    for tid in target_ids:
+        for mk in mks:
+            _module_acl_upsert(db, SUBJECT_TYPE_USER_GROUP, tid, mk, perms)
+            affected += 1
     add_log(g.user, "permission",
-            f"{g.user['display_name']} {'启用' if enabled else '关闭'}了模块「{module_key}」的 ACL 门禁")
+            f"{g.user['display_name']} 将模块权限批量应用到分组#{gid}及其 {len(target_ids)} 个子分组"
+            f"（{len(mks)} 个模块，{affected} 条）")
     db.commit()
-    return jsonify({"ok": True, "module_key": module_key, "enabled": enabled})
+    return jsonify({"ok": True, "affected": affected,
+                    "target_groups": target_ids, "group_count": len(target_ids)})
 
 
 @bp.post("/api/module-acl/batch")
@@ -1129,8 +1183,6 @@ def api_module_acl_batch():
         else:
             perms = _module_perms_from_body(e)
             _module_acl_upsert(db, e["subject_type"], int(e["subject_id"]), e["module_key"], perms)
-            if not module_acl_enabled(db, e["module_key"]):
-                set_module_acl_enabled(db, e["module_key"], True)
             affected += 1
     add_log(g.user, "permission",
             f"{g.user['display_name']} 批量{('撤销' if mode == 'revoke' else '设置')}了 {affected} 条模块权限"

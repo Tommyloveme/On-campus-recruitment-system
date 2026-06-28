@@ -56,8 +56,6 @@ def user_profile_config():
 
 def account_options_payload():
     return {
-        "job_roles": job_role_options(),
-        "default_job_roles": default_job_roles(),
         **user_profile_config(),
     }
 

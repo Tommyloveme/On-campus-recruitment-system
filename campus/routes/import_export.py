@@ -8,7 +8,6 @@ from flask import Blueprint, g, jsonify, request, send_file
 from openpyxl import Workbook, load_workbook
 
 from campus.auth.decorators import login_required
-from campus.auth.permissions import GLOBAL_VIEW_ROLES, can_edit_group, can_view_group
 from campus.config_loader import (
     get_stage_meta,
     importable_fields,
@@ -18,7 +17,7 @@ from campus.config_loader import (
 )
 from campus.db.connection import get_db, now_str
 from campus.logging_util import log, who
-from campus.services.acl import can_see_candidate
+from campus.services.acl import can_see_candidate, is_admin, module_writable_for
 from campus.services.audit import add_log
 from campus.stage_engine import compute_current_stage, load_master_import_config, run_dual_master_refresh
 from campus.services.master_import_store import (
@@ -65,9 +64,9 @@ def api_import():
         validate_stage(stage)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    if not can_edit_group(g.user):
+    if not module_writable_for(g.user, stage):
         log.warning("Excel导入权限拒绝 %s stage=%s", who(g.user), stage)
-        return jsonify({"error": "无导入权限"}), 403
+        return jsonify({"error": "无该模块的导入权限"}), 403
 
     try:
         wb = load_workbook(request.files["file"], data_only=True)
@@ -275,7 +274,7 @@ def api_master_import_refresh():
     db = get_db()
     try:
         created, updated, skipped, stats = run_dual_master_refresh(
-            db, cfg, can_edit_group, g.user)
+            db, cfg, is_admin, g.user)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
@@ -326,8 +325,6 @@ def api_candidates_export():
     ws.append(headers)
     exported = 0
     for row in rows:
-        if not can_view_group(g.user):
-            continue
         if not can_see_candidate(get_db(), g.user, row):
             continue
         data = json.loads(row["data"])

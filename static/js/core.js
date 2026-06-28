@@ -68,21 +68,17 @@ function openModal(title, bodyHtml, footHtml) {
 function closeModal() { $("#modal-mask").classList.add("hidden"); }
 
 const ROLE_NAMES = {
-  admin: "系统管理员", global_viewer: "全局查看员", group_admin: "组管理员",
-  editor: "组成员", viewer: "只读",
+  admin: "系统管理员", user: "普通用户",
 };
 const isAdmin = () => state.me && state.me.role === "admin";
-const isGroupAdmin = () => state.me && state.me.role === "group_admin";
-const canSeeAll = () => state.me && ["admin", "global_viewer"].includes(state.me.role);
-const canCreate = () => state.me && ["admin", "group_admin", "editor"].includes(state.me.role);
 const canEdit = () => {
-  if (!(state.me && ["admin", "group_admin", "editor"].includes(state.me.role))) return false;
-  // 模块级写权限：当前 tab 即模块 key，启用 ACL 后须具备写权限
+  if (!state.me) return false;
+  // 模块级写权限：当前 tab 即模块 key，须具备写权限（admin 直通）
   if (state.tab && typeof moduleWritable === "function" && !moduleWritable(state.tab)) return false;
   return true;
 };
-const canDelete = () => isAdmin() || isGroupAdmin();
-const canBatchDelete = () => isAdmin() || isGroupAdmin();
+const canDelete = () => isAdmin();
+const canBatchDelete = () => isAdmin();
 
 function currentStageMeta() {
   return state.stages.find(s => s.key === state.tab) || state.stages[0];
