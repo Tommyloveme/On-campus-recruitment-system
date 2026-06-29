@@ -128,9 +128,10 @@ def load_stage_fields(stage_key, group_id=None):
                 f["editable"] = False
 
     display = _load_stage_display_overrides(stage_key)
-    for field in fields:
-        if field["key"] in display.get("visible", {}):
-            field["visible"] = bool(display["visible"][field["key"]])
+    visible_map = display.get("visible")
+    if visible_map is not None:
+        for field in fields:
+            field["visible"] = bool(visible_map.get(field["key"], False))
 
     if group_id:
         path = group_config_path(stage_key, group_id)

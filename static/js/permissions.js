@@ -634,19 +634,19 @@ function fieldInputHtml(f, val) {
 }
 
 function jobRolesCheckboxHtml(selected, roleKey) {
-  if (roleKey !== "interviewer") return "";
   const opts = permOptions.interview_position_options || [];
   const sel = new Set(selected || []);
-  if (!opts.length) return "";
+  const show = roleKey === "interviewer";
   return `
-    <div class="form-item form-item-full" id="uf-job-roles-wrap">
+    <div class="form-item form-item-full uf-interviewer-extra" id="uf-job-roles-wrap" style="display:${show ? "" : "none"}">
       <label>可面试岗位（多选，用于日程匹配）</label>
+      ${opts.length ? `
       <div class="checkbox-group">
         ${opts.map(p => `
           <label class="checkbox-item">
             <input type="checkbox" class="uf-job-role" value="${esc(p)}" ${sel.has(p) ? "checked" : ""}> ${esc(p)}
           </label>`).join("")}
-      </div>
+      </div>` : `<p class="muted" style="font-size:12px;margin:0">未配置岗位选项，请在系统配置 interview.position_options 中维护。</p>`}
     </div>`;
 }
 
@@ -697,6 +697,8 @@ function openUserModal(user) {
     };
     if (role === "interviewer") {
       payload.job_roles = [...document.querySelectorAll(".uf-job-role:checked")].map(cb => cb.value);
+    } else {
+      payload.job_roles = [];
     }
     for (const f of fields) {
       const el = $(`#uf-${f.key}`);

@@ -138,12 +138,12 @@ function todayPrefix() {
   return `${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}：`;
 }
 
-/** 登记备注行首前缀：当前用户（当天日期）： */
+/** 登记备注行首前缀：当天日期（角色名）： */
 function registrationRemarkPrefix() {
-  const name = (state.me && state.me.display_name) ? state.me.display_name : "用户";
+  const role = (state.me && state.me.display_name) ? state.me.display_name : "用户";
   const d = new Date();
   const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  return `${name}（${ds}）：`;
+  return `${ds}（${role}）：`;
 }
 
 function normalizeRegistrationRemark(value) {

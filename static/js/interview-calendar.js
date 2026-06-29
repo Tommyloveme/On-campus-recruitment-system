@@ -277,15 +277,15 @@ function bindInterviewCalendarEvents(stageKey, defaultSlotMin) {
 
 function ivEmployeeSuggestHtml() {
   return `
-    <div class="form-item form-item-full">
-      <label>面试官（工号或姓名） *</label>
+    <div class="iv-avail-interviewer">
+      <label class="iv-avail-label">面试官</label>
       <div class="emp-suggest-wrap">
-        <input type="text" id="iv-interviewer-q" class="emp-suggest-input" placeholder="输入工号或姓名，须为已注册用户" autocomplete="off">
+        <input type="text" id="iv-interviewer-q" class="iv-avail-input emp-suggest-input" placeholder="工号或姓名" autocomplete="off">
         <div class="emp-suggest-list hidden" id="iv-interviewer-suggest" role="listbox"></div>
       </div>
-      <div class="emp-resolved-meta" style="margin-top:6px">
-        <span class="emp-meta-item"><span class="emp-meta-label">姓名</span><span id="iv-interviewer-name">—</span></span>
-        <span class="emp-meta-item"><span class="emp-meta-label">工号</span><span id="iv-interviewer-username" class="mono">—</span></span>
+      <div class="iv-avail-resolved">
+        <span>姓名：<b id="iv-interviewer-name">—</b></span>
+        <span>工号：<b id="iv-interviewer-username" class="mono">—</b></span>
       </div>
       <input type="hidden" id="iv-interviewer-valid" value="">
     </div>`;
@@ -361,18 +361,18 @@ function ivAvailRowHtml(today, row) {
   return `
     <div class="iv-avail-row">
       <div class="iv-avail-field">
-        <label>面试日期</label>
-        <input type="date" class="iv-row-date" value="${esc(date)}">
+        <label>日期</label>
+        <input type="date" class="iv-row-date iv-avail-input" value="${esc(date)}">
       </div>
       <div class="iv-avail-field iv-avail-field-hm">
-        <label>开始时刻（时+分）</label>
+        <label>开始</label>
         ${ivHmInputsHtml("iv-row", start)}
       </div>
       <div class="iv-avail-field iv-avail-field-sm">
         <label>间隔(分)</label>
-        <input type="number" class="iv-row-min" min="15" max="180" step="5" value="${mins}">
+        <input type="number" class="iv-row-min iv-avail-input" min="15" max="180" step="5" value="${mins}">
       </div>
-      <button type="button" class="btn btn-sm iv-row-rm" title="删除此行">−</button>
+      <button type="button" class="iv-row-rm iv-action-muted" title="删除此行">×</button>
     </div>`;
 }
 
@@ -414,13 +414,16 @@ function openSetAvailabilityModal(stageKey, defaultSlotMin) {
   const today = fmtDate(new Date());
 
   openModal("设置可面试时间", `
-    <p class="iv-modal-hint">先选择面试官，再逐行添加可面试时段（日期 + 时/分 + 间隔，默认 45 分钟）。点 + 添加多段。</p>
-    ${ivEmployeeSuggestHtml()}
-    <div class="iv-avail-rows-head">
-      <span>面试日期</span><span>开始时刻</span><span>间隔</span><span></span>
-    </div>
-    <div id="iv-avail-rows">${ivAvailRowHtml(today, { slot_minutes: defaultSlotMin || 45 })}</div>
-    <button type="button" class="btn btn-sm iv-avail-add" id="iv-avail-add">+ 添加一行</button>`,
+    <div class="iv-avail-modal">
+      ${ivEmployeeSuggestHtml()}
+      <div class="iv-avail-section">
+        <div class="iv-avail-rows-head">
+          <span>日期</span><span>开始时刻</span><span>间隔</span><span></span>
+        </div>
+        <div id="iv-avail-rows">${ivAvailRowHtml(today, { slot_minutes: defaultSlotMin || 45 })}</div>
+        <button type="button" class="btn btn-sm iv-avail-add" id="iv-avail-add">+ 添加时段</button>
+      </div>
+    </div>`,
     `<button class="btn" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="iv-avail-save">保存</button>`);
 
@@ -437,7 +440,7 @@ function openSetAvailabilityModal(stageKey, defaultSlotMin) {
   $("#iv-avail-save").addEventListener("click", async () => {
     const q = ($("#iv-interviewer-q").value || "").trim();
     if (!q || !$("#iv-interviewer-valid").value) {
-      toast("请先选择有效的面试官（工号或姓名须匹配已注册用户）", true);
+      toast("请先选择面试官", true);
       return;
     }
     const entries = collectIvAvailEntries(rowsEl);

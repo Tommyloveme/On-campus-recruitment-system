@@ -216,12 +216,30 @@ def migrate(db):
         user_id INTEGER NOT NULL REFERENCES users(id),
         username TEXT NOT NULL,
         display_name TEXT NOT NULL,
+        title TEXT NOT NULL DEFAULT '',
         content_html TEXT NOT NULL,
+        priority TEXT NOT NULL DEFAULT 'normal',
+        reply_html TEXT DEFAULT '',
+        reply_by TEXT DEFAULT '',
+        reply_at TEXT,
         created_at TEXT NOT NULL
     );
     """)
+    fb_cols = {r["name"] for r in db.execute("PRAGMA table_info(feedback)").fetchall()} if db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='feedback'"
+    ).fetchone() else set()
+    if fb_cols and "title" not in fb_cols:
+        db.execute("ALTER TABLE feedback ADD COLUMN title TEXT NOT NULL DEFAULT ''")
+    if fb_cols and "priority" not in fb_cols:
+        db.execute("ALTER TABLE feedback ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'")
+    if fb_cols and "reply_html" not in fb_cols:
+        db.execute("ALTER TABLE feedback ADD COLUMN reply_html TEXT DEFAULT ''")
+    if fb_cols and "reply_by" not in fb_cols:
+        db.execute("ALTER TABLE feedback ADD COLUMN reply_by TEXT DEFAULT ''")
+    if fb_cols and "reply_at" not in fb_cols:
+        db.execute("ALTER TABLE feedback ADD COLUMN reply_at TEXT")
 
-    # ---- 取消用户分组/资源分组/模板/资源ACL：删除相关表 ----
+    # 取消用户分组/资源分组/模板/资源ACL：删除相关表 ----
     db.executescript("""
         DROP TABLE IF EXISTS user_group_members;
         DROP TABLE IF EXISTS user_groups;
@@ -259,6 +277,7 @@ def migrate(db):
         ("salary", 1, 1, 1, 0),
         ("offer", 1, 1, 1, 0),
         ("onboarding", 1, 1, 1, 0),
+        ("feedback", 1, 1, 0, 0),
     ]
     now = now_str()
     from campus.services.roles import role_bypass
@@ -281,7 +300,28 @@ def migrate(db):
         ON interviewer_availability(user_id, interview_type, avail_date, start_time)
     """)
     _backfill_candidate_employee_names(db)
+    _ensure_feedback_module_acl(db)
     db.commit()
+
+
+def _ensure_feedback_module_acl(db):
+    """为已有用户补齐问题反馈模块读权限（全员可查看）。"""
+    from campus.services.roles import role_bypass
+    now = now_str()
+    for u in db.execute("SELECT id, role FROM users").fetchall():
+        if u["role"] == "admin" or role_bypass(u["role"]):
+            continue
+        exists = db.execute(
+            "SELECT id FROM module_acl WHERE subject_type='user' AND subject_id=? AND module_key='feedback'",
+            (u["id"],),
+        ).fetchone()
+        if not exists:
+            db.execute(
+                "INSERT INTO module_acl (subject_type, subject_id, module_key, "
+                "perm_visibility, perm_read, perm_write, perm_manage, created_at) "
+                "VALUES ('user', ?, 'feedback', 1, 1, 0, 0, ?)",
+                (u["id"], now),
+            )
 
 
 def _backfill_candidate_employee_names(db):
@@ -383,6 +423,7 @@ def seed_demo(db):
         ("manager_interview", 1, 1, 1, 0), ("offer_strategy", 1, 1, 1, 0),
         ("approval", 1, 1, 1, 0), ("salary", 1, 1, 1, 0), ("offer", 1, 1, 1, 0),
         ("onboarding", 1, 1, 1, 0),
+        ("feedback", 1, 1, 0, 0),
     ]
     now = now_str()
     for uname in ("lead01", "hr01", "hr02"):

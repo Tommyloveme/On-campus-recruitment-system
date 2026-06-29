@@ -99,6 +99,7 @@ MODULE_REGISTRY = [
         {"key": "offer", "label": "Offer管理", "type": "item", "parent_key": "offer_strategy"},
     ]},
     {"key": "onboarding", "label": "入职管理", "type": "item", "parent_key": None},
+    {"key": "feedback", "label": "问题反馈", "type": "item", "parent_key": None},
     {"key": "data_board", "label": "数据看板", "type": "section", "parent_key": None, "items": [
         {"key": "overview", "label": "全局总览", "type": "item", "parent_key": "data_board"},
         {"key": "charts", "label": "数据图表", "type": "item", "parent_key": "data_board"},
@@ -107,7 +108,6 @@ MODULE_REGISTRY = [
         {"key": "permissions", "label": "权限管理", "type": "item", "parent_key": "admin_board"},
         {"key": "op_logs", "label": "操作日志", "type": "item", "parent_key": "admin_board"},
         {"key": "backups", "label": "数据备份", "type": "item", "parent_key": "admin_board"},
-        {"key": "feedback", "label": "问题反馈", "type": "item", "parent_key": "admin_board"},
     ]},
 ]
 

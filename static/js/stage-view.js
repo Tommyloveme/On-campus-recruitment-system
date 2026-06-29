@@ -17,6 +17,8 @@ function getStageState(stageKey) {
       uploadTarget: null, page: 1,
       pageSize: state.app.page_size ?? 15,
       duplicatePhones: null,
+      colWidths: {},
+      colWidthsTouched: false,
     });
   }
   return stageStates.get(stageKey);
@@ -125,7 +127,7 @@ async function renderStageList(stageKey) {
     $("#resume-input").addEventListener("change", onResumeFilePicked);
   }
   $("#btn-export-excel").addEventListener("click", () => exportSelectedExcel(stageKey));
-  enableColumnResize();
+  enableColumnResize(stageKey);
   const onFilterChange = () => { ss.page = 1; renderCandidateRows(stageKey); };
   $("#cand-search").addEventListener("input", debounce(onFilterChange, 250));
   $("#btn-clear-filter").addEventListener("click", () => {
@@ -177,6 +179,8 @@ async function loadCandidateTable(stageKey) {
   const ids = new Set(ss.list.map(c => c.id));
   ss.selected.forEach(id => { if (!ids.has(id)) ss.selected.delete(id); });
   renderCandidateRows(stageKey);
+  autoFitCandColumns(stageKey);
+  applyCandFrozenColumns(stageKey);
 }
 
 function filteredCandidates(stageKey) {
@@ -348,6 +352,76 @@ function renderCandidateRows(stageKey) {
 
   renderPager(stageKey, total, pages);
   updateSelectionUI(stageKey, list);
+  applyCandColWidths(getStageState(stageKey));
+}
+
+function measureTextWidth(text, font) {
+  const canvas = measureTextWidth._c || (measureTextWidth._c = document.createElement("canvas"));
+  const ctx = canvas.getContext("2d");
+  ctx.font = font || "600 13px system-ui, -apple-system, 'Segoe UI', sans-serif";
+  return ctx.measureText(String(text ?? "")).width;
+}
+
+function candFieldDisplayText(c, f, stageKey, ss) {
+  if (f.key === "registration_remark") {
+    return ((c.data.registration_remark || "").split("\n")[0] || "").trim();
+  }
+  if (f.key === "registration_source" && c.data.registration_source === "其他") {
+    const custom = (c.data.registration_source_custom || "").trim();
+    return custom ? `其他：${custom}` : "其他";
+  }
+  if (f.key === "phone" && stageKey === "registration" && ss.duplicatePhones &&
+    ss.duplicatePhones.has(normalizeCandidatePhone(c.data.phone))) {
+    return String(candidateCellValue(c, f) || "");
+  }
+  const v = candidateCellValue(c, f);
+  if (v === "" || v == null) return "—";
+  if (f.option_labels && f.option_labels[v]) return f.option_labels[v];
+  return String(v);
+}
+
+function applyCandColWidths(ss) {
+  let styleEl = $("#col-width-style");
+  if (!styleEl) {
+    styleEl = document.createElement("style");
+    styleEl.id = "col-width-style";
+    document.head.appendChild(styleEl);
+  }
+  if (!Object.keys(ss.colWidths || {}).length) return;
+  styleEl.textContent = Object.entries(ss.colWidths).map(([i, w]) =>
+    `#cand-table th:nth-child(${i}), #cand-table td:nth-child(${i}) { width:${w}px; min-width:${w}px; }
+     #cand-table td:nth-child(${i}) .clip { max-width:${Math.max(40, w - 24)}px; }`).join("\n");
+  const table = $("#cand-table table");
+  if (table) {
+    const sum = Object.values(ss.colWidths).reduce((a, b) => a + b, 0);
+    table.style.minWidth = `${sum}px`;
+  }
+}
+
+function autoFitCandColumns(stageKey) {
+  const ss = getStageState(stageKey);
+  if (ss.colWidthsTouched) {
+    applyCandColWidths(ss);
+    return;
+  }
+  const fields = visibleFields(stageKey);
+  const showResume = stageKey === "registration";
+  const list = ss.list || [];
+  const widths = {};
+  let colIdx = 1;
+  widths[colIdx++] = 40;
+  fields.forEach(f => {
+    let maxW = measureTextWidth(f.label) + 44;
+    list.forEach(c => {
+      maxW = Math.max(maxW, measureTextWidth(candFieldDisplayText(c, f, stageKey, ss), "13px system-ui, sans-serif") + 28);
+    });
+    widths[colIdx] = Math.min(480, Math.max(64, Math.ceil(maxW)));
+    colIdx++;
+  });
+  if (showResume) widths[colIdx++] = 148;
+  widths[colIdx] = 108;
+  ss.colWidths = widths;
+  applyCandColWidths(ss);
 }
 
 function renderPager(stageKey, total, pages) {
@@ -431,22 +505,14 @@ function applyCandFrozenColumns(stageKey) {
   });
 }
 
-function enableColumnResize() {
+function enableColumnResize(stageKey) {
   const table = $("#cand-table table");
   if (!table) return;
-  let styleEl = $("#col-width-style");
-  if (!styleEl) {
-    styleEl = document.createElement("style");
-    styleEl.id = "col-width-style";
-    document.head.appendChild(styleEl);
-  }
-  const colWidths = {};
-  const applyWidths = () => {
-    styleEl.textContent = Object.entries(colWidths).map(([i, w]) =>
-      `#cand-table th:nth-child(${i}), #cand-table td:nth-child(${i}) { width:${w}px; min-width:${w}px; }
-       #cand-table td:nth-child(${i}) .clip { max-width:${Math.max(40, w - 24)}px; }`).join("\n");
-  };
+  const ss = getStageState(stageKey);
+  const applyWidths = () => applyCandColWidths(ss);
+  if (Object.keys(ss.colWidths).length) applyWidths();
   table.querySelectorAll("thead tr:first-child th").forEach((th, idx) => {
+    if (th.querySelector(".th-resize")) return;
     const handle = document.createElement("span");
     handle.className = "th-resize";
     handle.title = "拖动调整列宽";
@@ -455,9 +521,10 @@ function enableColumnResize() {
     handle.addEventListener("mousedown", e => {
       e.preventDefault();
       e.stopPropagation();
+      ss.colWidthsTouched = true;
       const startX = e.pageX, startW = th.offsetWidth;
       const onMove = ev => {
-        colWidths[idx + 1] = Math.max(48, startW + ev.pageX - startX);
+        ss.colWidths[idx + 1] = Math.max(48, startW + ev.pageX - startX);
         applyWidths();
         applyCandFrozenColumns(state.tab);
       };
@@ -691,48 +758,24 @@ const REGISTRATION_CREATE_OPTIONAL = new Set(["registration_remark"]);
 
 function registrationCreateFields(stageKey) {
   const hide = registrationCreateHiddenKeys();
-  const pool = fieldsForStage(stageKey).filter(f => f.editable && !hide.has(f.key));
-  const remark = fieldsForStage(stageKey).find(f => f.key === "registration_remark");
-  if (remark && !pool.some(f => f.key === "registration_remark")) pool.push(remark);
-  const ordered = [];
-  for (const key of REGISTRATION_CREATE_FIELD_ORDER) {
-    const f = pool.find(x => x.key === key);
-    if (f) {
-      ordered.push({
-        ...f,
-        required: !REGISTRATION_CREATE_OPTIONAL.has(f.key),
-      });
-    }
-  }
-  return ordered;
+  return visibleFields(stageKey).filter(f => f.editable && !hide.has(f.key));
 }
 
-const REGISTRATION_EDIT_FIELD_ORDER = [
-  ...REGISTRATION_CREATE_FIELD_ORDER,
-  "registration_status", "work_location", "graduation_time",
-];
-
-const REGISTRATION_EDIT_HIDDEN_KEYS = new Set([
-  "resume_id", "registration_source_custom",
-  "registration_time", "delivery_time",
-]);
+const REGISTRATION_EDIT_INTERNAL_KEYS = new Set(["registration_source_custom"]);
 
 function registrationEditFields(stageKey) {
-  const hide = REGISTRATION_EDIT_HIDDEN_KEYS;
-  const pool = fieldsForStage(stageKey).filter(f => f.editable && !hide.has(f.key));
-  const ordered = [];
-  for (const key of REGISTRATION_EDIT_FIELD_ORDER) {
-    const f = pool.find(x => x.key === key);
-    if (f) ordered.push(f);
-  }
-  pool.forEach(f => {
-    if (!hide.has(f.key) && !ordered.some(x => x.key === f.key)) ordered.push(f);
+  const fields = visibleFields(stageKey).filter(f => !REGISTRATION_EDIT_INTERNAL_KEYS.has(f.key));
+  const hasSourcer = fields.some(f => f.key === "sourcer");
+  const hasIface = fields.some(f => f.key === "interface_person");
+  return fields.filter(f => {
+    if (f.key === "sourcer_dept" && hasSourcer) return false;
+    if (f.key === "interface_dept" && hasIface) return false;
+    return true;
   });
-  return ordered;
 }
 
 function registrationFormFieldHtml(f, cand, stageKey, isRegCreate, lockedFields) {
-  const locked = lockedFields.has(f.key);
+  const locked = lockedFields.has(f.key) || (!isRegCreate && !f.editable);
   if (stageKey === "registration" && (f.key === "sourcer" || f.key === "interface_person")) {
     return registrationEmployeeFieldHtml(f, cand, locked);
   }
@@ -977,12 +1020,14 @@ async function postCandidateCreate(data, stageKey) {
 }
 
 function openCandidateModal(cand, stageKey) {
-  const allEditable = fieldsForStage(stageKey).filter(f => f.editable);
   const isNew = !cand;
   const isRegCreate = isNew && stageKey === "registration";
   const fields = isRegCreate
-    ? registrationCreateFields(stageKey)
-    : (stageKey === "registration" ? registrationEditFields(stageKey) : allEditable);
+    ? registrationCreateFields(stageKey).map(f => ({
+      ...f,
+      required: f.required || !REGISTRATION_CREATE_OPTIONAL.has(f.key),
+    }))
+    : (stageKey === "registration" ? registrationEditFields(stageKey) : visibleFields(stageKey).filter(f => f.editable));
   const meta = state.stages.find(s => s.key === stageKey);
   const lockedFields = new Set(cand?.data?._master_locked_fields || []);
 
@@ -996,14 +1041,16 @@ function openCandidateModal(cand, stageKey) {
   const resumeBlock = stageKey === "registration" ? registrationResumeBlockHtml(cand) : "";
 
   openModal(isNew ? `新增候选人 - ${meta.label}` : `编辑 - ${esc(cand.data.name || "")}（${meta.label}）`, `
-    <div class="form-grid registration-form-grid">
-      ${fields.map(f => {
-        let html = registrationFormFieldHtml(f, cand, stageKey, isRegCreate, lockedFields);
-        if (isRegCreate && f.key === "registration_source") html += sourceCustomField;
-        return html;
-      }).join("")}
-    </div>
-    ${resumeBlock}`,
+    <div class="registration-modal-body">
+      <div class="form-grid registration-form-grid">
+        ${fields.map(f => {
+          let html = registrationFormFieldHtml(f, cand, stageKey, isRegCreate, lockedFields);
+          if (isRegCreate && f.key === "registration_source") html += sourceCustomField;
+          return html;
+        }).join("")}
+      </div>
+      ${resumeBlock}
+    </div>`,
     `<button class="btn" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="cand-save">保存</button>`);
 

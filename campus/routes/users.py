@@ -31,6 +31,16 @@ from campus.settings import APP_CONFIG
 bp = Blueprint("users", __name__)
 
 
+def _resolve_job_roles_update(body, role, user):
+    """更新用户时：非面试官清空岗位；面试官按请求体或保留原值。"""
+    if role != "interviewer":
+        return []
+    if "job_roles" in body:
+        return normalize_job_roles_payload(body) or []
+    from campus.services.interviews import parse_job_roles
+    return parse_job_roles(user["job_roles"] if user else None)
+
+
 def _user_row_dict(row):
     return user_dict(row)
 
@@ -176,7 +186,7 @@ def api_user_update(uid):
         return jsonify({"error": err}), 400
 
     _persist_user_columns(db, uid, fields, role, password=b.get("password"),
-                          job_roles=normalize_job_roles_payload(b))
+                          job_roles=_resolve_job_roles_update(b, role, user))
     # 显式要求重新应用角色权限（覆盖该用户模块权限）
     if b.get("apply_role"):
         apply_role_to_user(db, uid, role)

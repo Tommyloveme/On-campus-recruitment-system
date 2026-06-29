@@ -1,5 +1,5 @@
 {
-  "comment": "候选人登记界面：列顺序、冻结列、默认排序、字段可见性与隐藏区间",
+  "comment": "候选人登记界面：列顺序、冻结列、默认排序、字段可见性（未列出的字段默认不可见）",
   "column_order": [
     "registration_time",
     "delivery_time",
@@ -28,7 +28,24 @@
   },
   "hidden_keys": ["progress"],
   "visible": {
+    "registration_time": true,
+    "delivery_time": true,
     "resume_id": true,
-    "registration_remark": true
+    "name": true,
+    "phone": true,
+    "sourcer": true,
+    "sourcer_dept": true,
+    "interface_person": true,
+    "interface_dept": true,
+    "education": true,
+    "school": true,
+    "major": true,
+    "registration_source": true,
+    "registration_status": true,
+    "registration_remark": true,
+    "work_location": false,
+    "graduation_time": false,
+    "current_stage": false,
+    "registration_source_custom": false
   }
 }

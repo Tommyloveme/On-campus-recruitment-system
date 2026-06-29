@@ -660,12 +660,13 @@ check("模块含板块与子模块", {"recruit_flow", "tech_interview", "manager
 check("模块元数据不含 enabled 开关", "enabled" not in mods["modules"][0])
 ab = find_mod(mods, "admin_board")
 ab_keys = {it["key"] for it in (ab or {}).get("items", [])} if ab else set()
-check("管理看板含权限管理/操作日志/数据备份/问题反馈同级",
-      {"permissions", "op_logs", "backups", "feedback"} <= ab_keys)
-s, fb = call("POST", "/api/feedback", {"content_html": "<p>冒烟测试反馈</p>"})
+check("管理看板含权限管理/操作日志/数据备份",
+      {"permissions", "op_logs", "backups"} <= ab_keys)
+check("问题反馈为独立顶级模块", "feedback" in mk_keys and "feedback" not in ab_keys)
+s, fb = call("POST", "/api/feedback", {"title": "冒烟测试反馈", "content_html": "<p>冒烟测试反馈</p>"})
 check("用户可提交问题反馈", s == 200 and fb.get("ok"))
-s, fb_list = call("GET", "/api/feedback")
-check("管理员可查看问题反馈", s == 200 and fb_list.get("total", 0) >= 1)
+s, fb_list = call("GET", "/api/feedback?all=1")
+check("登录用户可查看问题反馈列表", s == 200 and fb_list.get("total", 0) >= 1)
 check("字段配置已合并进权限管理", "field_config" not in ab_keys)
 
 # 12b. 授予 perm_a tech_interview 可见+读+写

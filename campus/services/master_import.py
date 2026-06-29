@@ -355,6 +355,7 @@ def merge_master_import_data(old, incoming, cfg=None):
     delivery = delivery_date_from_resume_id(merged.get("resume_id") or incoming.get("resume_id"))
     if delivery:
         merged["delivery_time"] = delivery
+    merged["registration_status"] = "已投递"
     return merged
 
 
