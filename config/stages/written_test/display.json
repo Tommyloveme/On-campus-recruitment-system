@@ -1,0 +1,30 @@
+{
+  "comment": "阶段「written_test」界面配置：未在 visible/editable 中列出的字段默认不可见、不可编辑",
+  "column_order": [
+    "name",
+    "phone",
+    "written_test_book_time",
+    "written_test_time",
+    "written_test_location",
+    "written_test_status",
+    "written_test_score"
+  ],
+  "frozen_column_count": 2,
+  "visible": {
+    "name": true,
+    "phone": true,
+    "resume_id": false,
+    "written_test_book_time": true,
+    "written_test_time": true,
+    "written_test_location": true,
+    "written_test_status": true,
+    "written_test_score": true
+  },
+  "editable": {
+    "written_test_book_time": true,
+    "written_test_time": true,
+    "written_test_location": true,
+    "written_test_status": true,
+    "written_test_score": true
+  }
+}

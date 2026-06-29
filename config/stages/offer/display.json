@@ -1,0 +1,25 @@
+{
+  "comment": "阶段「offer」界面配置：未在 visible/editable 中列出的字段默认不可见、不可编辑",
+  "column_order": [
+    "name",
+    "phone",
+    "offer_status",
+    "offer_send_time",
+    "offer_accept_deadline"
+  ],
+  "frozen_column_count": 2,
+  "visible": {
+    "name": true,
+    "phone": true,
+    "resume_id": false,
+    "offer_status": true,
+    "offer_send_time": true,
+    "offer_accept_deadline": true
+  },
+  "editable": {
+    "offer_status": true,
+    "offer_send_time": true,
+    "offer_accept_deadline": true,
+    "offer_remark": true
+  }
+}

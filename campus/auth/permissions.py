@@ -13,7 +13,10 @@ GLOBAL_VIEW_ROLES = ("admin",)
 def is_admin(user):
     if not user:
         return False
-    role = user["role"]
+    try:
+        role = user["role"]
+    except (TypeError, KeyError, IndexError):
+        role = getattr(user, "get", lambda _k, _d=None: None)("role")
     if role == "admin":
         return True
     from campus.services.roles import role_bypass

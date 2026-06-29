@@ -8,6 +8,7 @@ from campus.auth.decorators import login_required
 from campus.db.connection import get_db
 from campus.services.acl import module_readable_for
 from campus.services.candidates import candidate_dict
+from campus.services.overview_stats import compute_dashboard_stats
 
 bp = Blueprint("overview", __name__)
 
@@ -35,9 +36,11 @@ def api_overview():
             stats["onboarded"] += 1
         if d.get("onboard_risk") == "高":
             stats["high_risk"] += 1
+    dashboard = compute_dashboard_stats(cands)
     return jsonify([{
         "group_id": None,
         "group_name": "全部候选人",
         "stats": stats,
+        "dashboard": dashboard,
         "candidates": cands,
     }])

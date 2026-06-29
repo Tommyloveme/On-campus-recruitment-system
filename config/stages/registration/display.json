@@ -47,5 +47,20 @@
     "graduation_time": false,
     "current_stage": false,
     "registration_source_custom": false
+  },
+  "editable": {
+    "name": true,
+    "phone": true,
+    "registration_source": true,
+    "registration_source_custom": true,
+    "registration_status": true,
+    "registration_time": true,
+    "delivery_time": false,
+    "registration_remark": true,
+    "sourcer": true,
+    "interface_person": true,
+    "education": true,
+    "school": true,
+    "major": true
   }
 }

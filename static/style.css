@@ -457,7 +457,10 @@ th.sortable:hover { color: var(--primary); }
 .chart-ctrl select { width: auto; min-width: 130px; }
 .chart-grid { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; align-items: start; }
 .chart-canvas-wrap { position: relative; height: 420px; }
-@media (max-width: 1100px) { .chart-grid { grid-template-columns: 1fr; } }
+.overview-dashboard-grid { display: grid; grid-template-columns: 1fr 1.4fr; gap: 16px; align-items: start; margin-bottom: 16px; }
+.overview-mini-table { font-size: 13px; }
+.overview-mini-table td.text-muted { color: var(--muted); font-size: 12px; }
+@media (max-width: 1100px) { .chart-grid, .overview-dashboard-grid { grid-template-columns: 1fr; } }
 
 /* ---------- 日志（总览等复用） ---------- */
 .pager { display: flex; gap: 8px; align-items: center; color: var(--muted); }

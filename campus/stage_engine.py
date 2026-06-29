@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
-"""流程阶段判定引擎；主数据导入实现见 campus.services.master_import。"""
-import fnmatch
-
-from campus.config_loader import load_stages_meta
+"""流程阶段判定引擎（实现见 campus.stage_routing）。"""
 from campus.services.master_import import (
     apply_master_rows,
     build_global_candidate_index,
@@ -13,6 +10,11 @@ from campus.services.master_import import (
     parse_excel_file,
     registration_locked_fields,
     run_dual_master_refresh as _run_dual_master_refresh,
+)
+from campus.stage_routing import (
+    compute_current_stage,
+    stage_label_map,
+    validate_stage_rules,
 )
 
 # 兼容旧 import 路径
@@ -33,48 +35,9 @@ __all__ = [
     "join_master_rows",
     "apply_master_rows",
     "registration_locked_fields",
+    "stage_label_map",
+    "validate_stage_rules",
 ]
-
-
-def _value_matches(expected, actual):
-    actual = str(actual or "").strip()
-    if expected == "*":
-        return bool(actual)
-    if "*" in expected or "?" in expected:
-        return (fnmatch.fnmatch(actual, expected)
-                or fnmatch.fnmatch(actual.lower(), expected.lower()))
-    return actual == expected
-
-
-def _rule_matches(data, rule):
-    fields = rule.get("fields") or []
-    values = rule.get("values") or []
-    if len(fields) != len(values):
-        return False
-    for fk, expected in zip(fields, values):
-        actual = data.get(fk, "")
-        if not _value_matches(expected, actual):
-            return False
-    return True
-
-
-def compute_current_stage(data, cfg=None):
-    """根据 stage_rules 计算候选人当前流程阶段。"""
-    cfg = cfg or load_master_import_config()
-    field_key = cfg.get("current_stage_field", "current_stage")
-    rules = sorted(cfg.get("stage_rules", {}).get("rules", []),
-                   key=lambda r: r.get("priority", 0), reverse=True)
-    for rule in rules:
-        if _rule_matches(data, rule):
-            stage = rule["stage"]
-            data[field_key] = stage
-            return stage
-    data[field_key] = "registration"
-    return "registration"
-
-
-def stage_label_map():
-    return {s["key"]: s.get("short_label") or s["label"] for s in load_stages_meta()}
 
 
 def run_dual_master_refresh(db, cfg, can_edit_fn, user):

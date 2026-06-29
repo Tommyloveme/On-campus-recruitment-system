@@ -1,0 +1,28 @@
+{
+  "comment": "阶段「salary」界面配置：未在 visible/editable 中列出的字段默认不可见、不可编辑",
+  "column_order": [
+    "name",
+    "phone",
+    "salary_status",
+    "expected_salary",
+    "offered_salary",
+    "salary_negotiation_time"
+  ],
+  "frozen_column_count": 2,
+  "visible": {
+    "name": true,
+    "phone": true,
+    "resume_id": false,
+    "salary_status": true,
+    "expected_salary": true,
+    "offered_salary": true,
+    "salary_negotiation_time": true
+  },
+  "editable": {
+    "salary_status": true,
+    "expected_salary": true,
+    "offered_salary": true,
+    "salary_negotiation_time": true,
+    "salary_remark": true
+  }
+}

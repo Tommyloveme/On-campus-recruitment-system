@@ -9,6 +9,7 @@ import json
 import re
 
 from campus.db.connection import get_db
+from campus.services.interviews import parse_job_roles
 from campus.settings import load_user_fields, USER_FIELDS, load_app_config
 
 CHINESE_NAME_RE = re.compile(r"^[\u4e00-\u9fff]+$")

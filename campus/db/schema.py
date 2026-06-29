@@ -270,12 +270,15 @@ def migrate(db):
         ("resume_screening", 1, 1, 1, 0),
         ("qualification", 1, 1, 1, 0),
         ("written_test", 1, 1, 1, 0),
+        ("personality_test", 1, 1, 1, 0),
+        ("qualification_interview", 1, 1, 1, 0),
         ("tech_interview", 1, 1, 1, 0),
         ("manager_interview", 1, 1, 1, 0),
         ("offer_strategy", 1, 1, 1, 0),
         ("approval", 1, 1, 1, 0),
         ("salary", 1, 1, 1, 0),
         ("offer", 1, 1, 1, 0),
+        ("contract_signing", 1, 1, 1, 0),
         ("onboarding", 1, 1, 1, 0),
         ("feedback", 1, 1, 0, 0),
     ]
@@ -301,7 +304,49 @@ def migrate(db):
     """)
     _backfill_candidate_employee_names(db)
     _ensure_feedback_module_acl(db)
+    _ensure_new_stage_module_acl(db)
     db.commit()
+
+
+def _ensure_new_stage_module_acl(db):
+    """为已有用户补齐新增流程模块权限（继承校招流程/Offer策略板块时由 ACL 继承；此处补独立授权）。"""
+    from campus.services.roles import role_bypass
+    new_modules = (
+        ("personality_test", 1, 1, 1, 0),
+        ("qualification_interview", 1, 1, 1, 0),
+        ("contract_signing", 1, 1, 1, 0),
+    )
+    now = now_str()
+    for u in db.execute("SELECT id, role FROM users").fetchall():
+        if u["role"] == "admin" or role_bypass(u["role"]):
+            continue
+        for k, v, r, w, m in new_modules:
+            exists = db.execute(
+                "SELECT id FROM module_acl WHERE subject_type='user' AND subject_id=? AND module_key=?",
+                (u["id"], k),
+            ).fetchone()
+            if exists:
+                continue
+            inherit = db.execute(
+                "SELECT perm_visibility, perm_read, perm_write, perm_manage FROM module_acl "
+                "WHERE subject_type='user' AND subject_id=? AND module_key IN ('recruit_flow','offer_strategy')",
+                (u["id"],),
+            ).fetchall()
+            if inherit:
+                iv, ir, iw, im = inherit[0]
+                db.execute(
+                    "INSERT INTO module_acl (subject_type, subject_id, module_key, "
+                    "perm_visibility, perm_read, perm_write, perm_manage, created_at) "
+                    "VALUES ('user', ?, ?, ?, ?, ?, ?, ?)",
+                    (u["id"], k, iv or v, ir or r, iw or w, im or m, now),
+                )
+            else:
+                db.execute(
+                    "INSERT INTO module_acl (subject_type, subject_id, module_key, "
+                    "perm_visibility, perm_read, perm_write, perm_manage, created_at) "
+                    "VALUES ('user', ?, ?, ?, ?, ?, ?, ?)",
+                    (u["id"], k, v, r, w, m, now),
+                )
 
 
 def _ensure_feedback_module_acl(db):

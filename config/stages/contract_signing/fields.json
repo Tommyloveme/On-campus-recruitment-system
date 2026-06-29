@@ -1,0 +1,34 @@
+{
+  "comment": "候选人签约情况阶段字段配置",
+  "fields": [
+    {
+      "key": "contract_signing_status",
+      "label": "签约状态",
+      "excel_column": "签约情况状态",
+      "type": "select",
+      "options": ["待签约", "签约中", "已签约", "放弃签约"],
+      "colors": { "待签约": "gray", "签约中": "blue", "已签约": "green", "放弃签约": "red" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "contract_signing_time",
+      "label": "签约时间",
+      "excel_column": "签约时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "contract_signing_remark",
+      "label": "签约备注",
+      "excel_column": "签约备注",
+      "type": "textarea",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    }
+  ]
+}

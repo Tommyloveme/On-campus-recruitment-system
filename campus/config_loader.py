@@ -114,6 +114,27 @@ def _apply_registration_hidden_fields(fields, display=None):
     return fields
 
 
+def _apply_display_policy(fields, display, stage_key):
+    """按 display.json 的 visible/editable 白名单覆盖；未列出默认不可见、不可编辑。"""
+    visible_map = display.get("visible")
+    editable_map = display.get("editable")
+    has_policy = visible_map is not None or editable_map is not None
+    if not has_policy and not display:
+        for field in fields:
+            field["visible"] = False
+            field["editable"] = False
+        return fields
+    for field in fields:
+        k = field["key"]
+        if visible_map is not None:
+            field["visible"] = bool(visible_map.get(k, False))
+        if editable_map is not None:
+            field["editable"] = bool(editable_map.get(k, False))
+        elif visible_map is not None:
+            field["editable"] = False
+    return fields
+
+
 def load_stage_fields(stage_key, group_id=None):
     """加载某阶段的完整字段列表 = 公共字段 + 阶段字段，并应用分组 visible 覆盖。"""
     validate_stage(stage_key)
@@ -128,10 +149,7 @@ def load_stage_fields(stage_key, group_id=None):
                 f["editable"] = False
 
     display = _load_stage_display_overrides(stage_key)
-    visible_map = display.get("visible")
-    if visible_map is not None:
-        for field in fields:
-            field["visible"] = bool(visible_map.get(field["key"], False))
+    fields = _apply_display_policy(fields, display, stage_key)
 
     if group_id:
         path = group_config_path(stage_key, group_id)
@@ -141,7 +159,11 @@ def load_stage_fields(stage_key, group_id=None):
             for field in fields:
                 if field["key"] in visible_map:
                     field["visible"] = bool(visible_map[field["key"]])
+
     fields = _apply_master_import_field_rules(fields)
+    # 主数据映射可能注入新字段，再次应用 display 白名单
+    fields = _apply_display_policy(fields, display, stage_key)
+
     if stage_key == "registration":
         fields = _apply_registration_hidden_fields(fields, display)
     return fields
@@ -173,8 +195,8 @@ def _apply_master_import_field_rules(fields):
             "key": key,
             "label": ui,
             "type": "text",
-            "visible": True,
-            "editable": True,
+            "visible": False,
+            "editable": False,
             "importable": False,
         })
     return fields

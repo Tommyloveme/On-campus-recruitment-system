@@ -146,11 +146,13 @@ function updateSidebarActive(tab) {
 }
 
 function switchTab(tab) {
-  // 模块级权限拦截：不可见/不可读的模块不允许切换
-  if (!moduleVisible(tab) || !moduleReadable(tab)) {
+  // 模块级权限拦截：不可见/不可读的模块不允许切换（问题反馈全员可读）
+  const fbOpen = tab === "feedback" && state.me;
+  if (!fbOpen && (!moduleVisible(tab) || !moduleReadable(tab))) {
     const fallback = firstVisibleTab();
     if (fallback && fallback !== tab) return switchTab(fallback);
-    $("#main-content").innerHTML = `<div class="empty-state">无可用模块，请联系管理员开通权限。</div>`;
+    const mainEl = $("#main");
+    if (mainEl) mainEl.innerHTML = `<div class="empty-state">无可用模块，请联系管理员开通权限。</div>`;
     return;
   }
   state.tab = tab;

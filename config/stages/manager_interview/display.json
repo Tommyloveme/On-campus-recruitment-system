@@ -1,0 +1,33 @@
+{
+  "comment": "阶段「manager_interview」界面配置：未在 visible/editable 中列出的字段默认不可见、不可编辑",
+  "column_order": [
+    "name",
+    "phone",
+    "interview_position",
+    "manager_interview_book_time",
+    "manager_interview_time",
+    "manager_interviewer",
+    "manager_interview_status",
+    "manager_interview_result"
+  ],
+  "frozen_column_count": 2,
+  "visible": {
+    "name": true,
+    "phone": true,
+    "resume_id": false,
+    "interview_position": true,
+    "manager_interview_book_time": true,
+    "manager_interview_time": true,
+    "manager_interviewer": true,
+    "manager_interview_status": true,
+    "manager_interview_result": true
+  },
+  "editable": {
+    "interview_position": true,
+    "manager_interview_book_time": true,
+    "manager_interview_time": true,
+    "manager_interviewer": true,
+    "manager_interview_status": true,
+    "manager_interview_result": true
+  }
+}

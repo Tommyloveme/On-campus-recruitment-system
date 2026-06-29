@@ -14,5 +14,7 @@ echo "[2/3] 安装依赖..."
 venv/bin/python -m pip install -q -r requirements.txt
 
 echo "[3/3] 启动服务（首次运行会创建默认管理员 admin / admin123）..."
+# 若端口已被旧实例占用，先停止再启动
+venv/bin/python scripts/manage.py stop >/dev/null 2>&1 || true
 # 如需写入示例数据，运行: ./start.sh --demo
 exec venv/bin/python app.py "$@"

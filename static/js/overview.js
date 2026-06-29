@@ -4,9 +4,12 @@
 async function renderOverview() {
   $("#main").innerHTML = `<div class="empty">加载中…</div>`;
   const groups = await api("/api/overview");
-  const grp = groups[0] || { stats: {}, candidates: [] };
+  const grp = groups[0] || { stats: {}, candidates: [], dashboard: {} };
   const fields = visibleFields("onboarding").slice(0, 8);
   const totals = grp.stats || {};
+  const dash = grp.dashboard || {};
+  const stageCounts = dash.stage_counts || [];
+  const passRates = dash.pass_rates || [];
 
   const summary = `
     <div class="card">
@@ -17,6 +20,48 @@ async function renderOverview() {
         <div class="stat"><b>${totals.onboarded || 0}</b>已入职</div>
         <div class="stat"><b style="color:#dc2626">${totals.high_risk || 0}</b>高风险</div>
       </div>
+    </div>`;
+
+  const stageCountRows = stageCounts.map(s => `
+    <tr>
+      <td>${esc(s.label)}</td>
+      <td><span class="badge badge-blue">${s.count}</span></td>
+    </tr>`).join("");
+
+  const stageCountSection = `
+    <div class="card">
+      <div class="group-title">各流程当前人数</div>
+      ${stageCounts.length ? `
+      <div class="table-wrap">
+        <table class="overview-mini-table">
+          <thead><tr><th>流程</th><th>人数</th></tr></thead>
+          <tbody>${stageCountRows}</tbody>
+        </table>
+      </div>` : `<div class="empty">暂无数据</div>`}
+    </div>`;
+
+  const passRateRows = passRates.map(p => {
+    const rateText = p.rate_pct != null ? `${p.rate_pct}%` : "—";
+    const sub = `参与 ${p.entered} · 通过 ${p.passed} · 未通过 ${p.failed}${p.pending ? ` · 进行中 ${p.pending}` : ""}`;
+    return `
+    <tr>
+      <td>${esc(p.label)}</td>
+      <td><strong>${rateText}</strong></td>
+      <td class="text-muted">${esc(sub)}</td>
+    </tr>`;
+  }).join("");
+
+  const passRateSection = `
+    <div class="card">
+      <div class="group-title">各流程通过率</div>
+      <p class="field-hint-inline" style="margin:0 0 12px">通过率 = 已通过 ÷（已通过 + 未通过），不含进行中/未开始</p>
+      ${passRates.length ? `
+      <div class="table-wrap">
+        <table class="overview-mini-table">
+          <thead><tr><th>流程</th><th>通过率</th><th>明细</th></tr></thead>
+          <tbody>${passRateRows}</tbody>
+        </table>
+      </div>` : `<div class="empty">暂无数据</div>`}
     </div>`;
 
   const rows = (grp.candidates || []).map(c => `
@@ -42,5 +87,7 @@ async function renderOverview() {
       </div>` : `<div class="empty">暂无候选人</div>`}
     </div>`;
 
-  $("#main").innerHTML = summary + section;
+  $("#main").innerHTML = summary
+    + `<div class="overview-dashboard-grid">${stageCountSection}${passRateSection}</div>`
+    + section;
 }

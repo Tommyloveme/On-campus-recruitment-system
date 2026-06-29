@@ -1,0 +1,25 @@
+{
+  "comment": "阶段「qualification」界面配置：未在 visible/editable 中列出的字段默认不可见、不可编辑",
+  "column_order": [
+    "name",
+    "phone",
+    "qualification_status",
+    "qualification_reviewer",
+    "qualification_time"
+  ],
+  "frozen_column_count": 2,
+  "visible": {
+    "name": true,
+    "phone": true,
+    "resume_id": false,
+    "qualification_status": true,
+    "qualification_reviewer": true,
+    "qualification_time": true
+  },
+  "editable": {
+    "qualification_status": true,
+    "qualification_reviewer": true,
+    "qualification_time": true,
+    "qualification_remark": true
+  }
+}

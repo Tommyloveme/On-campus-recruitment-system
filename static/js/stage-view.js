@@ -1019,6 +1019,11 @@ async function postCandidateCreate(data, stageKey) {
   return body;
 }
 
+function stageEditFields(stageKey) {
+  if (stageKey === "registration") return registrationEditFields(stageKey);
+  return visibleFields(stageKey);
+}
+
 function openCandidateModal(cand, stageKey) {
   const isNew = !cand;
   const isRegCreate = isNew && stageKey === "registration";
@@ -1027,7 +1032,7 @@ function openCandidateModal(cand, stageKey) {
       ...f,
       required: f.required || !REGISTRATION_CREATE_OPTIONAL.has(f.key),
     }))
-    : (stageKey === "registration" ? registrationEditFields(stageKey) : visibleFields(stageKey).filter(f => f.editable));
+    : stageEditFields(stageKey);
   const meta = state.stages.find(s => s.key === stageKey);
   const lockedFields = new Set(cand?.data?._master_locked_fields || []);
 

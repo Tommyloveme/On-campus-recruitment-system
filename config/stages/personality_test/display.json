@@ -1,0 +1,30 @@
+{
+  "comment": "阶段「personality_test」界面配置：未在 visible/editable 中列出的字段默认不可见、不可编辑",
+  "column_order": [
+    "name",
+    "phone",
+    "personality_test_book_time",
+    "personality_test_time",
+    "personality_test_status",
+    "personality_test_result",
+    "personality_test_remark"
+  ],
+  "frozen_column_count": 2,
+  "visible": {
+    "name": true,
+    "phone": true,
+    "resume_id": false,
+    "personality_test_book_time": true,
+    "personality_test_time": true,
+    "personality_test_status": true,
+    "personality_test_result": true,
+    "personality_test_remark": true
+  },
+  "editable": {
+    "personality_test_book_time": true,
+    "personality_test_time": true,
+    "personality_test_status": true,
+    "personality_test_result": true,
+    "personality_test_remark": true
+  }
+}

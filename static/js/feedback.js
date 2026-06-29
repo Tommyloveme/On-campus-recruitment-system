@@ -141,11 +141,15 @@ function filteredFeedbackItems() {
   });
 }
 
+function fbIsAdmin() {
+  return fbState.isAdmin || (typeof isAdmin === "function" && isAdmin());
+}
+
 function renderFeedbackRows() {
   const tbody = $("#fb-tbody");
   if (!tbody) return;
   const list = filteredFeedbackItems();
-  const admin = fbState.isAdmin;
+  const admin = fbIsAdmin();
   if (!list.length) {
     tbody.innerHTML = `<tr><td colspan="${admin ? 8 : 7}" class="empty">没有符合条件的反馈</td></tr>`;
     return;
@@ -172,7 +176,9 @@ function renderFeedbackRows() {
           : `<span class="badge badge-gray">待处理</span>`}</td>
         <td class="fb-col-reply">${replyPreview}</td>
         <td>
-          <button type="button" class="btn btn-sm" data-fb-view="${item.id}">详情</button>
+          ${admin
+            ? `<button type="button" class="btn btn-sm btn-primary" data-fb-view="${item.id}">处理</button>`
+            : `<button type="button" class="btn btn-sm" data-fb-view="${item.id}">查看</button>`}
           ${canDel ? `<button type="button" class="btn btn-sm iv-action-muted" data-fb-del="${item.id}">删除</button>` : ""}
         </td>
       </tr>`;
@@ -216,8 +222,8 @@ function confirmDeleteFeedback(id) {
 }
 
 function openFeedbackDetailModal(item) {
-  const admin = fbState.isAdmin;
-  openModal(item.title, `
+  const admin = fbIsAdmin();
+  openModal(admin ? `处理反馈 · ${item.title}` : item.title, `
     <div class="fb-detail-meta">
       <span>提出人：<b>${esc(item.display_name)}</b>（${esc(item.username)}）</span>
       <span class="muted">${esc(item.created_at)}</span>
@@ -266,7 +272,7 @@ async function loadFeedbackTable() {
   try {
     const r = await api("/api/feedback?all=1&sort=created_at&order=desc");
     fbState.items = r.items || [];
-    fbState.isAdmin = !!r.is_admin;
+    fbState.isAdmin = !!r.is_admin || (typeof isAdmin === "function" && isAdmin());
     renderFeedbackRows();
     const countEl = $("#fb-count");
     if (countEl) countEl.textContent = `${filteredFeedbackItems().length} / ${fbState.items.length} 条`;
@@ -276,16 +282,19 @@ async function loadFeedbackTable() {
 }
 
 async function renderFeedback() {
-  if (!moduleReadable("feedback")) {
-    $("#main").innerHTML = `<div class="empty-state">无问题反馈模块访问权限。</div>`;
+  if (!state.me) {
+    $("#main").innerHTML = `<div class="empty-state">请先登录。</div>`;
     return;
   }
+  const admin = typeof isAdmin === "function" && isAdmin();
   $("#main").innerHTML = `
     <div class="card fb-card">
       <div class="fb-head">
         <div>
           <div class="section-title">问题反馈</div>
-          <p class="fb-sub">查看全体反馈及处理回复；管理员可设优先级、回复与删除。</p>
+          <p class="fb-sub">${admin
+    ? "查看全体反馈；可设置优先级、填写回复、删除记录。"
+    : "查看全体反馈及管理员回复；可提交新问题或查看自己提交的内容。"}</p>
         </div>
         <div class="fb-toolbar">
           <span id="fb-count" class="muted" style="font-size:13px"></span>
@@ -339,6 +348,6 @@ async function renderFeedback() {
 }
 
 $("#feedback-btn")?.addEventListener("click", () => {
-  if (moduleReadable("feedback")) switchTab("feedback");
+  if (state.me) switchTab("feedback");
   else openFeedbackModal();
 });

@@ -1,0 +1,34 @@
+{
+  "comment": "阶段「tech_interview」界面配置：未在 visible/editable 中列出的字段默认不可见、不可编辑",
+  "column_order": [
+    "name",
+    "phone",
+    "interview_position",
+    "tech_interview_book_time",
+    "tech_interview_time",
+    "tech_interviewer",
+    "tech_interview_status",
+    "tech_interview_result"
+  ],
+  "frozen_column_count": 2,
+  "visible": {
+    "name": true,
+    "phone": true,
+    "resume_id": false,
+    "interview_position": true,
+    "tech_interview_book_time": true,
+    "tech_interview_time": true,
+    "tech_interviewer": true,
+    "tech_interview_status": true,
+    "tech_interview_result": true
+  },
+  "editable": {
+    "interview_position": true,
+    "tech_interview_book_time": true,
+    "tech_interview_time": true,
+    "tech_interviewer": true,
+    "tech_interview_status": true,
+    "tech_interview_result": true,
+    "tech_interview_score": true
+  }
+}

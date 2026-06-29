@@ -1,0 +1,25 @@
+{
+  "comment": "阶段「approval」界面配置：未在 visible/editable 中列出的字段默认不可见、不可编辑",
+  "column_order": [
+    "name",
+    "phone",
+    "approval_status",
+    "approval_submit_time",
+    "approval_pass_time"
+  ],
+  "frozen_column_count": 2,
+  "visible": {
+    "name": true,
+    "phone": true,
+    "resume_id": false,
+    "approval_status": true,
+    "approval_submit_time": true,
+    "approval_pass_time": true
+  },
+  "editable": {
+    "approval_status": true,
+    "approval_submit_time": true,
+    "approval_pass_time": true,
+    "approval_remark": true
+  }
+}

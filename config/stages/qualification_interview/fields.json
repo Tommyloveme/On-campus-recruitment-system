@@ -1,0 +1,63 @@
+{
+  "comment": "候选人资格面试阶段字段配置",
+  "fields": [
+    {
+      "key": "qualification_interview_book_time",
+      "label": "资格面试预约时间",
+      "excel_column": "资格面试预约时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "qualification_interview_time",
+      "label": "资格面试时间",
+      "excel_column": "资格面试时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "qualification_interviewer",
+      "label": "资格面试官",
+      "excel_column": "资格面试官",
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "qualification_interview_status",
+      "label": "资格面试状态",
+      "excel_column": "资格面试状态",
+      "type": "select",
+      "options": ["待预约", "已预约", "已完成", "放弃"],
+      "colors": { "待预约": "gray", "已预约": "blue", "已完成": "green", "放弃": "yellow" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "qualification_interview_result",
+      "label": "资格面试结果",
+      "excel_column": "资格面试结果",
+      "type": "select",
+      "options": ["通过", "不通过", "待定"],
+      "colors": { "通过": "green", "不通过": "red", "待定": "yellow" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "qualification_interview_remark",
+      "label": "资格面试备注",
+      "excel_column": "资格面试备注",
+      "type": "textarea",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    }
+  ]
+}

@@ -90,6 +90,8 @@ MODULE_REGISTRY = [
         {"key": "resume_screening", "label": "简历筛选", "type": "item", "parent_key": "recruit_flow"},
         {"key": "qualification", "label": "资格审查", "type": "item", "parent_key": "recruit_flow"},
         {"key": "written_test", "label": "笔试", "type": "item", "parent_key": "recruit_flow"},
+        {"key": "personality_test", "label": "性格测评", "type": "item", "parent_key": "recruit_flow"},
+        {"key": "qualification_interview", "label": "资格面试", "type": "item", "parent_key": "recruit_flow"},
         {"key": "tech_interview", "label": "技术面", "type": "item", "parent_key": "recruit_flow"},
         {"key": "manager_interview", "label": "主管面", "type": "item", "parent_key": "recruit_flow"},
     ]},
@@ -97,6 +99,7 @@ MODULE_REGISTRY = [
         {"key": "approval", "label": "报批", "type": "item", "parent_key": "offer_strategy"},
         {"key": "salary", "label": "谈薪", "type": "item", "parent_key": "offer_strategy"},
         {"key": "offer", "label": "Offer管理", "type": "item", "parent_key": "offer_strategy"},
+        {"key": "contract_signing", "label": "签约情况", "type": "item", "parent_key": "offer_strategy"},
     ]},
     {"key": "onboarding", "label": "入职管理", "type": "item", "parent_key": None},
     {"key": "feedback", "label": "问题反馈", "type": "item", "parent_key": None},
@@ -197,12 +200,17 @@ def module_acl_row_dict(r):
 def module_visible_for(user, module_key):
     if user is None:
         return False
+    # 问题反馈：全员可见（登录即可在侧栏进入）
+    if module_key == "feedback":
+        return True
     return bool(effective_module_perms(get_db(), user, module_key)["visibility"])
 
 
 def module_readable_for(user, module_key):
     if user is None:
         return False
+    if module_key == "feedback":
+        return True
     return bool(effective_module_perms(get_db(), user, module_key)["read"])
 
 
@@ -229,8 +237,8 @@ def module_registry_payload(user=None):
         if user is not None:
             eff = effective_module_perms(db, user, entry["key"])
             e["effective"] = eff
-            e["visible"] = bool(eff["visibility"])
-            e["readable"] = bool(eff["read"])
+            e["visible"] = module_visible_for(user, entry["key"])
+            e["readable"] = module_readable_for(user, entry["key"])
             e["writable"] = bool(eff["write"])
         if "items" in entry:
             e["items"] = []
@@ -239,8 +247,8 @@ def module_registry_payload(user=None):
                 if user is not None:
                     eff = effective_module_perms(db, user, child["key"])
                     ci["effective"] = eff
-                    ci["visible"] = bool(eff["visibility"])
-                    ci["readable"] = bool(eff["read"])
+                    ci["visible"] = module_visible_for(user, child["key"])
+                    ci["readable"] = module_readable_for(user, child["key"])
                     ci["writable"] = bool(eff["write"])
                 e["items"].append(ci)
         out.append(e)

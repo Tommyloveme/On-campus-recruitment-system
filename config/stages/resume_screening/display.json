@@ -1,0 +1,25 @@
+{
+  "comment": "阶段「resume_screening」界面配置：未在 visible/editable 中列出的字段默认不可见、不可编辑",
+  "column_order": [
+    "name",
+    "phone",
+    "resume_screening_status",
+    "resume_screening_reviewer",
+    "resume_screening_time"
+  ],
+  "frozen_column_count": 2,
+  "visible": {
+    "name": true,
+    "phone": true,
+    "resume_id": false,
+    "resume_screening_status": true,
+    "resume_screening_reviewer": true,
+    "resume_screening_time": true
+  },
+  "editable": {
+    "resume_screening_status": true,
+    "resume_screening_reviewer": true,
+    "resume_screening_time": true,
+    "resume_screening_remark": true
+  }
+}

@@ -43,6 +43,18 @@
           "w": 1,
           "m": 0
         },
+        "personality_test": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "qualification_interview": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
         "tech_interview": {
           "v": 1,
           "r": 1,
@@ -79,10 +91,22 @@
           "w": 1,
           "m": 0
         },
+        "contract_signing": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
         "onboarding": {
           "v": 1,
           "r": 1,
           "w": 1,
+          "m": 0
+        },
+        "feedback": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
           "m": 0
         }
       }
@@ -117,6 +141,12 @@
           "m": 0
         },
         "written_test": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "feedback": {
           "v": 1,
           "r": 1,
           "w": 0,
@@ -170,7 +200,19 @@
           "w": 1,
           "m": 0
         },
+        "contract_signing": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
         "onboarding": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "feedback": {
           "v": 1,
           "r": 1,
           "w": 0,

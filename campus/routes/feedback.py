@@ -7,9 +7,9 @@ import uuid
 from flask import Blueprint, g, jsonify, request, send_file
 
 from campus.auth.decorators import login_required
+from campus.auth.permissions import is_admin
 from campus.db.connection import get_db, now_str
 from campus.logging_util import log, who
-from campus.services.acl import is_admin
 from campus.settings import FEEDBACK_DIR
 
 bp = Blueprint("feedback", __name__)

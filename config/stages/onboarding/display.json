@@ -1,0 +1,45 @@
+{
+  "comment": "阶段「onboarding」界面配置：未在 visible/editable 中列出的字段默认不可见、不可编辑",
+  "column_order": [
+    "name",
+    "phone",
+    "dept_level3",
+    "sign_status",
+    "expected_onboard_time",
+    "physical_exam_time",
+    "physical_exam_done",
+    "onboard_booked",
+    "onboard_booked_time",
+    "onboarded",
+    "onboard_risk",
+    "progress"
+  ],
+  "frozen_column_count": 2,
+  "visible": {
+    "name": true,
+    "phone": true,
+    "resume_id": false,
+    "dept_level3": true,
+    "sign_status": true,
+    "expected_onboard_time": true,
+    "physical_exam_time": true,
+    "physical_exam_done": true,
+    "onboard_booked": true,
+    "onboard_booked_time": true,
+    "onboarded": true,
+    "onboard_risk": true,
+    "progress": true
+  },
+  "editable": {
+    "dept_level3": true,
+    "sign_status": true,
+    "expected_onboard_time": true,
+    "physical_exam_time": true,
+    "physical_exam_done": true,
+    "onboard_booked": true,
+    "onboard_booked_time": true,
+    "onboarded": true,
+    "onboard_risk": true,
+    "progress": true
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "comment": "候选人性格测评阶段字段配置",
+  "fields": [
+    {
+      "key": "personality_test_book_time",
+      "label": "测评预约时间",
+      "excel_column": "测评预约时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "personality_test_time",
+      "label": "测评完成时间",
+      "excel_column": "测评完成时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "personality_test_status",
+      "label": "性格测评状态",
+      "excel_column": "性格测评状态",
+      "type": "select",
+      "options": ["待测评", "已预约", "已完成", "放弃"],
+      "colors": { "待测评": "gray", "已预约": "blue", "已完成": "green", "放弃": "yellow" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "personality_test_result",
+      "label": "测评结果",
+      "excel_column": "测评结果",
+      "type": "select",
+      "options": ["通过", "不通过", "待定"],
+      "colors": { "通过": "green", "不通过": "red", "待定": "yellow" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "personality_test_remark",
+      "label": "测评备注",
+      "excel_column": "测评备注",
+      "type": "textarea",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    }
+  ]
+}
