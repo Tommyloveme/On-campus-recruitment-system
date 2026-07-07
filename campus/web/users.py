@@ -148,7 +148,8 @@ def api_user_create():
     # 新建用户默认应用角色权限模板（除非显式关闭）
     if b.get("apply_role", True):
         apply_role_to_user(db, uid, role)
-    add_log(g.user, "user", f"{g.user['display_name']} 创建了用户「{fields['builtin'].get('display_name')}」（角色：{role_label(role)}）")
+    add_log(g.user, "user", f"{g.user['display_name']} 创建了用户「{fields['builtin'].get('display_name')}」（角色：{role_label(role)}）",
+            module="permissions")
     db.commit()
     return jsonify({"ok": True, "id": uid})
 
@@ -184,7 +185,8 @@ def api_user_update(uid):
     # 显式要求重新应用角色权限（覆盖该用户模块权限）
     if b.get("apply_role"):
         apply_role_to_user(db, uid, role)
-    add_log(g.user, "user", f"{g.user['display_name']} 更新了用户「{user['display_name']}」的信息")
+    add_log(g.user, "user", f"{g.user['display_name']} 更新了用户「{user['display_name']}」的信息",
+            module="permissions")
     db.commit()
     return jsonify({"ok": True})
 
@@ -199,7 +201,8 @@ def api_user_apply_role(uid):
         return jsonify({"error": "用户不存在"}), 404
     cnt = apply_role_to_user(db, uid, user["role"])
     add_log(g.user, "permission",
-            f"{g.user['display_name']} 对用户「{user['display_name']}」应用了角色「{role_label(user['role'])}」权限（{cnt} 项）")
+            f"{g.user['display_name']} 对用户「{user['display_name']}」应用了角色「{role_label(user['role'])}」权限（{cnt} 项）",
+            module="permissions")
     db.commit()
     return jsonify({"ok": True, "applied": cnt})
 
@@ -220,7 +223,8 @@ def api_users_apply_role_batch():
             continue
         total += apply_role_to_user(db, int(uid), user["role"])
     add_log(g.user, "permission",
-            f"{g.user['display_name']} 批量应用角色权限到 {len(ids)} 个用户（共 {total} 项）")
+            f"{g.user['display_name']} 批量应用角色权限到 {len(ids)} 个用户（共 {total} 项）",
+            module="permissions")
     db.commit()
     return jsonify({"ok": True, "applied": total})
 
@@ -257,7 +261,7 @@ def api_users_batch_update():
             continue
         persist_user_columns(db, int(uid), fields, row["role"])
         updated += 1
-    add_log(g.user, "user", f"{g.user['display_name']} 批量修改了 {updated} 个用户资料")
+    add_log(g.user, "user", f"{g.user['display_name']} 批量修改了 {updated} 个用户资料", module="permissions")
     db.commit()
     return jsonify({"ok": True, "updated": updated})
 
@@ -273,6 +277,6 @@ def api_user_delete(uid):
         return jsonify({"error": "用户不存在"}), 404
     db.execute("DELETE FROM module_acl WHERE subject_type='user' AND subject_id=?", (uid,))
     db.execute("DELETE FROM users WHERE id=?", (uid,))
-    add_log(g.user, "user", f"{g.user['display_name']} 删除了用户「{user['display_name']}」")
+    add_log(g.user, "user", f"{g.user['display_name']} 删除了用户「{user['display_name']}」", module="permissions")
     db.commit()
     return jsonify({"ok": True})

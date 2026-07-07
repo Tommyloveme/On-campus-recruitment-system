@@ -24,7 +24,7 @@ def api_backups():
 @admin_required
 def api_backup_create():
     name = take_backup(manual=True)
-    add_log(g.user, "backup", f"{g.user['display_name']} 手动创建了数据备份（{name}）")
+    add_log(g.user, "backup", f"{g.user['display_name']} 手动创建了数据备份（{name}）", module="backups")
     get_db().commit()
     log.info("手动备份 %s file=%s", who(g.user), name)
     return jsonify({"ok": True, "name": name})
@@ -41,7 +41,8 @@ def api_backup_restore():
 
     safety = restore_backup(name)
 
-    add_log(g.user, "backup", f"{g.user['display_name']} 将数据恢复至备份「{name}」（恢复前状态已自动保存为 {safety}）")
+    add_log(g.user, "backup", f"{g.user['display_name']} 将数据恢复至备份「{name}」（恢复前状态已自动保存为 {safety}）",
+            module="backups")
     get_db().commit()
     log.info("恢复备份 %s target=%s safety=%s", who(g.user), name, safety)
     return jsonify({"ok": True, "restored": name, "safety_backup": safety})

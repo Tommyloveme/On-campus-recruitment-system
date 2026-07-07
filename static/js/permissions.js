@@ -48,10 +48,9 @@ async function renderPermissions() {
   $("#main").innerHTML = `
     <div class="card perm-card">
       <div class="perm-head">
-        <div>
-          <div class="section-title">权限管理 · 用户与模块权限矩阵</div>
-          <p class="perm-sub">唯一性由工号决定，其余为附属信息（见 <code>config/user_fields.json</code>）。
-            勾选即保存；每列表头支持模糊搜索/筛选；多选用户后可批量填充某模块的 V/R/W/M。</p>
+        <div class="iv-subnav" style="margin:0">
+          <button class="btn btn-sm iv-view-btn active" data-perm-view="main">权限矩阵</button>
+          <button class="btn btn-sm iv-view-btn" data-perm-view="logs">日志</button>
         </div>
         <div class="perm-head-actions">
           <button class="btn btn-primary btn-sm" id="perm-add-user">+ 新增用户</button>
@@ -59,6 +58,8 @@ async function renderPermissions() {
           <button class="btn btn-sm" id="perm-export">导出矩阵</button>
         </div>
       </div>
+      <div id="perm-view-logs" class="hidden"></div>
+      <div id="perm-view-main">
 
       <div id="perm-field-config" class="perm-embed perm-embed-top"></div>
 
@@ -81,8 +82,7 @@ async function renderPermissions() {
       </div>
 
       <div id="perm-roles" class="perm-embed">
-        <div class="perm-embed-title">角色管理 <span class="muted" style="font-weight:400;font-size:12px">（角色=权限模板，应用角色时写入对应用户的模块权限）</span></div>
-        <div class="perm-embed-sub">默认角色配置承载于 <code>config/roles.json</code>；勾选即保存。在用户新增/编辑弹窗中选择角色并勾选「应用角色权限」即可把模板写入该用户。</div>
+        <div class="perm-embed-title">角色管理 <span class="muted" style="font-weight:400;font-size:12px">（角色=权限模板，应用后写入用户模块权限）</span></div>
         <div class="perm-head-actions" style="margin-bottom:10px">
           <button class="btn btn-primary btn-sm" id="role-add">+ 新增角色</button>
         </div>
@@ -103,7 +103,18 @@ async function renderPermissions() {
           <div class="perm-grid-right-wrap"><table id="role-grid-right" class="perm-grid perm-grid-right"></table></div>
         </div>
       </div>
+      </div>
     </div>`;
+
+  let permLogsInit = false;
+  document.querySelectorAll("[data-perm-view]").forEach(btn =>
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("[data-perm-view]").forEach(b => b.classList.toggle("active", b === btn));
+      const logs = btn.dataset.permView === "logs";
+      $("#perm-view-main").classList.toggle("hidden", logs);
+      $("#perm-view-logs").classList.toggle("hidden", !logs);
+      if (logs && !permLogsInit) { permLogsInit = true; renderLogPanel($("#perm-view-logs"), { module: "permissions" }); }
+    }));
 
   $("#perm-add-user").addEventListener("click", () => openUserModal(null));
   $("#perm-batch-edit").addEventListener("click", openBatchEditModal);

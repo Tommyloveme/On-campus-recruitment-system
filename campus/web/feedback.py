@@ -9,6 +9,7 @@ from campus.core.logging_util import log, who
 from campus.core.settings import FEEDBACK_DIR
 from campus.db.connection import get_db
 from campus.services.acl import is_admin
+from campus.services.audit import add_log
 from campus.services.feedback import (
     PRIORITY_LABELS,
     create_feedback,
@@ -58,6 +59,7 @@ def api_feedback_create():
         return jsonify({"error": "反馈内容不能为空"}), 400
     db = get_db()
     fid = create_feedback(db, g.user, title, content)
+    add_log(g.user, "create", f"{g.user['display_name']} 提交了问题反馈「{title}」", module="feedback")
     db.commit()
     log.info("问题反馈 %s id=%d title=%s", who(g.user), fid, title)
     return jsonify({"ok": True, "id": fid})
@@ -66,18 +68,35 @@ def api_feedback_create():
 @bp.patch("/api/feedback/<int:fid>")
 @login_required
 def api_feedback_update(fid):
-    if not is_admin(g.user):
-        return jsonify({"error": "仅系统管理员可设置优先级或回复"}), 403
     body = request.get_json(force=True) or {}
     db = get_db()
-    if not get_feedback(db, fid):
+    row = get_feedback(db, fid)
+    if not row:
         return jsonify({"error": "反馈不存在"}), 404
 
-    priority = (body.get("priority") or "").strip() if "priority" in body else None
-    reply_html = sanitize_html(body.get("reply_html")) if "reply_html" in body else None
-    err = update_feedback(db, fid, g.user, priority=priority, reply_html=reply_html)
+    admin = is_admin(g.user)
+    is_owner = row["user_id"] == g.user["id"]
+    wants_admin = "priority" in body or "reply_html" in body
+    wants_content = "title" in body or "content_html" in body
+    if wants_admin and not admin:
+        return jsonify({"error": "仅系统管理员可设置优先级或回复"}), 403
+    if wants_content and not (admin or is_owner):
+        return jsonify({"error": "仅提出人可编辑反馈内容"}), 403
+
+    err = update_feedback(
+        db, fid, g.user,
+        priority=(body.get("priority") or "").strip() if "priority" in body else None,
+        reply_html=sanitize_html(body.get("reply_html")) if "reply_html" in body else None,
+        title=body.get("title") if "title" in body else None,
+        content_html=sanitize_html(body.get("content_html")) if "content_html" in body else None,
+    )
     if err:
         return jsonify({"error": err}), 400
+    if wants_content and not wants_admin:
+        add_log(g.user, "update", f"{g.user['display_name']} 编辑了问题反馈「{body.get('title') or row['title']}」",
+                module="feedback")
+    elif "reply_html" in body:
+        add_log(g.user, "update", f"{g.user['display_name']} 回复了问题反馈「{row['title']}」", module="feedback")
     db.commit()
     return jsonify({"ok": True})
 
@@ -92,6 +111,7 @@ def api_feedback_delete(fid):
     if not is_admin(g.user) and row["user_id"] != g.user["id"]:
         return jsonify({"error": "无权限删除该反馈"}), 403
     delete_feedback(db, fid)
+    add_log(g.user, "delete", f"{g.user['display_name']} 删除了问题反馈「{row['title']}」", module="feedback")
     db.commit()
     log.info("删除问题反馈 %s id=%d", who(g.user), fid)
     return jsonify({"ok": True})

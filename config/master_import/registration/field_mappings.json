@@ -2,7 +2,7 @@
   "comment": "主数据导入字段映射。sources 配置各 Excel 的文件名模式与工作表；ui_label 为空则网页不可见；lock_on_import 为 true 导入后不可编辑。未配置的 Excel 列按表头拼音自动入库。",
   "sources": {
     "application": {
-      "file_pattern": "Application*.xlsx",
+      "file_pattern": "application*.xlsx",
       "sheet_name": "Sheet",
       "sheet_index": 0,
       "label": "Application 主表",

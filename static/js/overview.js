@@ -53,8 +53,7 @@ async function renderOverview() {
 
   const passRateSection = `
     <div class="card">
-      <div class="group-title">各流程通过率</div>
-      <p class="field-hint-inline" style="margin:0 0 12px">通过率 = 已通过 ÷（已通过 + 未通过），不含进行中/未开始</p>
+      <div class="group-title" title="通过率 = 已通过 ÷（已通过 + 未通过），不含进行中/未开始">各流程通过率 <span class="muted" style="font-weight:400;font-size:12px;cursor:help">ⓘ</span></div>
       ${passRates.length ? `
       <div class="table-wrap">
         <table class="overview-mini-table">

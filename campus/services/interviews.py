@@ -152,7 +152,8 @@ def delete_availability(db, user, row):
     db.execute("DELETE FROM interviewer_availability WHERE id=?", (row["id"],))
     add_log(user, "update",
             f"{user['display_name']} 删除了面试官「{iv_name}」"
-            f" {row['avail_date']} {row['start_time']} 的可面试时间（{row['interview_type']}）")
+            f" {row['avail_date']} {row['start_time']} 的可面试时间（{row['interview_type']}）",
+            module=row["interview_type"])
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +272,7 @@ def book_interview(db, user, itype, cand, interviewer_id, start_at, slot_minutes
         add_log(user, "update",
                 f"{user['display_name']} 为「{cname}」（{data.get('phone', '')}）预约了 {start_at} 的"
                 f"{get_stage_meta(itype)['label']}（面试官 {iv['display_name'] if iv else ''}）",
-                cand["id"], cname, cand["group_id"])
+                cand["id"], cname, cand["group_id"], module=itype)
         db.commit()
     except sqlite3.IntegrityError:
         db.rollback()
@@ -294,4 +295,4 @@ def cancel_booking(db, user, booking, cand):
                (json.dumps(data, ensure_ascii=False), now_str(), cand["id"]))
     add_log(user, "update",
             f"{user['display_name']} 取消了「{cname}」的 {booking['start_at']} 面试预约（{get_stage_meta(itype)['label']}）",
-            cand["id"], cname, cand["group_id"])
+            cand["id"], cname, cand["group_id"], module=itype)

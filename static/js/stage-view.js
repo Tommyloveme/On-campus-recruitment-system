@@ -33,24 +33,22 @@ async function renderStageView(stageKey) {
 
   $("#main").innerHTML = `
     <div class="stage-header">
-      <h2>${meta.icon || ""} ${esc(meta.label)}</h2>
-      <p class="stage-desc">${esc(meta.description || "")}</p>
+      <h2 title="${esc(meta.description || "")}">${meta.icon || ""} ${esc(meta.label)}</h2>
     </div>
-    ${showCalendar ? `
     <div class="iv-subnav" style="margin-bottom:12px">
       <button class="btn btn-sm iv-view-btn active" data-view="list">候选人列表</button>
-      <button class="btn btn-sm iv-view-btn" data-view="calendar">面试日程表</button>
-    </div>` : ""}
+      ${showCalendar ? `<button class="btn btn-sm iv-view-btn" data-view="calendar">面试日程表</button>` : ""}
+      <button class="btn btn-sm iv-view-btn" data-view="logs">日志</button>
+    </div>
     <div id="stage-content"></div>`;
 
-  if (showCalendar) {
-    document.querySelectorAll(".iv-view-btn").forEach(btn =>
-      btn.addEventListener("click", () => {
-        document.querySelectorAll(".iv-view-btn").forEach(b => b.classList.toggle("active", b === btn));
-        if (btn.dataset.view === "calendar") renderInterviewCalendar(stageKey);
-        else renderStageList(stageKey);
-      }));
-  }
+  document.querySelectorAll(".iv-view-btn").forEach(btn =>
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".iv-view-btn").forEach(b => b.classList.toggle("active", b === btn));
+      if (btn.dataset.view === "calendar") renderInterviewCalendar(stageKey);
+      else if (btn.dataset.view === "logs") renderLogPanel($("#stage-content"), { module: stageKey });
+      else renderStageList(stageKey);
+    }));
   renderStageList(stageKey);
 }
 

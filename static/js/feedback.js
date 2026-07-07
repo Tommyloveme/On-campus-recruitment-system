@@ -67,28 +67,30 @@ async function feedbackInsertImage(file) {
   }
 }
 
-function openFeedbackModal() {
+/** 新增/编辑反馈弹窗：item 为空则新增，否则编辑该反馈的标题与内容。 */
+function openFeedbackModal(item = null) {
   _fbEditorSel = null;
-  openModal("提交问题反馈", `
+  openModal(item ? "编辑问题反馈" : "提交问题反馈", `
     <div class="form-item">
       <label>标题 *</label>
-      <input type="text" id="feedback-title" placeholder="简要概括问题" maxlength="120">
+      <input type="text" id="feedback-title" placeholder="简要概括问题" maxlength="120" value="${item ? esc(item.title) : ""}">
     </div>
     <div class="feedback-toolbar">
-      <button type="button" class="btn btn-sm" data-fb-cmd="bold"><b>B</b></button>
-      <button type="button" class="btn btn-sm" data-fb-cmd="italic"><i>I</i></button>
-      <label class="btn btn-sm feedback-img-btn" id="feedback-img-label">
-        插图
+      <button type="button" class="btn btn-sm" data-fb-cmd="bold" title="加粗"><b>B</b></button>
+      <button type="button" class="btn btn-sm" data-fb-cmd="italic" title="斜体"><i>I</i></button>
+      <label class="btn btn-sm feedback-img-btn" id="feedback-img-label" title="插入图片（也可直接粘贴）">
+        🖼 插图
         <input type="file" id="feedback-img-input" accept="image/*" hidden>
       </label>
     </div>
     <div id="feedback-editor" class="feedback-editor" contenteditable="true" data-placeholder="描述问题或建议…"></div>
   `, `
     <button class="btn" onclick="closeModal()">取消</button>
-    <button class="btn btn-primary" id="feedback-submit">提交</button>
+    <button class="btn btn-primary" id="feedback-submit">${item ? "保存" : "提交"}</button>
   `);
 
   const ed = $("#feedback-editor");
+  if (item) ed.innerHTML = item.content_html || "";
   ed?.addEventListener("keyup", feedbackSaveSelection);
   ed?.addEventListener("mouseup", feedbackSaveSelection);
   $("#feedback-img-label")?.addEventListener("mousedown", e => {
@@ -97,11 +99,11 @@ function openFeedbackModal() {
   ed?.addEventListener("paste", e => {
     const items = e.clipboardData?.items;
     if (!items) return;
-    for (const item of items) {
-      if (item.type.startsWith("image/")) {
+    for (const it of items) {
+      if (it.type.startsWith("image/")) {
         e.preventDefault();
         feedbackSaveSelection();
-        feedbackInsertImage(item.getAsFile());
+        feedbackInsertImage(it.getAsFile());
         return;
       }
     }
@@ -120,8 +122,13 @@ function openFeedbackModal() {
     if (!title) { toast("请填写标题", true); return; }
     if (!plain && !html.includes("<img")) { toast("请填写内容", true); return; }
     try {
-      await api("/api/feedback", { method: "POST", json: { title, content_html: html } });
-      toast("已提交");
+      if (item) {
+        await api(`/api/feedback/${item.id}`, { method: "PATCH", json: { title, content_html: html } });
+        toast("已保存");
+      } else {
+        await api("/api/feedback", { method: "POST", json: { title, content_html: html } });
+        toast("已提交");
+      }
       closeModal();
       if (state.tab === "feedback") loadFeedbackTable();
     } catch (e) { toast(e.message, true); }
@@ -145,13 +152,17 @@ function fbIsAdmin() {
   return fbState.isAdmin || (typeof isAdmin === "function" && isAdmin());
 }
 
+function fbPriorityBadge(item) {
+  return `<span class="badge badge-${FB_PRIORITY_CLASS[item.priority] || "gray"}">${esc(item.priority_label)}</span>`;
+}
+
 function renderFeedbackRows() {
   const tbody = $("#fb-tbody");
   if (!tbody) return;
   const list = filteredFeedbackItems();
   const admin = fbIsAdmin();
   if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="${admin ? 8 : 7}" class="empty">没有符合条件的反馈</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="empty">没有符合条件的反馈</td></tr>`;
     return;
   }
   tbody.innerHTML = list.map(item => {
@@ -163,23 +174,24 @@ function renderFeedbackRows() {
           ${Object.entries(FB_PRIORITY_LABELS).map(([k, v]) =>
     `<option value="${k}" ${item.priority === k ? "selected" : ""}>${esc(v)}</option>`).join("")}
         </select>`
-      : `<span class="badge badge-${FB_PRIORITY_CLASS[item.priority] || "gray"}">${esc(item.priority_label)}</span>`;
-    const canDel = admin || item.is_mine;
+      : fbPriorityBadge(item);
     return `
-      <tr>
-        <td class="fb-col-title" title="${esc(item.title)}">${esc(item.title)}</td>
+      <tr class="fb-row${item.is_mine ? " fb-row-mine" : ""}">
+        <td class="fb-col-title" title="${esc(item.title)}">
+          <a href="javascript:void(0)" data-fb-view="${item.id}">${esc(item.title)}</a>
+          ${item.is_mine ? `<span class="fb-mine-tag" title="我提出的">我</span>` : ""}
+        </td>
         <td>${esc(item.display_name)}</td>
-        <td class="mono">${esc(item.created_at)}</td>
+        <td class="mono fb-time">${esc(item.created_at)}</td>
         <td>${priCell}</td>
         <td>${item.reply_html
           ? `<span class="badge badge-green">已回复</span>`
           : `<span class="badge badge-gray">待处理</span>`}</td>
         <td class="fb-col-reply">${replyPreview}</td>
-        <td>
-          ${admin
-            ? `<button type="button" class="btn btn-sm btn-primary" data-fb-view="${item.id}">处理</button>`
-            : `<button type="button" class="btn btn-sm" data-fb-view="${item.id}">查看</button>`}
-          ${canDel ? `<button type="button" class="btn btn-sm iv-action-muted" data-fb-del="${item.id}">删除</button>` : ""}
+        <td class="fb-actions">
+          <button type="button" class="btn btn-sm" data-fb-view="${item.id}" title="${admin ? "查看/处理" : "查看详情"}">${admin ? "处理" : "查看"}</button>
+          ${item.is_mine ? `<button type="button" class="btn btn-sm" data-fb-edit="${item.id}" title="编辑标题与内容">编辑</button>` : ""}
+          ${(admin || item.is_mine) ? `<button type="button" class="btn btn-sm btn-danger" data-fb-del="${item.id}">删除</button>` : ""}
         </td>
       </tr>`;
   }).join("");
@@ -188,6 +200,11 @@ function renderFeedbackRows() {
     btn.addEventListener("click", () => {
       const item = fbState.items.find(x => x.id === +btn.dataset.fbView);
       if (item) openFeedbackDetailModal(item);
+    }));
+  tbody.querySelectorAll("[data-fb-edit]").forEach(btn =>
+    btn.addEventListener("click", () => {
+      const item = fbState.items.find(x => x.id === +btn.dataset.fbEdit);
+      if (item) openFeedbackModal(item);
     }));
   tbody.querySelectorAll("[data-fb-del]").forEach(btn =>
     btn.addEventListener("click", () => confirmDeleteFeedback(+btn.dataset.fbDel)));
@@ -210,7 +227,7 @@ function confirmDeleteFeedback(id) {
   if (!item) return;
   openModal("删除反馈", `<p class="iv-confirm-danger">确定删除「<b>${esc(item.title)}</b>」吗？</p>`,
     `<button class="btn" onclick="closeModal()">取消</button>
-     <button class="btn iv-action-muted" id="fb-del-go">确认删除</button>`);
+     <button class="btn btn-danger" id="fb-del-go">确认删除</button>`);
   $("#fb-del-go")?.addEventListener("click", async () => {
     try {
       await api(`/api/feedback/${id}`, { method: "DELETE" });
@@ -223,36 +240,37 @@ function confirmDeleteFeedback(id) {
 
 function openFeedbackDetailModal(item) {
   const admin = fbIsAdmin();
-  openModal(admin ? `处理反馈 · ${item.title}` : item.title, `
+  openModal(item.title, `
     <div class="fb-detail-meta">
-      <span>提出人：<b>${esc(item.display_name)}</b>（${esc(item.username)}）</span>
-      <span class="muted">${esc(item.created_at)}</span>
-      <span class="badge badge-${FB_PRIORITY_CLASS[item.priority] || "gray"}">${esc(item.priority_label)}</span>
+      <b>${esc(item.display_name)}</b><span class="muted">（${esc(item.username)}）</span>
+      <span class="muted mono">${esc(item.created_at)}</span>
+      ${fbPriorityBadge(item)}
+      ${item.reply_html ? `<span class="badge badge-green">已回复</span>` : `<span class="badge badge-gray">待处理</span>`}
+      ${item.is_mine ? `<button type="button" class="btn btn-sm" id="fb-detail-edit">编辑</button>` : ""}
     </div>
     <div class="fb-detail-block">
-      <div class="fb-detail-label">反馈内容</div>
       <div class="fb-content rich-html">${item.content_html}</div>
     </div>
     ${item.reply_html ? `
-    <div class="fb-detail-block">
-      <div class="fb-detail-label">处理回复 ${item.reply_by ? `· ${esc(item.reply_by)} ${esc(item.reply_at || "")}` : ""}</div>
+    <div class="fb-detail-block fb-reply-block">
+      <div class="fb-detail-label">回复 ${item.reply_by ? `· ${esc(item.reply_by)} <span class="mono">${esc(item.reply_at || "")}</span>` : ""}</div>
       <div class="fb-content rich-html">${item.reply_html}</div>
-    </div>` : `<p class="muted" style="font-size:13px">暂无回复，请耐心等待处理。</p>`}
+    </div>` : ""}
     ${admin ? `
-    <div class="form-item" style="margin-top:12px">
-      <label>优先级</label>
-      <select id="fb-priority-sel">
+    <div class="fb-admin-bar">
+      <select id="fb-priority-sel" title="优先级">
         ${Object.entries(FB_PRIORITY_LABELS).map(([k, v]) =>
     `<option value="${k}" ${item.priority === k ? "selected" : ""}>${esc(v)}</option>`).join("")}
       </select>
-    </div>
-    <div class="form-item">
-      <label>回复</label>
-      <textarea id="fb-reply-text" rows="4" placeholder="填写处理回复">${esc(fbPlainText(item.reply_html))}</textarea>
+      <textarea id="fb-reply-text" rows="3" placeholder="填写处理回复">${esc(fbPlainText(item.reply_html))}</textarea>
     </div>` : ""}`,
     `<button class="btn" onclick="closeModal()">关闭</button>
-     ${admin ? `<button class="btn btn-primary" id="fb-save-admin">保存</button>` : ""}`);
+     ${admin ? `<button class="btn btn-primary" id="fb-save-admin">保存处理</button>` : ""}`);
 
+  $("#fb-detail-edit")?.addEventListener("click", () => {
+    closeModal();
+    openFeedbackModal(item);
+  });
   $("#fb-save-admin")?.addEventListener("click", async () => {
     const priority = $("#fb-priority-sel").value;
     const replyText = ($("#fb-reply-text").value || "").trim();
@@ -268,7 +286,7 @@ function openFeedbackDetailModal(item) {
 
 async function loadFeedbackTable() {
   const tbody = $("#fb-tbody");
-  if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="empty">加载中…</td></tr>`;
+  if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="empty">加载中…</td></tr>`;
   try {
     const r = await api("/api/feedback?all=1&sort=created_at&order=desc");
     fbState.items = r.items || [];
@@ -277,7 +295,7 @@ async function loadFeedbackTable() {
     const countEl = $("#fb-count");
     if (countEl) countEl.textContent = `${filteredFeedbackItems().length} / ${fbState.items.length} 条`;
   } catch (e) {
-    if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="empty">加载失败：${esc(e.message)}</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="empty">加载失败：${esc(e.message)}</td></tr>`;
   }
 }
 
@@ -286,52 +304,62 @@ async function renderFeedback() {
     $("#main").innerHTML = `<div class="empty-state">请先登录。</div>`;
     return;
   }
-  const admin = typeof isAdmin === "function" && isAdmin();
   $("#main").innerHTML = `
     <div class="card fb-card">
       <div class="fb-head">
-        <div>
-          <div class="section-title">问题反馈</div>
-          <p class="fb-sub">${admin
-    ? "查看全体反馈；可设置优先级、填写回复、删除记录。"
-    : "查看全体反馈及管理员回复；可提交新问题或查看自己提交的内容。"}</p>
+        <div class="iv-subnav" style="margin:0">
+          <button class="btn btn-sm iv-view-btn active" data-fb-view-tab="list">反馈列表</button>
+          <button class="btn btn-sm iv-view-btn" data-fb-view-tab="logs">日志</button>
         </div>
         <div class="fb-toolbar">
-          <span id="fb-count" class="muted" style="font-size:13px"></span>
+          <span id="fb-count" class="muted" style="font-size:12px"></span>
           <button type="button" class="btn btn-primary btn-sm" id="fb-add-btn">+ 新增反馈</button>
         </div>
       </div>
-      <div class="table-wrap fb-table-wrap">
-        <table class="fb-table" id="fb-table">
-          <thead>
-            <tr>
-              <th>标题</th><th>提出人</th><th>提出时间</th><th>优先级</th>
-              <th>状态</th><th>回复摘要</th><th>操作</th>
-            </tr>
-            <tr class="filter-row fb-filter-row">
-              <th><input type="text" data-fb-filter="title" placeholder="筛选"></th>
-              <th><input type="text" data-fb-filter="user" placeholder="筛选"></th>
-              <th><input type="text" data-fb-filter="created" placeholder="筛选"></th>
-              <th>
-                <select data-fb-filter="priority">
-                  <option value="">全部</option>
-                  ${Object.entries(FB_PRIORITY_LABELS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("")}
-                </select>
-              </th>
-              <th>
-                <select data-fb-filter="reply">
-                  <option value="">全部</option>
-                  <option value="pending">待处理</option>
-                  <option value="replied">已回复</option>
-                </select>
-              </th>
-              <th></th><th></th>
-            </tr>
-          </thead>
-          <tbody id="fb-tbody"><tr><td colspan="7" class="empty">加载中…</td></tr></tbody>
-        </table>
+      <div id="fb-view-list">
+        <div class="table-wrap fb-table-wrap">
+          <table class="fb-table" id="fb-table">
+            <thead>
+              <tr>
+                <th>标题</th><th>提出人</th><th>时间</th><th>优先级</th>
+                <th>状态</th><th>回复摘要</th><th>操作</th>
+              </tr>
+              <tr class="filter-row fb-filter-row">
+                <th><input type="text" data-fb-filter="title" placeholder="筛选"></th>
+                <th><input type="text" data-fb-filter="user" placeholder="筛选"></th>
+                <th><input type="text" data-fb-filter="created" placeholder="筛选"></th>
+                <th>
+                  <select data-fb-filter="priority">
+                    <option value="">全部</option>
+                    ${Object.entries(FB_PRIORITY_LABELS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("")}
+                  </select>
+                </th>
+                <th>
+                  <select data-fb-filter="reply">
+                    <option value="">全部</option>
+                    <option value="pending">待处理</option>
+                    <option value="replied">已回复</option>
+                  </select>
+                </th>
+                <th></th><th></th>
+              </tr>
+            </thead>
+            <tbody id="fb-tbody"><tr><td colspan="7" class="empty">加载中…</td></tr></tbody>
+          </table>
+        </div>
       </div>
+      <div id="fb-view-logs" class="hidden"></div>
     </div>`;
+
+  let fbLogsInit = false;
+  document.querySelectorAll("[data-fb-view-tab]").forEach(btn =>
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("[data-fb-view-tab]").forEach(b => b.classList.toggle("active", b === btn));
+      const logs = btn.dataset.fbViewTab === "logs";
+      $("#fb-view-list").classList.toggle("hidden", logs);
+      $("#fb-view-logs").classList.toggle("hidden", !logs);
+      if (logs && !fbLogsInit) { fbLogsInit = true; renderLogPanel($("#fb-view-logs"), { module: "feedback" }); }
+    }));
 
   $("#fb-add-btn")?.addEventListener("click", () => openFeedbackModal());
   document.querySelectorAll("[data-fb-filter]").forEach(el => {

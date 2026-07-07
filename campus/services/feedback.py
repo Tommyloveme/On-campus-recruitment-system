@@ -79,8 +79,8 @@ def get_feedback(db, fid):
     return db.execute("SELECT * FROM feedback WHERE id=?", (fid,)).fetchone()
 
 
-def update_feedback(db, fid, user, priority=None, reply_html=None):
-    """管理员更新优先级/回复；返回错误文案或 None。"""
+def update_feedback(db, fid, user, priority=None, reply_html=None, title=None, content_html=None):
+    """更新反馈：优先级/回复（管理员）、标题/内容（提出人或管理员）；返回错误文案或 None。"""
     updates, params = [], []
     if priority is not None:
         if priority not in VALID_PRIORITIES:
@@ -94,6 +94,16 @@ def update_feedback(db, fid, user, priority=None, reply_html=None):
         params.append(user["display_name"])
         updates.append("reply_at=?")
         params.append(now_str())
+    if title is not None:
+        if not title.strip():
+            return "标题不能为空"
+        updates.append("title=?")
+        params.append(title.strip())
+    if content_html is not None:
+        if not content_html.strip():
+            return "反馈内容不能为空"
+        updates.append("content_html=?")
+        params.append(content_html)
     if not updates:
         return "无有效更新字段"
     params.append(fid)

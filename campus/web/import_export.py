@@ -146,7 +146,7 @@ def api_import():
     stage_label = get_stage_meta(stage)["label"]
     add_log(g.user, "import",
             f"{g.user['display_name']} 通过Excel向{stage_label}导入：新增{created}人，更新{updated}人"
-            + (f"，跳过{skipped}行" if skipped else ""))
+            + (f"，跳过{skipped}行" if skipped else ""), module=stage)
     db.commit()
     log.info("Excel导入 %s stage=%s 新增%d 更新%d 跳过%d",
              who(g.user), stage, created, updated, skipped)
@@ -247,7 +247,7 @@ def api_master_import_upload():
     meta = load_meta(page)
     add_log(g.user, "import",
             f"{g.user['display_name']} 上传主数据表："
-            + "、".join(u["filename"] for u in uploaded))
+            + "、".join(u["filename"] for u in uploaded), module=page)
     get_db().commit()
     log.info("主数据表上传 %s page=%s files=%s", who(g.user), page, uploaded)
     return jsonify({
@@ -290,7 +290,7 @@ def api_master_import_refresh():
 
     add_log(g.user, "import",
             f"{g.user['display_name']} 主数据表刷新：新增{created}人，更新{updated}人"
-            + (f"，跳过{skipped}行" if skipped else ""))
+            + (f"，跳过{skipped}行" if skipped else ""), module=page)
     db.commit()
     log.info("主数据刷新 %s page=%s +%d ~%d skip%d", who(g.user), page, created, updated, skipped)
     return jsonify({
@@ -346,7 +346,7 @@ def api_candidates_export():
         ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = max(12, len(h) * 2 + 4)
 
     add_log(g.user, "export",
-            f"{g.user['display_name']} 从{stage_label}导出了 {exported} 名候选人的Excel数据")
+            f"{g.user['display_name']} 从{stage_label}导出了 {exported} 名候选人的Excel数据", module=stage)
     db.commit()
     buf = io.BytesIO()
     wb.save(buf)

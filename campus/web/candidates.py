@@ -20,6 +20,7 @@ from campus.services.audit import add_log
 from campus.services.candidates import (
     PhoneDuplicateError,
     candidate_dict,
+    delete_candidate_row,
     find_candidate_by_phone,
     group_name_map,
     insert_candidate_row,
@@ -33,7 +34,6 @@ from campus.services.users import (
     validate_registration_manual_create,
     validate_registration_user_refs,
 )
-from campus.services.resumes import remove_resume_file
 from campus.web.guards import login_required
 
 bp = Blueprint("candidates", __name__)
@@ -112,7 +112,7 @@ def api_candidate_create():
     except PhoneDuplicateError as e:
         return jsonify(e.payload), 409
     add_log(g.user, "create", f"{g.user['display_name']} 在{meta['label']}新增了候选人「{data['name']}」",
-            cid, data["name"])
+            cid, data["name"], module=stage)
     db.commit()
     log.info("新增候选人 %s id=%d name=%s stage=%s phone=%s", who(g.user), cid, data["name"], stage, phone)
     return jsonify({"ok": True, "id": cid})
@@ -192,7 +192,7 @@ def api_candidate_update(cid):
     name = new.get("name") or old.get("name", "")
     add_log(g.user, "update",
             f"{g.user['display_name']} 修改了「{name}」：" + "；".join(changes),
-            cid, name, row["group_id"])
+            cid, name, row["group_id"], module=stage)
     db.commit()
     log.info("修改候选人 %s id=%d name=%s 变更%d项", who(g.user), cid, name, len(changes))
     log.debug("修改明细 id=%d %s", cid, "；".join(changes))
@@ -210,9 +210,9 @@ def api_candidate_delete(cid):
         log.warning("删除候选人权限拒绝 %s cid=%d", who(g.user), cid)
         return jsonify({"error": "无删除权限（需对候选人当前阶段模块具备写权限）"}), 403
     name = json.loads(row["data"]).get("name", "")
-    remove_resume_file(row["resume_file"])
-    db.execute("DELETE FROM candidates WHERE id=?", (cid,))
-    add_log(g.user, "delete", f"{g.user['display_name']} 删除了候选人「{name}」", cid, name, row["group_id"])
+    delete_candidate_row(db, row)
+    add_log(g.user, "delete", f"{g.user['display_name']} 删除了候选人「{name}」", cid, name, row["group_id"],
+            module=request.args.get("stage") or "registration")
     db.commit()
     log.info("删除候选人 %s id=%d name=%s", who(g.user), cid, name)
     return jsonify({"ok": True})
@@ -235,8 +235,7 @@ def api_candidates_batch_delete():
     for row in rows:
         if not can_delete_candidate(db, g.user, row):
             continue
-        remove_resume_file(row["resume_file"])
-        db.execute("DELETE FROM candidates WHERE id=?", (row["id"],))
+        delete_candidate_row(db, row)
         deleted_names.append(json.loads(row["data"]).get("name", ""))
     if not deleted_names:
         return jsonify({"error": "选中的候选人均无删除权限"}), 403
@@ -244,7 +243,7 @@ def api_candidates_batch_delete():
     shown = "、".join(deleted_names[:5]) + ("等" if len(deleted_names) > 5 else "")
     add_log(g.user, "delete",
             f"{g.user['display_name']} 批量删除了 {len(deleted_names)} 名候选人（{shown}）",
-            group_id=g.user["group_id"])
+            group_id=g.user["group_id"], module="registration")
     db.commit()
     log.info("批量删除 %s 删除%d 跳过%d", who(g.user), len(deleted_names), len(rows) - len(deleted_names))
     return jsonify({"ok": True, "deleted": len(deleted_names),

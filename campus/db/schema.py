@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS logs (
     candidate_id INTEGER,
     candidate_name TEXT,
     group_id INTEGER,
+    module_key TEXT DEFAULT '',
     message TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
@@ -141,6 +142,10 @@ def migrate(db):
     db.executescript(SCHEMA)
 
     # ---- 老库补列 -----------------------------------------------------------
+    log_cols = {r["name"] for r in db.execute("PRAGMA table_info(logs)").fetchall()}
+    if "module_key" not in log_cols:
+        db.execute("ALTER TABLE logs ADD COLUMN module_key TEXT DEFAULT ''")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_logs_module ON logs(module_key, id)")
     cols = {r["name"] for r in db.execute("PRAGMA table_info(candidates)").fetchall()}
     if "resume_file" not in cols:
         db.execute("ALTER TABLE candidates ADD COLUMN resume_file TEXT")

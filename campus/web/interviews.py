@@ -184,7 +184,8 @@ def api_interview_availability_create():
         return jsonify({"error": str(e)}), e.status
 
     add_log(g.user, "update",
-            f"{g.user['display_name']} 为面试官「{iv_name}」设置了 {created} 段可面试时间（{itype}）")
+            f"{g.user['display_name']} 为面试官「{iv_name}」设置了 {created} 段可面试时间（{itype}）",
+            module=itype)
     db.commit()
     return jsonify({"ok": True, "created": created})
 

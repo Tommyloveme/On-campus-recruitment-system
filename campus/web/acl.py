@@ -111,7 +111,7 @@ def _log_module_acl_change(user, b, perms, action):
     else:
         flags = [k.replace("perm_", "") for k in PERM_FIELDS if perms[k]]
         msg = f"{user['display_name']} 设置 {s_label} 对模块「{b.get('module_key')}」的权限：{('、'.join(flags)) or '无'}"
-    add_log(user, "permission", msg)
+    add_log(user, "permission", msg, module="permissions")
 
 
 @bp.put("/api/module-acl")
@@ -193,7 +193,7 @@ def api_module_acl_batch():
         affected += 1
     add_log(g.user, "permission",
             f"{g.user['display_name']} 批量{('撤销' if mode == 'revoke' else '设置')}了 {affected} 条模块权限"
-            f"（影响 {len(subjects)} 个用户、{len(modules)} 个模块）")
+            f"（影响 {len(subjects)} 个用户、{len(modules)} 个模块）", module="permissions")
     db.commit()
     return jsonify({"ok": True, "affected": affected, "preview": preview})
 
@@ -223,7 +223,7 @@ def api_module_acl_export():
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    add_log(g.user, "export", f"{g.user['display_name']} 导出了模块权限矩阵（{len(rows)} 条）")
+    add_log(g.user, "export", f"{g.user['display_name']} 导出了模块权限矩阵（{len(rows)} 条）", module="permissions")
     db.commit()
     resp = send_file(buf, as_attachment=True, download_name="模块权限矩阵.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

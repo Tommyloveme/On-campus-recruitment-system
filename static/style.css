@@ -364,20 +364,34 @@ th.sortable:hover { color: var(--primary); }
   content: attr(data-placeholder); color: #94a3b8; pointer-events: none;
 }
 .feedback-editor img { max-width: 100%; height: auto; border-radius: 6px; margin: 6px 0; }
-.fb-card { margin-bottom: 16px; }
-.fb-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
-.fb-sub { font-size: 13px; color: var(--muted); margin: 4px 0 0; }
+.fb-card { margin-bottom: 16px; padding: 12px 14px; }
+.fb-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
 .fb-toolbar { display: flex; align-items: center; gap: 12px; }
 .fb-sort-bar { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.fb-table-wrap { margin-top: 8px; overflow-x: auto; }
-.fb-table { min-width: 900px; table-layout: fixed; width: 100%; }
-.fb-table .fb-col-title { max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
-.fb-table .fb-col-reply { max-width: 180px; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--muted); }
-.fb-filter-row th { padding: 5px 8px; }
-.fb-pri-sel { padding: 3px 6px; font-size: 12px; border-radius: 6px; }
-.fb-detail-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 12px; font-size: 13px; }
-.fb-detail-block { margin-bottom: 12px; }
-.fb-detail-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+.fb-table-wrap { margin-top: 4px; overflow-x: auto; }
+.fb-table { min-width: 860px; table-layout: fixed; width: 100%; font-size: 12.5px; }
+.fb-table th, .fb-table td { padding: 5px 8px; }
+.fb-table .fb-col-title { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-table .fb-col-title a { color: var(--primary-dark, #1d4ed8); text-decoration: none; }
+.fb-table .fb-col-title a:hover { text-decoration: underline; }
+.fb-table .fb-time { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.fb-table .fb-col-reply { max-width: 180px; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.fb-table .fb-actions { white-space: nowrap; }
+.fb-table .fb-actions .btn-sm { padding: 2px 8px; font-size: 11px; }
+.fb-row-mine td { background: #fbfdff; }
+.fb-mine-tag {
+  display: inline-block; margin-left: 6px; padding: 0 5px; font-size: 10px; line-height: 16px;
+  border-radius: 8px; background: #dbeafe; color: #1d4ed8; vertical-align: 1px;
+}
+.fb-filter-row th { padding: 4px 8px; }
+.fb-pri-sel { padding: 2px 6px; font-size: 12px; border-radius: 6px; }
+.fb-detail-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin-bottom: 10px; font-size: 13px; }
+.fb-detail-block { margin-bottom: 10px; }
+.fb-detail-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+.fb-reply-block .fb-content.rich-html { background: #f0fdf4; border-color: #bbf7d0; }
+.fb-admin-bar { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; }
+.fb-admin-bar select { width: auto; padding: 4px 8px; font-size: 12px; }
+.fb-admin-bar textarea { flex: 1; font-size: 13px; }
 .fb-content.rich-html { font-size: 14px; line-height: 1.65; word-break: break-word; padding: 10px 12px; background: #f8fafc; border-radius: 8px; border: 1px solid var(--border); }
 .fb-content.rich-html img { max-width: 100%; height: auto; border-radius: 6px; margin: 8px 0; }
 .fb-empty { padding: 32px; text-align: center; color: var(--muted); }
@@ -742,6 +756,13 @@ th.sortable:hover { color: var(--primary); }
 .log-card { padding: 12px 14px; margin-bottom: 12px; }
 .log-card .section-title { margin-bottom: 0; font-size: 14px; }
 .log-head { margin-bottom: 8px; }
+.log-panel-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.log-panel-bar .spacer { flex: 1; }
+.log-legend { display: inline-flex; gap: 4px; align-items: center; }
+.log-legend .badge { font-size: 10px; padding: 1px 6px; }
+.log-table .log-user {
+  font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px;
+}
 .log-sub { font-size: 11px; color: #64748b; margin: 2px 0 0; line-height: 1.4; }
 .log-table-wrap {
   overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: #fff;
