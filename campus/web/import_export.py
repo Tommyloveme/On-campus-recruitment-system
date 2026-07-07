@@ -20,6 +20,7 @@ from campus.db.connection import get_db
 from campus.domain.stage_routing import compute_current_stage
 from campus.services.acl import can_see_candidate, is_admin, module_writable_for
 from campus.services.audit import add_log
+from campus.services.candidate_pipeline import record_manual
 from campus.services.master_import import run_dual_master_refresh
 from campus.services.master_import_store import (
     both_files_ready,
@@ -134,11 +135,13 @@ def api_import():
             if changed:
                 compute_current_stage(merged)
                 update_candidate_row(db, match["id"], merged)
+                record_manual(db, phone, merged)
                 updated += 1
                 match = db.execute("SELECT * FROM candidates WHERE id=?", (match["id"],)).fetchone()
                 by_phone[phone] = match
         else:
             cid = insert_candidate_row(db, data, group_id=None)
+            record_manual(db, phone, data)
             row = db.execute("SELECT * FROM candidates WHERE id=?", (cid,)).fetchone()
             by_phone[phone] = row
             created += 1

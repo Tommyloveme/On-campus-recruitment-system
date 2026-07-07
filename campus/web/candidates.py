@@ -17,6 +17,7 @@ from campus.services.acl import (
     module_writable_for,
 )
 from campus.services.audit import add_log
+from campus.services.candidate_pipeline import delete_raw_records, record_manual
 from campus.services.candidates import (
     PhoneDuplicateError,
     candidate_dict,
@@ -111,6 +112,7 @@ def api_candidate_create():
         cid = insert_candidate_row(db, data, group_id=group_id)
     except PhoneDuplicateError as e:
         return jsonify(e.payload), 409
+    record_manual(db, phone, data)
     add_log(g.user, "create", f"{g.user['display_name']} 在{meta['label']}新增了候选人「{data['name']}」",
             cid, data["name"], module=stage)
     db.commit()
@@ -189,6 +191,10 @@ def api_candidate_update(cid):
         update_candidate_row(db, cid, new)
     except PhoneDuplicateError as e:
         return jsonify(e.payload), 409
+    old_phone = normalize_candidate_phone(old.get("phone"))
+    if old_phone and old_phone != phone:
+        delete_raw_records(db, old_phone)
+    record_manual(db, phone, new)
     name = new.get("name") or old.get("name", "")
     add_log(g.user, "update",
             f"{g.user['display_name']} 修改了「{name}」：" + "；".join(changes),

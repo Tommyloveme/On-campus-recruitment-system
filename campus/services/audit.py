@@ -3,27 +3,34 @@
 
 - add_log(module=...)：登记操作所属模块（module_key，与模块注册表一致），
   各操作页面的「日志」标签页据此过滤展示。
-- query_logs(module=...)：module 为 None 查全量（管理员审计），否则按模块过滤。
+- add_log(level=...)：日志等级 1-10（1 最敏感）；缺省按动作类型取
+  campus.core.log_levels.DEFAULT_ACTION_LEVELS。
+- query_logs(module=..., viewer_level=...)：module 为 None 查全量（管理员审计），
+  否则按模块过滤；viewer_level 为查看者日志权限，只返回 level >= viewer_level 的日志。
 """
+from campus.core.log_levels import clamp_log_level, default_level_for_action
 from campus.db.connection import get_db, now_str
 
 
 def add_log(user, action, message, candidate_id=None, candidate_name=None, group_id=None,
-            module=None):
+            module=None, level=None):
+    level = clamp_log_level(level, default=default_level_for_action(action))
     get_db().execute(
         "INSERT INTO logs (user_name, action, candidate_id, candidate_name, group_id, "
-        "module_key, message, created_at) VALUES (?,?,?,?,?,?,?,?)",
+        "module_key, level, message, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
         (user["display_name"], action, candidate_id, candidate_name, group_id,
-         module or "", message, now_str()),
+         module or "", level, message, now_str()),
     )
 
 
-def query_logs(db, page, size, module=None):
-    """分页查询操作日志（倒序）；module 非空时仅查该模块的日志。"""
-    where, args = "", []
+def query_logs(db, page, size, module=None, viewer_level=1):
+    """分页查询操作日志（倒序）；module 非空时仅查该模块的日志，
+    并按查看者日志权限过滤（只可见 level >= viewer_level 的日志）。"""
+    conds, args = ["level >= ?"], [clamp_log_level(viewer_level, default=1)]
     if module:
-        where = " WHERE module_key=?"
+        conds.append("module_key=?")
         args.append(module)
+    where = " WHERE " + " AND ".join(conds)
     total = db.execute(f"SELECT COUNT(*) AS c FROM logs{where}", args).fetchone()["c"]
     rows = db.execute(
         f"SELECT * FROM logs{where} ORDER BY id DESC LIMIT ? OFFSET ?",

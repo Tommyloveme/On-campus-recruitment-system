@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS users (
     dept_level3 TEXT DEFAULT '',
     job_roles TEXT DEFAULT '[]',
     extra TEXT DEFAULT '{}',
+    log_level INTEGER NOT NULL DEFAULT 10,
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS candidates (
@@ -56,6 +57,18 @@ CREATE TABLE IF NOT EXISTS candidates (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_candidates_phone_unique
     ON candidates(phone) WHERE phone IS NOT NULL AND phone != '';
+CREATE TABLE IF NOT EXISTS candidates_raw_manual (
+    phone TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS candidates_raw_master (
+    phone TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_name TEXT NOT NULL,
@@ -64,6 +77,7 @@ CREATE TABLE IF NOT EXISTS logs (
     candidate_name TEXT,
     group_id INTEGER,
     module_key TEXT DEFAULT '',
+    level INTEGER NOT NULL DEFAULT 10,
     message TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
@@ -145,7 +159,21 @@ def migrate(db):
     log_cols = {r["name"] for r in db.execute("PRAGMA table_info(logs)").fetchall()}
     if "module_key" not in log_cols:
         db.execute("ALTER TABLE logs ADD COLUMN module_key TEXT DEFAULT ''")
+    if "level" not in log_cols:
+        db.execute("ALTER TABLE logs ADD COLUMN level INTEGER NOT NULL DEFAULT 10")
+        # 存量日志按动作类型回填默认等级（与 audit.DEFAULT_ACTION_LEVELS 保持一致）
+        from campus.core.log_levels import DEFAULT_ACTION_LEVELS
+        for action, lv in DEFAULT_ACTION_LEVELS.items():
+            db.execute("UPDATE logs SET level=? WHERE action=?", (lv, action))
     db.execute("CREATE INDEX IF NOT EXISTS idx_logs_module ON logs(module_key, id)")
+
+    # ---- 用户日志权限等级（1 最高、10 最低；管理员默认 1，普通用户默认 10） ----
+    user_cols_pre = {r["name"] for r in db.execute("PRAGMA table_info(users)").fetchall()}
+    if "log_level" not in user_cols_pre:
+        db.execute("ALTER TABLE users ADD COLUMN log_level INTEGER NOT NULL DEFAULT 10")
+        for u in db.execute("SELECT id, role FROM users").fetchall():
+            if _is_bypass_user(u):
+                db.execute("UPDATE users SET log_level=1 WHERE id=?", (u["id"],))
     cols = {r["name"] for r in db.execute("PRAGMA table_info(candidates)").fetchall()}
     if "resume_file" not in cols:
         db.execute("ALTER TABLE candidates ADD COLUMN resume_file TEXT")
@@ -280,9 +308,33 @@ def migrate(db):
             )
 
     _backfill_candidate_employee_names(db)
+    _backfill_raw_manual(db)
     _ensure_feedback_module_acl(db)
     _ensure_new_stage_module_acl(db)
     db.commit()
+
+
+def _backfill_raw_manual(db):
+    """历史迁移：手动原始表为空时，用预处理表（candidates）现状回填一份基线快照。
+
+    历史数据无法区分手动与主数据来源，统一视为手动基线；后续主数据表刷新
+    会把主数据行写入 candidates_raw_master，两表自此各自演进。
+    """
+    cnt = db.execute("SELECT COUNT(*) AS c FROM candidates_raw_manual").fetchone()["c"]
+    if cnt > 0:
+        return
+    now = now_str()
+    for row in db.execute("SELECT data, phone FROM candidates").fetchall():
+        data = json.loads(row["data"])
+        phone = (row["phone"] or data.get("phone") or "").strip()
+        if not phone:
+            continue
+        snapshot = {k: v for k, v in data.items() if not k.startswith("_")}
+        db.execute(
+            "INSERT INTO candidates_raw_manual (phone, data, created_at, updated_at) "
+            "VALUES (?,?,?,?) ON CONFLICT(phone) DO NOTHING",
+            (phone, json.dumps(snapshot, ensure_ascii=False), now, now),
+        )
 
 
 def _ensure_new_stage_module_acl(db):
@@ -453,10 +505,10 @@ def init_db(demo=False):
     migrate(db)
     if db.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"] == 0:
         db.execute(
-            "INSERT INTO users (username, display_name, password_hash, role, group_id, supervisor, department, extra, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO users (username, display_name, password_hash, role, group_id, supervisor, department, extra, log_level, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
             ("admin", "系统管理员", generate_password_hash("admin123"), "admin", None,
-             "", "", "{}", now_str()),
+             "", "", "{}", 1, now_str()),
         )
         db.commit()
         print("已创建默认管理员账号: admin / admin123")

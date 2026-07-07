@@ -118,11 +118,16 @@ def update_candidate_row(db, cid, data, ts=None):
 
 
 def delete_candidate_row(db, row):
-    """删除候选人：级联清理面试预约与简历文件（外键约束要求先删预约）。"""
+    """删除候选人：级联清理面试预约、简历文件与两张原始表记录。"""
+    from campus.services.candidate_pipeline import delete_raw_records
     from campus.services.resumes import remove_resume_file
     remove_resume_file(row["resume_file"])
     db.execute("DELETE FROM interview_bookings WHERE candidate_id=?", (row["id"],))
     db.execute("DELETE FROM candidates WHERE id=?", (row["id"],))
+    phone = row["phone"] if "phone" in row.keys() else None
+    if not phone:
+        phone = json.loads(row["data"]).get("phone")
+    delete_raw_records(db, normalize_candidate_phone(phone))
 
 
 def candidate_dict(row, group_names=None):

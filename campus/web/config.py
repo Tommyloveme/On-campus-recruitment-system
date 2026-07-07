@@ -2,11 +2,19 @@
 """字段配置接口。"""
 from flask import Blueprint, jsonify, request
 
+from campus.core.field_dictionary import field_dictionary
 from campus.core.settings import load_app_config
 from campus.core.stage_config import build_config_response, load_stage_fields, load_stages_meta, validate_stage
 from campus.web.guards import login_required
 
 bp = Blueprint("config", __name__)
+
+
+@bp.get("/api/field-dictionary")
+@login_required
+def api_field_dictionary():
+    """原始数据预处理表字段字典（键→中文描述，自动汇总自阶段/主数据配置）。"""
+    return jsonify({"fields": field_dictionary()})
 
 
 @bp.get("/api/config")

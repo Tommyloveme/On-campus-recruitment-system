@@ -10,10 +10,65 @@ async function renderLogs() {
   }
   $("#main").innerHTML = `
     <div class="card log-card">
-      <div class="log-head"><div class="section-title">操作日志</div></div>
-      <div id="log-panel-root"></div>
+      <div class="log-head">
+        <div class="iv-subnav" style="margin:0">
+          <button class="btn btn-sm iv-view-btn active" data-lg-view="list">日志列表</button>
+          <button class="btn btn-sm iv-view-btn" data-lg-view="levels">日志权限</button>
+        </div>
+      </div>
+      <div id="log-view-list"><div id="log-panel-root"></div></div>
+      <div id="log-view-levels" class="hidden"></div>
     </div>`;
   renderLogPanel($("#log-panel-root"), { pageSize: state.app?.logs_page_size || 30 });
+
+  $("#main").querySelectorAll("[data-lg-view]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      $("#main").querySelectorAll("[data-lg-view]").forEach(b =>
+        b.classList.toggle("active", b === btn));
+      const view = btn.dataset.lgView;
+      $("#log-view-list").classList.toggle("hidden", view !== "list");
+      $("#log-view-levels").classList.toggle("hidden", view !== "levels");
+      if (view === "levels") renderLogLevelSettings($("#log-view-levels"));
+    });
+  });
+}
+
+/* 日志权限设置：1 最高（全部可见）… 10 最低（仅常规业务日志） */
+async function renderLogLevelSettings(rootEl) {
+  rootEl.innerHTML = `<div class="log-empty">加载中…</div>`;
+  let users;
+  try {
+    users = await api("/api/logs/levels");
+  } catch (e) {
+    rootEl.innerHTML = `<div class="log-empty">加载失败：${esc(e.message)}</div>`;
+    return;
+  }
+  rootEl.innerHTML = `
+    <p class="muted" style="font-size:12px;margin:8px 0">
+      数字 1-10：1 最高（可见全部日志），10 最低（仅常规业务日志）。管理员默认 1，普通用户默认 10。</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>工号</th><th>姓名</th><th>角色</th><th style="width:140px">日志权限</th></tr></thead>
+      <tbody>
+        ${users.map(u => `
+          <tr>
+            <td>${esc(u.username)}</td>
+            <td>${esc(u.display_name)}</td>
+            <td>${esc(u.role_label || u.role)}</td>
+            <td><input type="number" min="1" max="10" value="${u.log_level}"
+                       data-loglv-uid="${u.id}" style="width:80px"></td>
+          </tr>`).join("")}
+      </tbody>
+    </table></div>`;
+  rootEl.querySelectorAll("[data-loglv-uid]").forEach(inp => {
+    inp.addEventListener("change", async () => {
+      const v = parseInt(inp.value, 10);
+      if (!(v >= 1 && v <= 10)) { toast("日志权限须为 1-10", true); return; }
+      try {
+        await api(`/api/logs/levels/${inp.dataset.loglvUid}`, { method: "PUT", json: { log_level: v } });
+        toast("已保存");
+      } catch (e) { toast(e.message, true); }
+    });
+  });
 }
 
 /* ---------- 数据备份 ---------- */

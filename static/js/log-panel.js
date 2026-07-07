@@ -64,7 +64,7 @@ function renderLogPanel(rootEl, opts = {}) {
       body.innerHTML = r.items.length ? r.items.map(l => `
         <tr>
           <td class="log-time">${esc(l.created_at)}</td>
-          <td class="log-type">${logActionBadge(l.action)}</td>
+          <td class="log-type">${logActionBadge(l.action)}<span class="log-level" title="日志等级（1最敏感，10常规）">L${l.level ?? 10}</span></td>
           <td class="log-user" title="${esc(l.user_name)}">${esc(l.user_name)}</td>
           <td class="log-msg" title="${esc(l.message)}">${esc(l.message)}</td>
         </tr>`).join("") : `<tr><td colspan="4" class="log-empty">暂无日志</td></tr>`;

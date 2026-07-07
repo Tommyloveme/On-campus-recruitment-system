@@ -784,6 +784,10 @@ th.sortable:hover { color: var(--primary); }
 }
 .log-table .log-type { white-space: nowrap; }
 .log-table .log-type .badge { font-size: 10px; padding: 1px 6px; }
+.log-table .log-level {
+  margin-left: 4px; font-size: 10px; color: #94a3b8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
 .log-table .log-msg {
   color: #1e293b; font-size: 12px; line-height: 1.35;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

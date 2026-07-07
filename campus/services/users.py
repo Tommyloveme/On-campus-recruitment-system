@@ -70,13 +70,16 @@ def persist_user_columns(db, uid, fields, role, password=None, is_create=False, 
     jr = json.dumps(job_roles if job_roles is not None else [], ensure_ascii=False)
     if is_create:
         from werkzeug.security import generate_password_hash
+
+        from campus.core.roles_store import role_bypass
+        log_level = 1 if (role == "admin" or role_bypass(role)) else 10
         db.execute(
             "INSERT INTO users (username, display_name, password_hash, role, group_id, "
-            "supervisor, department, dept_level2, dept_level3, job_roles, extra, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "supervisor, department, dept_level2, dept_level3, job_roles, extra, log_level, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (username, b.get("display_name", ""), generate_password_hash(password),
              role, None, b.get("supervisor", ""), b.get("department", ""),
-             b.get("dept_level2", ""), b.get("dept_level3", ""), jr, extra, now_str()),
+             b.get("dept_level2", ""), b.get("dept_level3", ""), jr, extra, log_level, now_str()),
         )
     else:
         sql = (

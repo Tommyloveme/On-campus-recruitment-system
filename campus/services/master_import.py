@@ -301,6 +301,8 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn):
         update_candidate_row,
     )
 
+    from campus.services.candidate_pipeline import record_master
+
     created = updated = skipped = 0
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     by_phone = build_global_candidate_index(db)
@@ -322,6 +324,7 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn):
             if not can_edit_fn(user):
                 skipped += 1
                 continue
+            record_master(db, phone, data, ts=now)
             old = json.loads(match["data"])
             merged = merge_master_import_data(old, data, cfg)
             compute_stage_fn(merged, cfg)
@@ -334,6 +337,7 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn):
             if not can_edit_fn(user):
                 skipped += 1
                 continue
+            record_master(db, phone, data, ts=now)
             payload = merge_master_import_data({}, data, cfg)
             cid = insert_candidate_row(db, payload, group_id=None, ts=now)
             row = db.execute("SELECT * FROM candidates WHERE id=?", (cid,)).fetchone()

@@ -82,10 +82,7 @@ async function renderStageList(stageKey) {
       ${canBatchDelete() && stageKey === "registration" ? `<button class="btn btn-danger" id="btn-batch-del" disabled>删除选中 (0)</button>` : ""}
       <button class="btn" id="btn-export-excel" disabled>导出选中Excel (0)</button>
       ${showResume ? `<button class="btn" id="btn-export-resume" disabled>导出选中简历 (0)</button>` : ""}
-      ${canAdd ? `
-        <button class="btn" id="btn-template">下载导入模板</button>
-        <button class="btn" id="btn-import">Excel 导入</button>
-        ${canAdd ? `<button class="btn btn-primary" id="btn-add">+ 新增候选人</button>` : ""}` : ""}
+      ${canAdd ? `<button class="btn btn-primary" id="btn-add">+ 新增候选人</button>` : ""}
       ${showMasterImport ? `<button class="btn btn-primary" id="btn-master-import">主数据表导入</button>` : ""}
     </div>
     <div id="cand-table" class="table-wrap">
@@ -112,12 +109,8 @@ async function renderStageList(stageKey) {
     ss.page = 1;
     loadCandidateTable(stageKey);
   });
-  if (canAdd) {
-    if ($("#btn-template")) $("#btn-template").addEventListener("click", () => {
-      location.href = `/api/import/template?stage=${stageKey}`;
-    });
-    if ($("#btn-import")) $("#btn-import").addEventListener("click", () => openImportModal(stageKey));
-    if ($("#btn-add")) $("#btn-add").addEventListener("click", () => openCandidateModal(null, stageKey));
+  if (canAdd && $("#btn-add")) {
+    $("#btn-add").addEventListener("click", () => openCandidateModal(null, stageKey));
   }
   if (canBatchDelete()) $("#btn-batch-del").addEventListener("click", () => batchDeleteSelected(stageKey));
   if (showResume) {
@@ -1189,36 +1182,6 @@ function batchDeleteSelected(stageKey) {
       closeModal();
       ss.selected.clear();
       await loadCandidateTable(stageKey);
-    } catch (e) { toast(e.message, true); }
-  });
-}
-
-function openImportModal(stageKey) {
-  const meta = state.stages.find(s => s.key === stageKey);
-  const importCols = fieldsForStage(stageKey).filter(f => f.importable).map(f => f.excel_column).join("、");
-  openModal(`Excel 导入 - ${meta.label}`, `
-    <div class="form-item">
-      <label>选择 .xlsx 文件（第一行为表头）</label>
-      <input type="file" id="import-file" accept=".xlsx">
-    </div>
-    <p style="font-size:12px;color:#64748b;line-height:1.8">
-      当前阶段可导入的列（config/stages/${stageKey}/fields.json）：<br>${esc(importCols)}<br>
-      已存在的候选人（按电话匹配）将被更新，无电话或电话重复的行将跳过。
-    </p>`,
-    `<button class="btn" onclick="closeModal()">取消</button>
-     <button class="btn btn-primary" id="import-go">开始导入</button>`);
-
-  $("#import-go").addEventListener("click", async () => {
-    const file = $("#import-file").files[0];
-    if (!file) { toast("请先选择文件", true); return; }
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("stage", stageKey);
-    try {
-      const r = await api("/api/import", { method: "POST", body: fd });
-      toast(`导入完成：新增 ${r.created} 人，更新 ${r.updated} 人${r.skipped ? "，跳过 " + r.skipped + " 行" : ""}`);
-      closeModal();
-      loadCandidateTable(stageKey);
     } catch (e) { toast(e.message, true); }
   });
 }

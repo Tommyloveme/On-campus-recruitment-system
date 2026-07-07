@@ -126,6 +126,12 @@ function drawChart() {
   if (charts.instance) { charts.instance.destroy(); charts.instance = null; }
   const ctx = $("#ch-canvas").getContext("2d");
   const baseFont = { family: "'Segoe UI','Microsoft YaHei',sans-serif", size: 12 };
+  const grandTotal = matrix.reduce((acc, row) => acc + row.reduce((a, b) => a + b, 0), 0);
+  const pct = (v) => grandTotal ? `${(v * 100 / grandTotal).toFixed(1)}%` : "0%";
+  const tooltipStyle = {
+    padding: 10, cornerRadius: 8,
+    backgroundColor: "rgba(15,23,42,.92)", titleFont: { ...baseFont, weight: "600" }, bodyFont: baseFont,
+  };
 
   if (["pie", "doughnut"].includes(type)) {
     charts.instance = new Chart(ctx, {
@@ -142,8 +148,27 @@ function drawChart() {
         responsive: true, maintainAspectRatio: false,
         cutout: type === "doughnut" ? "58%" : 0,
         plugins: {
-          legend: { position: "right", labels: { font: baseFont, usePointStyle: true, padding: 14 } },
-          tooltip: { padding: 10, cornerRadius: 8 },
+          legend: {
+            position: "right",
+            labels: {
+              font: baseFont, usePointStyle: true, padding: 14,
+              // 图例直接携带数量与占比，读图不需再悬停
+              generateLabels(chart) {
+                const gen = Chart.overrides[type]?.plugins?.legend?.labels?.generateLabels
+                  || Chart.defaults.plugins.legend.labels.generateLabels;
+                const base = gen(chart);
+                base.forEach((item, i) => {
+                  const v = matrix[0][i] || 0;
+                  item.text = `${item.text}  ${v}（${pct(v)}）`;
+                });
+                return base;
+              },
+            },
+          },
+          tooltip: {
+            ...tooltipStyle,
+            callbacks: { label: (c) => ` ${c.label}：${c.parsed} 人（${pct(c.parsed)}）` },
+          },
         },
       },
     });
@@ -167,12 +192,39 @@ function drawChart() {
         responsive: true, maintainAspectRatio: false,
         indexAxis: horizontal ? "y" : "x",
         scales: {
-          x: { stacked, grid: { display: horizontal }, ticks: { font: baseFont }, border: { display: false } },
-          y: { stacked, beginAtZero: true, ticks: { font: baseFont, precision: 0 }, border: { display: false } },
+          x: {
+            stacked,
+            grid: { display: horizontal, color: "rgba(148,163,184,.18)" },
+            ticks: { font: baseFont, precision: 0 }, border: { display: false },
+            title: horizontal
+              ? { display: true, text: "人数", font: baseFont, color: "#64748b" }
+              : { display: true, text: chartLabelOf(dimKey), font: baseFont, color: "#64748b" },
+          },
+          y: {
+            stacked, beginAtZero: true,
+            grid: { display: !horizontal, color: "rgba(148,163,184,.18)" },
+            ticks: { font: baseFont, precision: 0 }, border: { display: false },
+            title: horizontal
+              ? { display: true, text: chartLabelOf(dimKey), font: baseFont, color: "#64748b" }
+              : { display: true, text: "人数", font: baseFont, color: "#64748b" },
+          },
         },
         plugins: {
           legend: { display: !!sers, position: "bottom", labels: { font: baseFont, usePointStyle: true, padding: 14 } },
-          tooltip: { padding: 10, cornerRadius: 8 },
+          tooltip: {
+            ...tooltipStyle,
+            callbacks: {
+              label: (c) => {
+                const v = horizontal ? c.parsed.x : c.parsed.y;
+                return ` ${c.dataset.label}：${v} 人（${pct(v)}）`;
+              },
+              footer: (items) => {
+                if (!stacked || items.length < 2) return "";
+                const sum = items.reduce((a, it) => a + (horizontal ? it.parsed.x : it.parsed.y), 0);
+                return `合计 ${sum} 人`;
+              },
+            },
+          },
         },
       },
     });
@@ -184,12 +236,14 @@ function renderPivotTable(dims, sers, matrix, dimKey, serKey) {
   const colHeads = sers || ["数量"];
   const colTotals = colHeads.map((_, si) => matrix[si].reduce((a, b) => a + b, 0));
   const grand = colTotals.reduce((a, b) => a + b, 0);
+  const pctOf = (v) => grand ? `${(v * 100 / grand).toFixed(1)}%` : "—";
   $("#ch-pivot").innerHTML = `
     <div class="table-wrap"><table style="min-width:0">
       <thead><tr>
         <th>${esc(chartLabelOf(dimKey))}</th>
         ${colHeads.map(h => `<th>${esc(h)}</th>`).join("")}
         ${sers ? "<th>合计</th>" : ""}
+        <th>占比</th>
       </tr></thead>
       <tbody>
         ${dims.map((d, di) => {
@@ -198,12 +252,14 @@ function renderPivotTable(dims, sers, matrix, dimKey, serKey) {
             <td>${esc(d)}</td>
             ${colHeads.map((_, si) => `<td>${matrix[si][di] || 0}</td>`).join("")}
             ${sers ? `<td><b>${rowTotal}</b></td>` : ""}
+            <td class="muted">${pctOf(rowTotal)}</td>
           </tr>`;
         }).join("")}
         <tr style="background:#f8fafc">
           <td><b>合计</b></td>
           ${colTotals.map(t => `<td><b>${t}</b></td>`).join("")}
           ${sers ? `<td><b>${grand}</b></td>` : ""}
+          <td class="muted">100%</td>
         </tr>
       </tbody>
     </table></div>`;
