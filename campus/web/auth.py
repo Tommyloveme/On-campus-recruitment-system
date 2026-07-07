@@ -2,14 +2,13 @@
 """认证接口：登录 / 退出 / 账户选项 / 个人资料。
 
 本系统不提供用户自助注册：所有账号、角色与权限均由系统管理员在
-「用户管理」中创建并分配（详见 campus/routes/users.py）。
+「用户管理」中创建并分配（详见 campus/web/users.py）。
 """
 from flask import Blueprint, g, jsonify, request, session
 from werkzeug.security import check_password_hash
 
-from campus.auth.decorators import login_required
+from campus.core.logging_util import log, who
 from campus.db.connection import get_db
-from campus.logging_util import log, who
 from campus.services.audit import add_log
 from campus.services.users import (
     account_options_payload,
@@ -20,6 +19,7 @@ from campus.services.users import (
     persist_user_columns,
     user_dict,
 )
+from campus.web.guards import login_required
 
 bp = Blueprint("auth", __name__)
 
@@ -57,7 +57,7 @@ def api_logout():
 @bp.get("/api/me")
 @login_required
 def api_me():
-    from campus.auth.permissions import is_admin
+    from campus.services.acl import is_admin
     d = user_dict(g.user)
     d["is_admin"] = is_admin(g.user)
     return jsonify(d)

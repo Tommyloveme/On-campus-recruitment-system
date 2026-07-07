@@ -1,137 +1,18 @@
 # -*- coding: utf-8 -*-
-"""主数据表导入：配置加载、Excel 解析、按电话合并写入、字段锁定。"""
-import copy
+"""主数据表导入：Excel 解析、按电话合并、写入候选人。
+
+配置加载在 campus.core.master_import_config；上传文件存储在
+campus.services.master_import_store。
+"""
 import fnmatch
 import json
-import os
 import re
 from datetime import datetime
 
-from campus.config_loader import get_stage_meta, load_stages_meta
-from campus.settings import BASE_DIR
-
-MASTER_IMPORT_DIR = os.path.join(BASE_DIR, "config", "master_import")
-
-
-# ---------------------------------------------------------------------------
-# 配置加载
-# ---------------------------------------------------------------------------
-
-def load_field_mappings(page_dir, index):
-    fname = index.get("field_mappings_file", "field_mappings.json")
-    path = os.path.join(page_dir, fname)
-    if not os.path.exists(path):
-        return {"fields": [], "sources": {}}
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _mapping_columns_for_source(field_mappings, source_key):
-    cols = []
-    for fm in field_mappings.get("fields", []):
-        src_col = (fm.get("sources") or {}).get(source_key)
-        if not src_col:
-            continue
-        col = dict(src_col)
-        col.setdefault("match_patterns", [])
-        col["field_key"] = fm["field_key"]
-        if not col.get("excel_column"):
-            col["excel_column"] = fm.get("ui_label") or fm["field_key"]
-        cols.append(col)
-    return cols
-
-
-def apply_field_mappings_to_sources(sources, field_mappings):
-    for src in sources:
-        src_key = src.get("key")
-        mapped = _mapping_columns_for_source(field_mappings, src_key)
-        mapped_keys = {c["field_key"] for c in mapped}
-        extra = [c for c in src.get("columns", []) if c.get("field_key") not in mapped_keys]
-        for c in extra:
-            c.setdefault("match_patterns", [])
-        src["columns"] = mapped + extra
-    return sources
-
-
-def locked_fields_from_mappings(field_mappings):
-    locked = []
-    for fm in field_mappings.get("fields", []):
-        if fm.get("lock_on_import") and fm.get("field_key"):
-            locked.append(fm["field_key"])
-    return locked
-
-
-def master_field_ui_map(field_mappings):
-    """field_key -> ui_label（空字符串表示界面不可见）。"""
-    result = {}
-    for fm in field_mappings.get("fields", []):
-        key = fm.get("field_key")
-        if not key:
-            continue
-        if "ui_label" in fm:
-            result[key] = (fm.get("ui_label") or "").strip()
-    return result
-
-
-def _build_sources(page_dir, index, field_mappings):
-    fm_sources = field_mappings.get("sources") or {}
-    legacy_patterns = index.get("file_patterns") or {}
-    file_patterns = {}
-    sources = []
-    for key in index.get("source_keys", []):
-        base = {}
-        src_path = os.path.join(page_dir, "sources", f"{key}.json")
-        if os.path.exists(src_path):
-            with open(src_path, encoding="utf-8") as f:
-                base = json.load(f)
-        fm_src = fm_sources.get(key) or {}
-        src = {
-            "key": key,
-            "label": fm_src.get("label") or base.get("label", key),
-            "description": fm_src.get("description") or base.get("description", ""),
-            "storage_name": fm_src.get("storage_name") or base.get("storage_name", f"{key}.xlsx"),
-            "sheet_name": fm_src.get("sheet_name", base.get("sheet_name", "")),
-            "sheet_index": int(fm_src.get("sheet_index", base.get("sheet_index", 0))),
-            "columns": base.get("columns", []),
-        }
-        pattern = fm_src.get("file_pattern") or base.get("file_pattern") or legacy_patterns.get(key, "*")
-        file_patterns[key] = pattern
-        sources.append(src)
-    apply_field_mappings_to_sources(sources, field_mappings)
-    return sources, file_patterns
-
-
-def load_master_import_config(page="registration"):
-    page_dir = os.path.join(MASTER_IMPORT_DIR, page)
-    index_path = os.path.join(page_dir, "index.json")
-    if not os.path.exists(index_path):
-        raise ValueError(f"主数据导入配置不存在: {page}")
-
-    with open(index_path, encoding="utf-8") as f:
-        index = json.load(f)
-
-    field_mappings = load_field_mappings(page_dir, index)
-    sources, file_patterns = _build_sources(page_dir, index, field_mappings)
-
-    rules_path = os.path.join(page_dir, "stage_rules.json")
-    with open(rules_path, encoding="utf-8") as f:
-        stage_rules = json.load(f)
-
-    cfg = dict(index)
-    cfg["sources"] = sources
-    cfg["stage_rules"] = stage_rules
-    cfg["field_mappings"] = field_mappings
-    cfg["file_patterns"] = file_patterns
-    cfg["registration_locked_fields"] = (
-        index.get("registration_locked_fields") or locked_fields_from_mappings(field_mappings)
-    )
-    return cfg
-
-
-def registration_locked_fields(cfg=None):
-    cfg = cfg or load_master_import_config()
-    return list(cfg.get("registration_locked_fields") or
-                locked_fields_from_mappings(cfg.get("field_mappings") or {}))
+from campus.core.master_import_config import (
+    load_master_import_config,
+    registration_locked_fields,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -461,8 +342,11 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn):
     return created, updated, skipped
 
 
-def run_dual_master_refresh(db, cfg, can_edit_fn, user, compute_stage_fn):
+def run_dual_master_refresh(db, cfg, can_edit_fn, user, compute_stage_fn=None):
+    from campus.domain.stage_routing import compute_current_stage
     from campus.services.master_import_store import both_files_ready, get_stored_files, load_meta, save_meta
+
+    compute_stage_fn = compute_stage_fn or compute_current_stage
 
     page = cfg.get("page", "registration")
     if not both_files_ready(page, cfg):

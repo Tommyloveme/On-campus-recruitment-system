@@ -10,10 +10,10 @@ import sys
 import threading
 
 from campus import create_app
+from campus.core.logging_util import log
+from campus.core.settings import APP_CONFIG
 from campus.db.schema import init_db
-from campus.logging_util import log
 from campus.services.backups import backup_scheduler
-from campus.settings import APP_CONFIG
 
 app = create_app()
 

@@ -8,9 +8,13 @@ config/user_fields.json 配置：内置字段(builtin=true)对应 users 表列�
 import json
 import re
 
-from campus.db.connection import get_db
-from campus.services.interviews import parse_job_roles
-from campus.settings import load_user_fields, USER_FIELDS, load_app_config
+from campus.core.settings import load_app_config, load_user_fields
+from campus.db.connection import get_db, now_str
+from campus.domain.employees import (
+    format_user_department,
+    parse_job_roles,
+    user_dept_display,
+)
 
 CHINESE_NAME_RE = re.compile(r"^[\u4e00-\u9fff]+$")
 
@@ -66,7 +70,6 @@ def persist_user_columns(db, uid, fields, role, password=None, is_create=False, 
     jr = json.dumps(job_roles if job_roles is not None else [], ensure_ascii=False)
     if is_create:
         from werkzeug.security import generate_password_hash
-        from campus.db.connection import now_str
         db.execute(
             "INSERT INTO users (username, display_name, password_hash, role, group_id, "
             "supervisor, department, dept_level2, dept_level3, job_roles, extra, created_at) "
@@ -111,14 +114,6 @@ def field_def(key):
 
 def is_chinese_only(text):
     return bool(text) and CHINESE_NAME_RE.fullmatch(text)
-
-
-def format_user_department(level2, level3):
-    l2 = (level2 or "").strip()
-    l3 = (level3 or "").strip()
-    if not l2:
-        return ""
-    return f"{l2}/{l3}" if l3 else l2
 
 
 def parse_extra(raw):
@@ -179,8 +174,7 @@ def parse_user_profile_body(body, require_employee_id=False):
 
 def user_dict(u):
     """序列化用户：工号 + 角色 + 所有配置字段（builtin 列 + extra JSON）。"""
-    from campus.services.roles import role_label
-    from campus.services.interviews import parse_job_roles
+    from campus.core.roles_store import role_label
     keys = u.keys() if hasattr(u, "keys") else []
     extra = parse_extra(u["extra"] if "extra" in keys else None)
     out = {
@@ -206,13 +200,12 @@ def apply_role_to_user(db, uid, role_key):
     bypass 角色（如系统管理员）清空其 module_acl（依赖 admin_bypass 直通）。
     返回写入的条目数。
     """
-    from campus.services.roles import get_role, role_bypass
+    from campus.core.roles_store import get_role, role_bypass
     db.execute("DELETE FROM module_acl WHERE subject_type='user' AND subject_id=?", (uid,))
     if role_bypass(role_key):
         return 0
     r = get_role(role_key)
     perms = (r or {}).get("perms", {}) or {}
-    from campus.db.connection import now_str
     now = now_str()
     cnt = 0
     for mk, flags in perms.items():
@@ -228,25 +221,6 @@ def apply_role_to_user(db, uid, role_key):
         )
         cnt += 1
     return cnt
-
-
-def user_dept_display(user_row):
-    """用户二层/三层部门展示文本。"""
-    keys = user_row.keys() if hasattr(user_row, "keys") else []
-    dept_level2 = user_row["dept_level2"] if "dept_level2" in keys else ""
-    dept_level3 = user_row["dept_level3"] if "dept_level3" in keys else ""
-    department = user_row["department"] if "department" in keys else ""
-    if not dept_level2 and department:
-        dept_level2, dept_level3 = split_department_field(department)
-    return format_user_department(dept_level2, dept_level3) or (department or "").strip()
-
-
-def split_department_field(department):
-    dept = (department or "").strip()
-    if "/" in dept:
-        parts = dept.split("/", 1)
-        return parts[0].strip(), parts[1].strip()
-    return dept, ""
 
 
 def lookup_employee_by_username(db, username):

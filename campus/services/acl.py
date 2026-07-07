@@ -1,20 +1,29 @@
 # -*- coding: utf-8 -*-
-"""访问控制列表（ACL）权限解析引擎（纯模块授权模型）。
+"""访问控制（ACL）权限解析引擎（纯模块授权模型）。
 
 权限模型：
 - 唯一性由工号(username)决定；其余均为附属信息（见 config/user_fields.json）。
 - 候选人数据为单一共享池（已取消资源分组），所有登录用户可见；
   编辑/删除由「模块写权限」按候选人当前所处阶段模块门禁。
 - 模块权限：每条 module_acl 为 用户(工号) × 模块 的 visibility/read/write/manage
-  四个独立标志；板块权限向其下子模块继承。系统管理员(admin)受 admin_bypass 直通。
+  四个独立标志；板块权限向其下子模块继承。模块清单见 campus.core.modules。
+- 管理员判定：`is_admin()` 是全系统唯一实现——role=='admin' 或该角色在
+  config/roles.json 中标记 bypass=true，均视为系统管理员直通。
 - 缓存：解析结果按请求缓存于 g._acl_cache。
 """
 import json
 
 from flask import g
 
+from campus.core.modules import (  # noqa: F401  （对外统一从本模块取用）
+    MODULE_REGISTRY,
+    module_ancestor_chain,
+    module_entry,
+    module_keys,
+)
+from campus.core.roles_store import role_bypass
+from campus.core.settings import load_app_config
 from campus.db.connection import get_db
-from campus.settings import load_app_config
 
 PERM_KEYS = ("visibility", "read", "write", "manage")
 SUBJECT_TYPE_USER = "user"
@@ -42,7 +51,16 @@ def _cache():
 
 
 def is_admin(user):
-    return bool(user and user["role"] == "admin")
+    """系统管理员判定（唯一实现）：role=='admin' 或角色 bypass=true。"""
+    if not user:
+        return False
+    try:
+        role = user["role"]
+    except (TypeError, KeyError, IndexError):
+        role = getattr(user, "get", lambda _k, _d=None: None)("role")
+    if role == "admin":
+        return True
+    return role_bypass(role)
 
 
 # ---- 候选人共享池可见性 / 编辑 / 删除 -------------------------------------
@@ -56,17 +74,13 @@ def _candidate_current_stage(row):
 
 
 def can_see_candidate(db, user, candidate_row):
-    """共享池：所有登录用户可见；admin 直通。"""
-    if user is None:
-        return False
-    return True
+    """共享池：所有登录用户可见。"""
+    return user is not None
 
 
 def can_edit_candidate(db, user, candidate_row):
-    """共享池编辑：admin 直通；其余由端点的模块写门禁把关（阶段即模块 key）。"""
-    if user is None:
-        return False
-    return True
+    """共享池编辑：由端点的模块写门禁把关（阶段即模块 key），此处仅要求登录。"""
+    return user is not None
 
 
 def can_delete_candidate(db, user, candidate_row):
@@ -82,75 +96,8 @@ def can_delete_candidate(db, user, candidate_row):
 
 
 # ============================================================================
-# 模块级 ACL：用户(工号) × 模块 的 visibility/read/write/manage
+# 模块级 ACL 解析：用户(工号) × 模块 的 visibility/read/write/manage
 # ============================================================================
-MODULE_REGISTRY = [
-    {"key": "registration", "label": "候选人登记", "type": "item", "parent_key": None},
-    {"key": "recruit_flow", "label": "校招流程", "type": "section", "parent_key": None, "items": [
-        {"key": "resume_screening", "label": "简历筛选", "type": "item", "parent_key": "recruit_flow"},
-        {"key": "qualification", "label": "资格审查", "type": "item", "parent_key": "recruit_flow"},
-        {"key": "written_test", "label": "笔试", "type": "item", "parent_key": "recruit_flow"},
-        {"key": "personality_test", "label": "性格测评", "type": "item", "parent_key": "recruit_flow"},
-        {"key": "qualification_interview", "label": "资格面试", "type": "item", "parent_key": "recruit_flow"},
-        {"key": "tech_interview", "label": "技术面", "type": "item", "parent_key": "recruit_flow"},
-        {"key": "manager_interview", "label": "主管面", "type": "item", "parent_key": "recruit_flow"},
-    ]},
-    {"key": "offer_strategy", "label": "Offer策略", "type": "section", "parent_key": None, "items": [
-        {"key": "approval", "label": "报批", "type": "item", "parent_key": "offer_strategy"},
-        {"key": "salary", "label": "谈薪", "type": "item", "parent_key": "offer_strategy"},
-        {"key": "offer", "label": "Offer管理", "type": "item", "parent_key": "offer_strategy"},
-        {"key": "contract_signing", "label": "签约情况", "type": "item", "parent_key": "offer_strategy"},
-    ]},
-    {"key": "onboarding", "label": "入职管理", "type": "item", "parent_key": None},
-    {"key": "feedback", "label": "问题反馈", "type": "item", "parent_key": None},
-    {"key": "data_board", "label": "数据看板", "type": "section", "parent_key": None, "items": [
-        {"key": "overview", "label": "全局总览", "type": "item", "parent_key": "data_board"},
-        {"key": "charts", "label": "数据图表", "type": "item", "parent_key": "data_board"},
-    ]},
-    {"key": "admin_board", "label": "管理看板", "type": "section", "parent_key": None, "items": [
-        {"key": "permissions", "label": "权限管理", "type": "item", "parent_key": "admin_board"},
-        {"key": "op_logs", "label": "操作日志", "type": "item", "parent_key": "admin_board"},
-        {"key": "backups", "label": "数据备份", "type": "item", "parent_key": "admin_board"},
-    ]},
-]
-
-_MODULE_INDEX = {}
-
-
-def _build_module_index():
-    _MODULE_INDEX.clear()
-    def walk(entry, parent_key):
-        e = {k: v for k, v in entry.items() if k != "items"}
-        e["parent_key"] = parent_key
-        _MODULE_INDEX[e["key"]] = e
-        for child in entry.get("items", []):
-            walk(child, e["key"])
-    for entry in MODULE_REGISTRY:
-        walk(entry, entry.get("parent_key"))
-
-
-_build_module_index()
-
-
-def module_keys():
-    return list(_MODULE_INDEX.keys())
-
-
-def module_entry(key):
-    return _MODULE_INDEX.get(key)
-
-
-def module_ancestor_chain(module_key):
-    """模块继承链：自身 → 所属板块 → ...（板块权限下发给子模块）。"""
-    chain = []
-    seen = set()
-    cur = module_key
-    while cur and cur in _MODULE_INDEX and cur not in seen:
-        seen.add(cur)
-        chain.append(cur)
-        cur = _MODULE_INDEX[cur].get("parent_key")
-    return chain
-
 
 def _merge_module_rows(rows):
     perms = _empty_perms()
@@ -220,14 +167,6 @@ def module_writable_for(user, module_key):
     return bool(effective_module_perms(get_db(), user, module_key)["write"])
 
 
-def module_endpoint_read_ok(user, module_key):
-    return module_readable_for(user, module_key)
-
-
-def module_endpoint_write_ok(user, module_key):
-    return module_writable_for(user, module_key)
-
-
 def module_registry_payload(user=None):
     """模块注册表 + 当前用户对各模块的有效权限（供前端导航渲染）。"""
     db = get_db()
@@ -253,3 +192,48 @@ def module_registry_payload(user=None):
                 e["items"].append(ci)
         out.append(e)
     return out
+
+
+# ============================================================================
+# 模块 ACL 存取（供 web 层权限管理接口调用，SQL 收敛于此）
+# ============================================================================
+
+def query_module_acl(db, module_key=None, subject_id=None):
+    sql = "SELECT * FROM module_acl WHERE subject_type=?"
+    args = [SUBJECT_TYPE_USER]
+    if module_key:
+        sql += " AND module_key=?"
+        args.append(module_key)
+    if subject_id is not None:
+        sql += " AND subject_id=?"
+        args.append(subject_id)
+    sql += " ORDER BY module_key, subject_id"
+    return db.execute(sql, args).fetchall()
+
+
+def upsert_module_acl(db, subject_id, module_key, perms):
+    """perms: {perm_visibility, perm_read, perm_write, perm_manage} 均为 0/1。"""
+    from campus.db.connection import now_str
+    existing = db.execute(
+        "SELECT id FROM module_acl WHERE subject_type=? AND subject_id=? AND module_key=?",
+        (SUBJECT_TYPE_USER, subject_id, module_key),
+    ).fetchone()
+    if existing:
+        db.execute(
+            "UPDATE module_acl SET perm_visibility=?, perm_read=?, perm_write=?, perm_manage=? WHERE id=?",
+            (perms["perm_visibility"], perms["perm_read"], perms["perm_write"], perms["perm_manage"], existing["id"]),
+        )
+    else:
+        db.execute(
+            "INSERT INTO module_acl (subject_type, subject_id, module_key, "
+            "perm_visibility, perm_read, perm_write, perm_manage, created_at) VALUES (?,?,?,?,?,?,?,?)",
+            (SUBJECT_TYPE_USER, subject_id, module_key, perms["perm_visibility"], perms["perm_read"],
+             perms["perm_write"], perms["perm_manage"], now_str()),
+        )
+
+
+def delete_module_acl(db, subject_id, module_key):
+    db.execute(
+        "DELETE FROM module_acl WHERE subject_type=? AND subject_id=? AND module_key=?",
+        (SUBJECT_TYPE_USER, subject_id, module_key),
+    )

@@ -5,7 +5,7 @@ from datetime import datetime
 
 from flask import g
 
-from campus.settings import DB_PATH
+from campus.core.settings import DB_PATH
 
 
 def get_db():

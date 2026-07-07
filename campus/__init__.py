@@ -5,9 +5,9 @@ import secrets
 
 from flask import Flask
 
+from campus.core.settings import APP_CONFIG, BASE_DIR, SECRET_PATH
 from campus.db.connection import register_db
-from campus.routes import register_routes
-from campus.settings import APP_CONFIG, BASE_DIR, SECRET_PATH
+from campus.web import register_routes
 
 
 def _ensure_secret():

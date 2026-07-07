@@ -8,10 +8,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from campus.config_loader import load_stages_meta
+from campus.core.stage_config import load_stages_meta
 from campus.db.connection import DB_PATH, now_str
 from campus.db.schema import init_db, migrate
-from campus.stage_routing import compute_current_stage
+from campus.domain.stage_routing import compute_current_stage
 
 SURNAMES = "张李王刘陈杨赵黄周吴徐孙胡朱高林何郭马罗梁宋郑谢韩唐冯于董萧程曹袁邓许傅沈曾彭吕苏卢蒋蔡贾丁魏薛叶阎余潘杜戴夏钟汪田任姜范方石姚谭廖邹熊金陆郝孔白崔康毛邱秦江史顾侯邵孟龙万段雷钱汤尹黎易常武乔贺赖龚文".strip()
 GIVEN = "伟芳娜敏静丽强磊洋艳勇军杰娟涛明超秀英华慧建平刚桂兰".strip()

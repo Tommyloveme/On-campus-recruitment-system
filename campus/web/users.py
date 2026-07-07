@@ -8,10 +8,11 @@ import sqlite3
 
 from flask import Blueprint, g, jsonify, request
 
-from campus.auth.decorators import admin_required, login_required
+from campus.core.roles_store import role_keys, role_label
+from campus.core.settings import APP_CONFIG
 from campus.db.connection import get_db
+from campus.domain.employees import user_dept_display
 from campus.services.audit import add_log
-from campus.services.roles import role_keys, role_label
 from campus.services.users import (
     apply_role_to_user,
     builtin_fields,
@@ -22,11 +23,10 @@ from campus.services.users import (
     parse_user_profile_body,
     persist_user_columns,
     search_employees_for_registration,
-    user_dept_display,
     user_dict,
     validate_registration_user_refs,
 )
-from campus.settings import APP_CONFIG
+from campus.web.guards import admin_required, login_required
 
 bp = Blueprint("users", __name__)
 
@@ -37,7 +37,7 @@ def _resolve_job_roles_update(body, role, user):
         return []
     if "job_roles" in body:
         return normalize_job_roles_payload(body) or []
-    from campus.services.interviews import parse_job_roles
+    from campus.domain.employees import parse_job_roles
     return parse_job_roles(user["job_roles"] if user else None)
 
 
@@ -115,12 +115,6 @@ def api_lookup_employee():
     })
 
 
-def _persist_user_columns(db, uid, fields, role, password=None, is_create=False, username=None,
-                          job_roles=None):
-    return persist_user_columns(db, uid, fields, role, password=password,
-                                is_create=is_create, username=username, job_roles=job_roles)
-
-
 @bp.post("/api/users")
 @admin_required
 def api_user_create():
@@ -140,13 +134,13 @@ def api_user_create():
     db = get_db()
     job_roles = normalize_job_roles_payload(b)
     if "job_roles" not in b and role == "interviewer":
-        from campus.services.roles import get_role
+        from campus.core.roles_store import get_role
         rdef = get_role(role)
         job_roles = list((rdef or {}).get("interview_positions") or [])
     elif job_roles is None:
         job_roles = []
     try:
-        _persist_user_columns(db, None, fields, role, password=password,
+        persist_user_columns(db, None, fields, role, password=password,
                               is_create=True, username=username, job_roles=job_roles)
     except sqlite3.IntegrityError:
         return jsonify({"error": "工号已存在"}), 400
@@ -185,7 +179,7 @@ def api_user_update(uid):
     if err:
         return jsonify({"error": err}), 400
 
-    _persist_user_columns(db, uid, fields, role, password=b.get("password"),
+    persist_user_columns(db, uid, fields, role, password=b.get("password"),
                           job_roles=_resolve_job_roles_update(b, role, user))
     # 显式要求重新应用角色权限（覆盖该用户模块权限）
     if b.get("apply_role"):
@@ -261,7 +255,7 @@ def api_users_batch_update():
         err, fields = parse_user_profile_body(merged)
         if err:
             continue
-        _persist_user_columns(db, int(uid), fields, row["role"])
+        persist_user_columns(db, int(uid), fields, row["role"])
         updated += 1
     add_log(g.user, "user", f"{g.user['display_name']} 批量修改了 {updated} 个用户资料")
     db.commit()

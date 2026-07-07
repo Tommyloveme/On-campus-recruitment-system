@@ -2,9 +2,9 @@
 """字段配置接口。"""
 from flask import Blueprint, jsonify, request
 
-from campus.auth.decorators import login_required
-from campus.config_loader import build_config_response, load_stage_fields, load_stages_meta, validate_stage
-from campus.settings import load_app_config
+from campus.core.settings import load_app_config
+from campus.core.stage_config import build_config_response, load_stage_fields, load_stages_meta, validate_stage
+from campus.web.guards import login_required
 
 bp = Blueprint("config", __name__)
 

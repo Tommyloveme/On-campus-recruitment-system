@@ -8,9 +8,9 @@ from datetime import datetime
 
 from flask import Blueprint, g, jsonify, request, send_file
 
-from campus.auth.decorators import login_required
+from campus.core.logging_util import log, who
+from campus.core.settings import RESUME_DIR
 from campus.db.connection import get_db, now_str
-from campus.logging_util import log, who
 from campus.services.acl import can_see_candidate
 from campus.services.audit import add_log
 from campus.services.resumes import (
@@ -19,7 +19,7 @@ from campus.services.resumes import (
     PREVIEW_PAGE,
     remove_resume_file,
 )
-from campus.settings import RESUME_DIR
+from campus.web.guards import login_required
 
 bp = Blueprint("resumes", __name__)
 

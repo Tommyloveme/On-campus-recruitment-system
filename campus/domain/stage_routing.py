@@ -2,8 +2,8 @@
 """候选人流程阶段判定：条件字段均来自 Application*.xlsx / 候选人管理*.xlsx 映射列。"""
 import fnmatch
 
-from campus.config_loader import load_stages_meta
-from campus.services.master_import import load_master_import_config
+from campus.core.master_import_config import load_master_import_config
+from campus.core.stage_config import load_stages_meta
 
 # 判定规则中允许出现的字段 = 主数据 Excel 映射字段（不含内部 _ 前缀）
 _ROUTING_FIELD_CACHE = None

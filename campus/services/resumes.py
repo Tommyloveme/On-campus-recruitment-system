@@ -4,9 +4,9 @@ import secrets
 
 from flask import g, jsonify
 
+from campus.core.settings import RESUME_DIR
 from campus.db.connection import get_db
 from campus.services.acl import can_delete_candidate, can_edit_candidate, can_see_candidate
-from campus.settings import RESUME_DIR
 
 
 PREVIEW_PAGE = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">

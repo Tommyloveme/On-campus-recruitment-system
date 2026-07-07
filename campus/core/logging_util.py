@@ -4,7 +4,7 @@ import logging
 import os
 import sys
 
-from campus.settings import BASE_DIR, load_app_config
+from campus.core.settings import BASE_DIR, load_app_config
 
 
 def setup_logging():

@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""认证装饰器与当前用户。"""
+"""HTTP 门禁：当前用户解析与访问装饰器。
+
+管理员判定统一使用 campus.services.acl.is_admin（role=='admin' 或角色
+bypass=true），全系统只有这一处实现，避免多套判定不一致。
+"""
 from functools import wraps
 
 from flask import g, jsonify, session
@@ -28,10 +32,11 @@ def login_required(fn):
 def admin_required(fn):
     @wraps(fn)
     def wrapper(*a, **kw):
+        from campus.services.acl import is_admin
         user = current_user()
         if not user:
             return jsonify({"error": "未登录"}), 401
-        if user["role"] != "admin":
+        if not is_admin(user):
             return jsonify({"error": "需要管理员权限"}), 403
         g.user = user
         return fn(*a, **kw)

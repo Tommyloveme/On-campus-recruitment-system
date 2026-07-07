@@ -6,9 +6,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from campus.config_loader import load_stages_meta
-
-from campus.settings import BASE_DIR
+from campus.core.settings import BASE_DIR
+from campus.core.stage_config import load_stages_meta
 
 STAGES_DIR = os.path.join(BASE_DIR, "config", "stages")
 COMMON_KEYS = {"name", "phone", "resume_id"}

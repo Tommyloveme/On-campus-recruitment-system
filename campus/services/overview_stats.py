@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""数据看板：各流程人数与通过率统计。"""
-from campus.config_loader import load_stages_meta
-from campus.stage_routing import stage_label_map
+"""数据看板：各流程人数与通过率统计、全局总览数据组装。"""
+from campus.core.stage_config import load_stages_meta
+from campus.domain.stage_routing import stage_label_map
 
 # 各流程用于计算通过率的状态字段与「通过」取值
 STAGE_PASS_CONFIG = {
@@ -157,3 +157,33 @@ def compute_dashboard_stats(candidates):
         "pass_rates": pass_rate_list,
         "by_stage": stage_counts,
     }
+
+
+def build_overview_payload(db):
+    """全局总览：全部候选人 + 最新进展 + 关键统计 + 看板数据。"""
+    from campus.services.candidates import candidate_dict
+
+    rows = db.execute("SELECT * FROM candidates ORDER BY updated_at DESC").fetchall()
+    cands = []
+    stats = {"total": len(rows), "signed": 0, "onboarded": 0, "high_risk": 0}
+    for r in rows:
+        c = candidate_dict(r)
+        log_row = db.execute(
+            "SELECT message, created_at FROM logs WHERE candidate_id=? ORDER BY id DESC LIMIT 1", (r["id"],)
+        ).fetchone()
+        c["latest_log"] = (f"[{log_row['created_at']}] {log_row['message']}" if log_row else "暂无更新记录")
+        cands.append(c)
+        d = c["data"]
+        if d.get("sign_status") == "已签约":
+            stats["signed"] += 1
+        if d.get("onboarded") == "是":
+            stats["onboarded"] += 1
+        if d.get("onboard_risk") == "高":
+            stats["high_risk"] += 1
+    return [{
+        "group_id": None,
+        "group_name": "全部候选人",
+        "stats": stats,
+        "dashboard": compute_dashboard_stats(cands),
+        "candidates": cands,
+    }]

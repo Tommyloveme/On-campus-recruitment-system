@@ -1,14 +1,25 @@
 # -*- coding: utf-8 -*-
-"""数据库建表、迁移与演示数据。"""
+"""数据库建表、迁移与演示数据。
+
+分层约束：本模块只依赖 core / domain 层（配置与纯业务规则），
+不得 import campus.services 或 campus.web（避免数据层反向依赖上层）。
+
+- `SCHEMA` 是全部表结构的唯一数据源（CREATE TABLE IF NOT EXISTS，幂等）。
+- `migrate()` 只做「老库补列 / 数据回填 / 历史清理」，新表一律进 SCHEMA。
+- 普通用户基线模块权限来自 config/roles.json 内置角色 `user` 的 perms
+  （campus.core.roles_store.role_perms），不在本文件重复维护。
+"""
 import json
 import os
 import sqlite3
 
 from werkzeug.security import generate_password_hash
 
+from campus.core.roles_store import role_bypass, role_perms
+from campus.core.settings import DB_PATH, FEEDBACK_DIR, RESUME_DIR
 from campus.db.connection import now_str
-from campus.settings import DB_PATH, FEEDBACK_DIR, RESUME_DIR
-from campus.stage_engine import compute_current_stage
+from campus.domain.employees import user_dept_display
+from campus.domain.stage_routing import compute_current_stage
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS groups (
@@ -65,6 +76,8 @@ CREATE TABLE IF NOT EXISTS interviewer_availability (
     group_id INTEGER,
     created_at TEXT NOT NULL
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_iv_avail_unique
+    ON interviewer_availability(user_id, interview_type, avail_date, start_time);
 CREATE TABLE IF NOT EXISTS interview_bookings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     interview_type TEXT NOT NULL,
@@ -90,11 +103,44 @@ CREATE TABLE IF NOT EXISTS module_acl (
     created_at TEXT NOT NULL,
     UNIQUE(subject_type, subject_id, module_key)
 );
+CREATE TABLE IF NOT EXISTS feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    username TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    content_html TEXT NOT NULL,
+    priority TEXT NOT NULL DEFAULT 'normal',
+    reply_html TEXT DEFAULT '',
+    reply_by TEXT DEFAULT '',
+    reply_at TEXT,
+    created_at TEXT NOT NULL
+);
 """
 
 
+def _baseline_module_rows(uid, now):
+    """普通用户基线权限行：来自 roles.json 内置角色 user 的 perms（唯一数据源）。"""
+    rows = []
+    for mk, flags in (role_perms("user") or {}).items():
+        rows.append((
+            "user", uid, mk,
+            1 if flags.get("v") else 0, 1 if flags.get("r") else 0,
+            1 if flags.get("w") else 0, 1 if flags.get("m") else 0, now,
+        ))
+    return rows
+
+
+def _is_bypass_user(u):
+    return u["role"] == "admin" or role_bypass(u["role"])
+
+
 def migrate(db):
-    """为老数据库补充新列/新表。"""
+    """为老数据库补列 / 回填数据 / 清理历史结构（新表结构一律进 SCHEMA）。"""
+    # 确保所有表/索引存在（SCHEMA 幂等，老库缺表时在此补齐）
+    db.executescript(SCHEMA)
+
+    # ---- 老库补列 -----------------------------------------------------------
     cols = {r["name"] for r in db.execute("PRAGMA table_info(candidates)").fetchall()}
     if "resume_file" not in cols:
         db.execute("ALTER TABLE candidates ADD COLUMN resume_file TEXT")
@@ -106,6 +152,8 @@ def migrate(db):
         db.execute("ALTER TABLE users ADD COLUMN department TEXT DEFAULT ''")
     if "job_roles" not in user_cols:
         db.execute("ALTER TABLE users ADD COLUMN job_roles TEXT DEFAULT '[]'")
+    if "extra" not in user_cols:
+        db.execute("ALTER TABLE users ADD COLUMN extra TEXT DEFAULT '{}'")
     if "dept_level2" not in user_cols:
         db.execute("ALTER TABLE users ADD COLUMN dept_level2 TEXT DEFAULT ''")
         db.execute("ALTER TABLE users ADD COLUMN dept_level3 TEXT DEFAULT ''")
@@ -120,31 +168,8 @@ def migrate(db):
                 "UPDATE users SET dept_level2=?, dept_level3=? WHERE id=?",
                 (l2, l3, row["id"]),
             )
-    db.executescript("""
-    CREATE TABLE IF NOT EXISTS interviewer_availability (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL REFERENCES users(id),
-        interview_type TEXT NOT NULL,
-        avail_date TEXT NOT NULL,
-        start_time TEXT NOT NULL,
-        end_time TEXT NOT NULL,
-        group_id INTEGER REFERENCES groups(id),
-        created_at TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS interview_bookings (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        interview_type TEXT NOT NULL,
-        interviewer_id INTEGER NOT NULL REFERENCES users(id),
-        candidate_id INTEGER NOT NULL REFERENCES candidates(id),
-        avail_date TEXT NOT NULL,
-        start_time TEXT NOT NULL,
-        end_time TEXT NOT NULL,
-        start_at TEXT NOT NULL,
-        booked_by INTEGER REFERENCES users(id),
-        created_at TEXT NOT NULL,
-        UNIQUE(interviewer_id, start_at, interview_type)
-    );
-    """)
+
+    # 老库 candidates.group_id 曾为 NOT NULL：重建为可空
     cand_cols = {r["name"]: r for r in db.execute("PRAGMA table_info(candidates)").fetchall()}
     if cand_cols.get("group_id") and cand_cols["group_id"]["notnull"]:
         db.executescript("""
@@ -162,8 +187,7 @@ def migrate(db):
         ALTER TABLE candidates_new RENAME TO candidates;
         """)
 
-    # 权限管理：扩展 groups 表（保留以兼容旧 candidates.group_id 列，已不再使用）
-    group_cols = {r["name"] for r in db.execute("PRAGMA table_info(groups)").fetchall()} if db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='groups'").fetchone() else set()
+    group_cols = {r["name"] for r in db.execute("PRAGMA table_info(groups)").fetchall()}
     if "description" not in group_cols:
         try:
             db.execute("ALTER TABLE groups ADD COLUMN description TEXT DEFAULT ''")
@@ -174,22 +198,8 @@ def migrate(db):
             db.execute("ALTER TABLE groups ADD COLUMN parent_id INTEGER")
         except sqlite3.OperationalError:
             pass
-    db.executescript("""
-        CREATE TABLE IF NOT EXISTS module_acl (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            subject_type TEXT NOT NULL,
-            subject_id INTEGER NOT NULL,
-            module_key TEXT NOT NULL,
-            perm_visibility INTEGER NOT NULL DEFAULT 0,
-            perm_read INTEGER NOT NULL DEFAULT 0,
-            perm_write INTEGER NOT NULL DEFAULT 0,
-            perm_manage INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL,
-            UNIQUE(subject_type, subject_id, module_key)
-        );
-    """)
 
-    # 候选人电话唯一标识
+    # ---- 候选人电话唯一标识（补列 + 去重回填 + 唯一索引） --------------------
     cand_cols = {r["name"] for r in db.execute("PRAGMA table_info(candidates)").fetchall()}
     if "phone" not in cand_cols:
         db.execute("ALTER TABLE candidates ADD COLUMN phone TEXT")
@@ -210,24 +220,8 @@ def migrate(db):
         ON candidates(phone) WHERE phone IS NOT NULL AND phone != ''
     """)
 
-    db.executescript("""
-    CREATE TABLE IF NOT EXISTS feedback (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL REFERENCES users(id),
-        username TEXT NOT NULL,
-        display_name TEXT NOT NULL,
-        title TEXT NOT NULL DEFAULT '',
-        content_html TEXT NOT NULL,
-        priority TEXT NOT NULL DEFAULT 'normal',
-        reply_html TEXT DEFAULT '',
-        reply_by TEXT DEFAULT '',
-        reply_at TEXT,
-        created_at TEXT NOT NULL
-    );
-    """)
-    fb_cols = {r["name"] for r in db.execute("PRAGMA table_info(feedback)").fetchall()} if db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='feedback'"
-    ).fetchone() else set()
+    # ---- feedback 老库补列 ---------------------------------------------------
+    fb_cols = {r["name"] for r in db.execute("PRAGMA table_info(feedback)").fetchall()}
     if fb_cols and "title" not in fb_cols:
         db.execute("ALTER TABLE feedback ADD COLUMN title TEXT NOT NULL DEFAULT ''")
     if fb_cols and "priority" not in fb_cols:
@@ -239,7 +233,7 @@ def migrate(db):
     if fb_cols and "reply_at" not in fb_cols:
         db.execute("ALTER TABLE feedback ADD COLUMN reply_at TEXT")
 
-    # 取消用户分组/资源分组/模板/资源ACL：删除相关表 ----
+    # ---- 历史结构清理：用户分组/资源分组/模板/资源ACL 已取消 -----------------
     db.executescript("""
         DROP TABLE IF EXISTS user_group_members;
         DROP TABLE IF EXISTS user_groups;
@@ -249,43 +243,25 @@ def migrate(db):
         DROP TABLE IF EXISTS module_acl_meta;
     """)
 
-    # users.extra 列（存放自定义附属信息字段）
-    user_cols = {r["name"] for r in db.execute("PRAGMA table_info(users)").fetchall()}
-    if "extra" not in user_cols:
-        db.execute("ALTER TABLE users ADD COLUMN extra TEXT DEFAULT '{}'")
-
     # 候选人统一归为共享池（取消资源分组）
     db.execute("UPDATE candidates SET group_id=NULL")
 
-    # role 收敛为 admin/user
-    db.execute("UPDATE users SET role='user' WHERE role IS NULL OR role != 'admin'")
+    # 历史角色收敛：非 roles.json 中定义的角色一律归为 user
+    from campus.core.roles_store import role_keys
+    known = set(role_keys()) or {"admin", "user"}
+    placeholders = ",".join("?" * len(known))
+    db.execute(
+        f"UPDATE users SET role='user' WHERE role IS NULL OR role NOT IN ({placeholders})",
+        list(known),
+    )
 
     # 清理历史 user_group 主体授权（已取消用户分组）
     db.execute("DELETE FROM module_acl WHERE subject_type != 'user'")
 
-    # 为每位非 admin 用户补齐基线模块权限（仅当该用户尚无任何 module_acl 时，幂等）
-    baseline = [
-        ("registration", 1, 1, 1, 0),
-        ("recruit_flow", 1, 1, 1, 0),
-        ("resume_screening", 1, 1, 1, 0),
-        ("qualification", 1, 1, 1, 0),
-        ("written_test", 1, 1, 1, 0),
-        ("personality_test", 1, 1, 1, 0),
-        ("qualification_interview", 1, 1, 1, 0),
-        ("tech_interview", 1, 1, 1, 0),
-        ("manager_interview", 1, 1, 1, 0),
-        ("offer_strategy", 1, 1, 1, 0),
-        ("approval", 1, 1, 1, 0),
-        ("salary", 1, 1, 1, 0),
-        ("offer", 1, 1, 1, 0),
-        ("contract_signing", 1, 1, 1, 0),
-        ("onboarding", 1, 1, 1, 0),
-        ("feedback", 1, 1, 0, 0),
-    ]
+    # ---- 为尚无任何模块权限的普通用户补齐基线（幂等） -------------------------
     now = now_str()
-    from campus.services.roles import role_bypass
     for u in db.execute("SELECT id, role FROM users").fetchall():
-        if u["role"] == "admin" or role_bypass(u["role"]):
+        if _is_bypass_user(u):
             continue
         cnt = db.execute(
             "SELECT COUNT(*) AS c FROM module_acl WHERE subject_type='user' AND subject_id=?", (u["id"],)
@@ -295,13 +271,9 @@ def migrate(db):
                 "INSERT INTO module_acl (subject_type, subject_id, module_key, "
                 "perm_visibility, perm_read, perm_write, perm_manage, created_at) "
                 "VALUES (?,?,?,?,?,?,?,?)",
-                [("user", u["id"], k, v, r, w, m, now) for (k, v, r, w, m) in baseline],
+                _baseline_module_rows(u["id"], now),
             )
 
-    db.execute("""
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_iv_avail_unique
-        ON interviewer_availability(user_id, interview_type, avail_date, start_time)
-    """)
     _backfill_candidate_employee_names(db)
     _ensure_feedback_module_acl(db)
     _ensure_new_stage_module_acl(db)
@@ -309,8 +281,7 @@ def migrate(db):
 
 
 def _ensure_new_stage_module_acl(db):
-    """为已有用户补齐新增流程模块权限（继承校招流程/Offer策略板块时由 ACL 继承；此处补独立授权）。"""
-    from campus.services.roles import role_bypass
+    """历史迁移：为已有用户补齐后来新增的流程模块权限（继承所属板块的授权）。"""
     new_modules = (
         ("personality_test", 1, 1, 1, 0),
         ("qualification_interview", 1, 1, 1, 0),
@@ -318,7 +289,7 @@ def _ensure_new_stage_module_acl(db):
     )
     now = now_str()
     for u in db.execute("SELECT id, role FROM users").fetchall():
-        if u["role"] == "admin" or role_bypass(u["role"]):
+        if _is_bypass_user(u):
             continue
         for k, v, r, w, m in new_modules:
             exists = db.execute(
@@ -350,11 +321,10 @@ def _ensure_new_stage_module_acl(db):
 
 
 def _ensure_feedback_module_acl(db):
-    """为已有用户补齐问题反馈模块读权限（全员可查看）。"""
-    from campus.services.roles import role_bypass
+    """历史迁移：为已有用户补齐问题反馈模块读权限（全员可查看）。"""
     now = now_str()
     for u in db.execute("SELECT id, role FROM users").fetchall():
-        if u["role"] == "admin" or role_bypass(u["role"]):
+        if _is_bypass_user(u):
             continue
         exists = db.execute(
             "SELECT id FROM module_acl WHERE subject_type='user' AND subject_id=? AND module_key='feedback'",
@@ -371,8 +341,6 @@ def _ensure_feedback_module_acl(db):
 
 def _backfill_candidate_employee_names(db):
     """历史候选人：补全拓源人/接口人中文姓名与部门（列表展示用）。"""
-    from campus.services.users import user_dept_display
-
     for row in db.execute("SELECT id, data FROM candidates").fetchall():
         data = json.loads(row["data"])
         changed = False
@@ -409,24 +377,18 @@ def seed_demo(db):
     if db.execute("SELECT COUNT(*) AS c FROM users WHERE username != 'admin'").fetchone()["c"] > 0:
         print("已存在用户数据，跳过示例数据。")
         return
-    db.execute(
-        "INSERT INTO users (username, display_name, password_hash, role, group_id, supervisor, department, dept_level2, dept_level3, extra, created_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-        ("lead01", "招聘主管老张", generate_password_hash("123456"), "user", None,
-         "李主管", "软件部/研发一组", "软件部", "研发一组", "{}", now_str()),
+    demo_users = (
+        ("lead01", "招聘主管老张", "李主管", "软件部/研发一组", "软件部", "研发一组"),
+        ("hr01", "招聘专员小王", "李主管", "存储部", "存储部", ""),
+        ("hr02", "招聘专员小李", "王主管", "软件部", "软件部", ""),
     )
-    db.execute(
-        "INSERT INTO users (username, display_name, password_hash, role, group_id, supervisor, department, dept_level2, dept_level3, extra, created_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-        ("hr01", "招聘专员小王", generate_password_hash("123456"), "user", None,
-         "李主管", "存储部", "存储部", "", "{}", now_str()),
-    )
-    db.execute(
-        "INSERT INTO users (username, display_name, password_hash, role, group_id, supervisor, department, dept_level2, dept_level3, extra, created_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-        ("hr02", "招聘专员小李", generate_password_hash("123456"), "user", None,
-         "王主管", "软件部", "软件部", "", "{}", now_str()),
-    )
+    for username, display, sup, dept, l2, l3 in demo_users:
+        db.execute(
+            "INSERT INTO users (username, display_name, password_hash, role, group_id, supervisor, department, dept_level2, dept_level3, extra, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (username, display, generate_password_hash("123456"), "user", None,
+             sup, dept, l2, l3, "{}", now_str()),
+        )
     samples = [
         {"name": "张伟", "phone": "13800000001", "interface_person": "刘洋",
               "dept_level3": "存储部", "registration_status": "已登记", "registration_source": "校园宣讲",
@@ -460,25 +422,16 @@ def seed_demo(db):
             "INSERT INTO candidates (group_id, data, phone, created_at, updated_at) VALUES (?,?,?,?,?)",
             (None, json.dumps(data, ensure_ascii=False), data.get("phone") or None, now_str(), now_str()),
         )
-    # 示例用户补齐基线模块权限
-    baseline = [
-        ("registration", 1, 1, 1, 0), ("recruit_flow", 1, 1, 1, 0),
-        ("resume_screening", 1, 1, 1, 0), ("qualification", 1, 1, 1, 0),
-        ("written_test", 1, 1, 1, 0), ("tech_interview", 1, 1, 1, 0),
-        ("manager_interview", 1, 1, 1, 0), ("offer_strategy", 1, 1, 1, 0),
-        ("approval", 1, 1, 1, 0), ("salary", 1, 1, 1, 0), ("offer", 1, 1, 1, 0),
-        ("onboarding", 1, 1, 1, 0),
-        ("feedback", 1, 1, 0, 0),
-    ]
+    # 示例用户按 roles.json 的 user 角色模板补齐基线模块权限
     now = now_str()
-    for uname in ("lead01", "hr01", "hr02"):
+    for uname, *_rest in demo_users:
         u = db.execute("SELECT id FROM users WHERE username=?", (uname,)).fetchone()
         if u:
             db.executemany(
                 "INSERT INTO module_acl (subject_type, subject_id, module_key, "
                 "perm_visibility, perm_read, perm_write, perm_manage, created_at) "
                 "VALUES (?,?,?,?,?,?,?,?)",
-                [("user", u["id"], k, v, r, w, m, now) for (k, v, r, w, m) in baseline],
+                _baseline_module_rows(u["id"], now),
             )
     db.commit()
     print("已写入示例用户/候选人数据（lead01、hr01、hr02 / 123456）。")

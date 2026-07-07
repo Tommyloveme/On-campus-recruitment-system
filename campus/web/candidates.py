@@ -5,14 +5,15 @@ from datetime import datetime
 
 from flask import Blueprint, g, jsonify, request
 
-from campus.auth.decorators import login_required
-from campus.config_loader import editable_fields, field_labels, get_stage_meta, validate_stage
-from campus.db.connection import get_db, now_str
-from campus.logging_util import log, who
+from campus.core.logging_util import log, who
+from campus.core.stage_config import editable_fields, field_labels, get_stage_meta, validate_stage
+from campus.db.connection import get_db
+from campus.domain.stage_routing import compute_current_stage
 from campus.services.acl import (
     can_delete_candidate,
     can_edit_candidate,
     can_see_candidate,
+    is_admin,
     module_writable_for,
 )
 from campus.services.audit import add_log
@@ -33,7 +34,7 @@ from campus.services.users import (
     validate_registration_user_refs,
 )
 from campus.services.resumes import remove_resume_file
-from campus.stage_engine import compute_current_stage
+from campus.web.guards import login_required
 
 bp = Blueprint("candidates", __name__)
 
@@ -220,7 +221,7 @@ def api_candidate_delete(cid):
 @bp.post("/api/candidates/batch_delete")
 @login_required
 def api_candidates_batch_delete():
-    if g.user["role"] != "admin":
+    if not is_admin(g.user):
         log.warning("批量删除权限拒绝 %s", who(g.user))
         return jsonify({"error": "仅系统管理员可批量删除"}), 403
     ids = request.get_json(force=True).get("ids") or []
@@ -253,7 +254,7 @@ def api_candidates_batch_delete():
 @bp.post("/api/candidates/recompute-stages")
 @login_required
 def api_recompute_stages():
-    if g.user["role"] != "admin":
+    if not is_admin(g.user):
         return jsonify({"error": "仅系统管理员可执行"}), 403
     db = get_db()
     rows = db.execute("SELECT * FROM candidates").fetchall()

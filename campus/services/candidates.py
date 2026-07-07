@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
+"""候选人存取：电话唯一性、序列化与展示补充（SQL 收敛于此）。"""
 import json
 import re
 import sqlite3
 from datetime import datetime, timedelta
 
 from campus.db.connection import get_db, now_str
-from campus.services.users import lookup_employee_by_username
 
 
 def normalize_candidate_phone(phone):

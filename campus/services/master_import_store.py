@@ -6,7 +6,7 @@ import os
 import shutil
 from datetime import datetime
 
-from campus.settings import BASE_DIR
+from campus.core.settings import BASE_DIR
 
 MASTER_DATA_DIR = os.path.join(BASE_DIR, "data", "master_import")
 META_FILENAME = "meta.json"

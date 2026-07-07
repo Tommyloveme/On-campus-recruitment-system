@@ -7,19 +7,20 @@ from datetime import datetime
 from flask import Blueprint, g, jsonify, request, send_file
 from openpyxl import Workbook, load_workbook
 
-from campus.auth.decorators import login_required
-from campus.config_loader import (
+from campus.core.logging_util import log, who
+from campus.core.master_import_config import load_master_import_config
+from campus.core.stage_config import (
     get_stage_meta,
     importable_fields,
     load_stage_fields,
     match_import_header,
     validate_stage,
 )
-from campus.db.connection import get_db, now_str
-from campus.logging_util import log, who
+from campus.db.connection import get_db
+from campus.domain.stage_routing import compute_current_stage
 from campus.services.acl import can_see_candidate, is_admin, module_writable_for
 from campus.services.audit import add_log
-from campus.stage_engine import compute_current_stage, load_master_import_config, run_dual_master_refresh
+from campus.services.master_import import run_dual_master_refresh
 from campus.services.master_import_store import (
     both_files_ready,
     detect_source_key,
@@ -27,6 +28,7 @@ from campus.services.master_import_store import (
     load_meta,
     save_upload,
 )
+from campus.web.guards import login_required
 
 bp = Blueprint("import_export", __name__)
 
@@ -102,7 +104,7 @@ def api_import():
         normalize_candidate_phone,
         update_candidate_row,
     )
-    from campus.stage_engine import build_global_candidate_index
+    from campus.services.master_import import build_global_candidate_index
     by_phone = build_global_candidate_index(db)
 
     created = updated = skipped = 0

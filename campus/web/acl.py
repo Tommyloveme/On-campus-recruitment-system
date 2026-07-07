@@ -11,20 +11,22 @@ import io
 from flask import Blueprint, g, jsonify, request, send_file
 from openpyxl import Workbook
 
-from campus.auth.decorators import admin_required, login_required
-from campus.db.connection import get_db, now_str
+from campus.core.modules import MODULE_REGISTRY, module_keys
+from campus.core.roles_store import roles_payload
+from campus.db.connection import get_db
 from campus.services.acl import (
-    MODULE_REGISTRY,
     SUBJECT_TYPE_USER,
+    delete_module_acl,
     module_acl_row_dict,
-    module_keys,
     module_registry_payload,
     permission_settings,
+    query_module_acl,
+    upsert_module_acl,
 )
 from campus.services.audit import add_log
 from campus.services.interviews import interview_cfg
-from campus.services.roles import roles_payload
 from campus.services.users import user_dict, user_fields_config
+from campus.web.guards import admin_required, login_required
 
 bp = Blueprint("acl", __name__)
 
@@ -72,19 +74,9 @@ def api_permission_modules():
 @admin_required
 def api_module_acl_query():
     """查询全部模块 ACL 条目（可按 module_key / subject_id 过滤，矩阵数据）。"""
-    db = get_db()
-    sql = "SELECT * FROM module_acl WHERE subject_type=?"
-    args = [SUBJECT_TYPE_USER]
-    mk = (request.args.get("module_key") or "").strip()
+    mk = (request.args.get("module_key") or "").strip() or None
     sid = request.args.get("subject_id", type=int)
-    if mk:
-        sql += " AND module_key=?"
-        args.append(mk)
-    if sid is not None:
-        sql += " AND subject_id=?"
-        args.append(sid)
-    sql += " ORDER BY module_key, subject_id"
-    rows = db.execute(sql, args).fetchall()
+    rows = query_module_acl(get_db(), module_key=mk, subject_id=sid)
     return jsonify([module_acl_row_dict(r) for r in rows])
 
 
@@ -112,25 +104,6 @@ def _module_perms_from_body(b):
     return {k: 1 if _truthy(b.get(k)) else 0 for k in PERM_FIELDS}
 
 
-def _module_acl_upsert(db, s_id, module_key, perms):
-    existing = db.execute(
-        "SELECT id FROM module_acl WHERE subject_type=? AND subject_id=? AND module_key=?",
-        (SUBJECT_TYPE_USER, s_id, module_key),
-    ).fetchone()
-    if existing:
-        db.execute(
-            "UPDATE module_acl SET perm_visibility=?, perm_read=?, perm_write=?, perm_manage=? WHERE id=?",
-            (perms["perm_visibility"], perms["perm_read"], perms["perm_write"], perms["perm_manage"], existing["id"]),
-        )
-    else:
-        db.execute(
-            "INSERT INTO module_acl (subject_type, subject_id, module_key, "
-            "perm_visibility, perm_read, perm_write, perm_manage, created_at) VALUES (?,?,?,?,?,?,?,?)",
-            (SUBJECT_TYPE_USER, s_id, module_key, perms["perm_visibility"], perms["perm_read"],
-             perms["perm_write"], perms["perm_manage"], now_str()),
-        )
-
-
 def _log_module_acl_change(user, b, perms, action):
     s_label = f"用户#{b.get('subject_id')}"
     if perms is None:
@@ -150,7 +123,7 @@ def api_module_acl_upsert():
         return jsonify({"error": err}), 400
     perms = _module_perms_from_body(b)
     db = get_db()
-    _module_acl_upsert(db, int(b["subject_id"]), b["module_key"], perms)
+    upsert_module_acl(db, int(b["subject_id"]), b["module_key"], perms)
     _log_module_acl_change(g.user, b, perms, action="upsert")
     db.commit()
     return jsonify({"ok": True})
@@ -164,10 +137,7 @@ def api_module_acl_delete():
     if err:
         return jsonify({"error": err}), 400
     db = get_db()
-    db.execute(
-        "DELETE FROM module_acl WHERE subject_type=? AND subject_id=? AND module_key=?",
-        (SUBJECT_TYPE_USER, int(b["subject_id"]), b["module_key"]),
-    )
+    delete_module_acl(db, int(b["subject_id"]), b["module_key"])
     _log_module_acl_change(g.user, b, None, action="revoke")
     db.commit()
     return jsonify({"ok": True})
@@ -217,15 +187,10 @@ def api_module_acl_batch():
     affected = 0
     for e in entries:
         if mode == "revoke":
-            db.execute(
-                "DELETE FROM module_acl WHERE subject_type=? AND subject_id=? AND module_key=?",
-                (SUBJECT_TYPE_USER, int(e["subject_id"]), e["module_key"]),
-            )
-            affected += 1
+            delete_module_acl(db, int(e["subject_id"]), e["module_key"])
         else:
-            perms = _module_perms_from_body(e)
-            _module_acl_upsert(db, int(e["subject_id"]), e["module_key"], perms)
-            affected += 1
+            upsert_module_acl(db, int(e["subject_id"]), e["module_key"], _module_perms_from_body(e))
+        affected += 1
     add_log(g.user, "permission",
             f"{g.user['display_name']} 批量{('撤销' if mode == 'revoke' else '设置')}了 {affected} 条模块权限"
             f"（影响 {len(subjects)} 个用户、{len(modules)} 个模块）")

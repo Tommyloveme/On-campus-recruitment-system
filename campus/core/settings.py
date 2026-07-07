@@ -3,7 +3,8 @@
 import json
 import os
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 仓库根目录（本文件位于 campus/core/ 下，需回退两级）
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CONFIG_DIR = os.path.join(BASE_DIR, "config")
 DB_PATH = os.path.join(BASE_DIR, "data", "candidates.db")
 APP_CONFIG_PATH = os.path.join(CONFIG_DIR, "app_config.json")

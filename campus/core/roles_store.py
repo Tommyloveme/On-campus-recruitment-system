@@ -1,14 +1,18 @@
 # -*- coding: utf-8 -*-
-"""角色（权限模板）服务：加载/保存/CRUD，持久化到 config/roles.json。
+"""角色（权限模板）存取：加载/保存/CRUD，持久化到 config/roles.json。
 
 角色 = 权限模板。每个角色定义 key/label/bypass/perms。
-应用角色到用户时，将 perms 写入该用户的 module_acl（覆盖其原有模块权限）。
-bypass=true 的角色绕过所有模块权限（系统管理员）。
+- 应用角色到用户（campus.services.users.apply_role_to_user）时，将 perms
+  写入该用户的 module_acl（覆盖其原有模块权限）。
+- bypass=true 的角色等同系统管理员：直通所有权限校验（is_admin 判定的
+  唯一实现见 campus.services.acl.is_admin）。
+- 内置角色 `user` 的 perms 同时是「普通用户基线权限」的唯一数据源，
+  数据库迁移补齐基线权限时也从这里读取（campus.db.schema）。
 """
 import json
 import os
 
-from campus.settings import ROLES_PATH
+from campus.core.settings import ROLES_PATH
 
 _cache = None
 
@@ -87,7 +91,7 @@ def valid_role_key(key):
 
 def _normalize_perms(perms):
     """规范化 perms：仅保留合法模块与 0/1 标志。"""
-    from campus.services.acl import module_keys
+    from campus.core.modules import module_keys
     valid_keys = set(module_keys())
     out = {}
     if not isinstance(perms, dict):

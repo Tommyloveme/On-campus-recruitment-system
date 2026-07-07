@@ -5,16 +5,15 @@
 """
 from flask import Blueprint, g, jsonify, request
 
-from campus.auth.decorators import admin_required
-from campus.services.audit import add_log
-from campus.services.roles import (
-    all_roles,
+from campus.core.roles_store import (
     create_role,
     delete_role,
     role_is_builtin,
     roles_payload,
     update_role,
 )
+from campus.services.audit import add_log
+from campus.web.guards import admin_required
 
 bp = Blueprint("roles", __name__)
 
