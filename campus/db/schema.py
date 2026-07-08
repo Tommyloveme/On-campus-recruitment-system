@@ -196,6 +196,16 @@ def migrate(db):
     from campus.core.log_levels import DEFAULT_ACTION_LEVELS
     for action, lv in DEFAULT_ACTION_LEVELS.items():
         db.execute("UPDATE logs SET level=? WHERE action=? AND (level IS NULL OR level=10)", (lv, action))
+    # 如果操作人本身日志权限更高（数字更小），存量日志也按操作人等级收敛。
+    # logs 只存 user_name，这里按当前 users.display_name 回补。
+    for u in db.execute("SELECT display_name, log_level, role FROM users").fetchall():
+        lv = int(u["log_level"] or 10)
+        if _is_bypass_user(u):
+            lv = 1
+        db.execute(
+            "UPDATE logs SET level=? WHERE user_name=? AND (level IS NULL OR level>?)",
+            (lv, u["display_name"], lv),
+        )
     db.execute("CREATE INDEX IF NOT EXISTS idx_logs_module ON logs(module_key, id)")
 
     # ---- 模块细粒度特性权限列（JSON，{feature_key: 0|1}，缺省=允许） ----
@@ -207,9 +217,10 @@ def migrate(db):
     user_cols_pre = {r["name"] for r in db.execute("PRAGMA table_info(users)").fetchall()}
     if "log_level" not in user_cols_pre:
         db.execute("ALTER TABLE users ADD COLUMN log_level INTEGER NOT NULL DEFAULT 10")
-        for u in db.execute("SELECT id, role FROM users").fetchall():
-            if _is_bypass_user(u):
-                db.execute("UPDATE users SET log_level=1 WHERE id=?", (u["id"],))
+    # 系统管理员/绕过角色恒为 L1；即使旧库已有 log_level 列也要纠偏。
+    for u in db.execute("SELECT id, role FROM users").fetchall():
+        if _is_bypass_user(u):
+            db.execute("UPDATE users SET log_level=1 WHERE id=?", (u["id"],))
     cols = {r["name"] for r in db.execute("PRAGMA table_info(candidates)").fetchall()}
     if "resume_file" not in cols:
         db.execute("ALTER TABLE candidates ADD COLUMN resume_file TEXT")

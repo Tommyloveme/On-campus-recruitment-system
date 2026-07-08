@@ -113,7 +113,7 @@ def api_log_levels():
         "display_name": r["display_name"],
         "role": r["role"],
         "role_label": role_label(r["role"]),
-        "log_level": clamp_log_level(r["log_level"]),
+        "log_level": 1 if is_admin(r) else clamp_log_level(r["log_level"]),
     } for r in rows])
 
 
@@ -125,6 +125,13 @@ def api_log_level_update(uid):
     user = db.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
     if not user:
         return jsonify({"error": "用户不存在"}), 404
+    if is_admin(user):
+        db.execute("UPDATE users SET log_level=1 WHERE id=?", (uid,))
+        add_log(g.user, "permission",
+                f"{g.user['display_name']} 尝试调整系统管理员「{user['display_name']}」日志权限，系统已保持为 L1",
+                module="op_logs", level=1)
+        db.commit()
+        return jsonify({"ok": True, "id": uid, "log_level": 1})
     raw = (request.get_json(force=True) or {}).get("log_level")
     try:
         level = int(raw)
