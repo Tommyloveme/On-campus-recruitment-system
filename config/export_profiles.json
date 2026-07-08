@@ -1,11 +1,10 @@
 {
-  "comment": "表格导出配置。profiles 下按导出方案定义列；候选人数据跨表（candidates / data_hub 汇总总表）按应聘档案编号→简历编号→手机号唯一化关联。列 source: data=候选人字段(默认，key 支持中文/英文/嵌套路径)；computed=系统派生(current_stage_label/stay_days/sla_status/latest_log/hub_key)；hub=汇总总表取值(hub_source 可选 master_import/manual/ui，field 匹配字段键或中文列名)。改动本文件即可调整各界面导出内容，无需改代码。",
+  "comment": "表格导出配置。profiles 下按导出方案定义列；候选人数据跨表（candidates / data_hub 汇总总表）按应聘档案编号→手机号唯一化关联。列 source: data=候选人字段(默认，key 支持中文/英文/嵌套路径)；computed=系统派生(current_stage_label/stay_days/sla_status/latest_log/hub_key)；hub=汇总总表取值(hub_source 可选 master_import/manual/ui，field 匹配字段键或中文列名)。改动本文件即可调整各界面导出内容，无需改代码。",
   "profiles": {
     "overview": {
       "label": "全局总览明细",
       "columns": [
         { "key": "application_archive_id", "label": "应聘档案编号" },
-        { "key": "resume_id", "label": "简历编号" },
         { "key": "name", "label": "候选人" },
         { "key": "phone", "label": "电话" },
         { "key": "gender", "label": "性别" },
@@ -27,7 +26,6 @@
       "label": "候选人登记导出",
       "columns": [
         { "key": "application_archive_id", "label": "应聘档案编号" },
-        { "key": "resume_id", "label": "简历编号" },
         { "key": "registration_time", "label": "登记时间" },
         { "key": "name", "label": "候选人" },
         { "key": "phone", "label": "电话" },

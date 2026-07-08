@@ -143,7 +143,7 @@ from openpyxl import load_workbook
 req = urllib.request.Request(BASE + "/api/import/template?stage=registration")
 with opener.open(req) as r:
     tpl_headers = [c.value for c in load_workbook(io.BytesIO(r.read())).active[1]]
-check("登记导入模板首列为简历编号", tpl_headers[0] == "简历编号" and "三层部门" not in tpl_headers)
+check("登记导入模板不含简历编号", tpl_headers[0] == "候选人" and "简历编号" not in tpl_headers and "三层部门" not in tpl_headers)
 
 # 3. 候选人 CRUD（清理可能残留的测试数据）
 for n in ("测试员", "导入甲", "导入乙", "三层部门测试", "自动带入测试", "无效接口人"):
@@ -330,8 +330,8 @@ check("主数据表双文件上传成功", s == 200 and r.get("both_ready"))
 s, cfg_mi = call("GET", "/api/master-import/config?page=registration")
 check("主数据表配置含双数据源", len(cfg_mi.get("sources", [])) == 2
       and cfg_mi.get("join_key") == "application_archive_id")
-check("主数据匹配键为档案编号→简历编号→手机号",
-      cfg_mi.get("match_keys") == ["application_archive_id", "resume_id", "phone"])
+check("主数据匹配键为档案编号→手机号",
+      cfg_mi.get("match_keys") == ["application_archive_id", "phone"])
 boundary_r = uuid.uuid4().hex
 body_r = io.BytesIO()
 body_r.write(f"--{boundary_r}\r\n".encode())
@@ -341,10 +341,10 @@ s, r = call("POST", "/api/master-import/refresh", raw=body_r.getvalue(),
              ctype=f"multipart/form-data; boundary={boundary_r}")
 check("主数据表刷新成功", s == 200 and (r.get("created", 0) + r.get("updated", 0)) >= 1)
 s, c_new = call("GET", "/api/candidates?q=" + quote("主表新人"))
-check("主表新人已导入且含SR格式简历编号",
-      len(c_new) == 1 and c_new[0]["data"].get("resume_id") == "SR2026010100001")
+check("主表新人已导入且含SR格式应聘档案编号",
+      len(c_new) == 1 and c_new[0]["data"].get("application_archive_id") == "SR2026010100001")
 check("主表新人含应聘档案编号", c_new[0]["data"].get("application_archive_id") == "SR2026010100001")
-check("简历编号日期段解析为投递时间", c_new[0]["data"].get("delivery_time") == "2026-01-01")
+check("应聘档案编号日期段解析为投递时间", c_new[0]["data"].get("delivery_time") == "2026-01-01")
 _locked = c_new[0]["data"].get("_master_locked_fields", [])
 check("主表导入锁定登记字段", "候选人" in _locked or "name" in _locked)
 s, _ = call("PUT", f"/api/candidates/{c_new[0]['id']}", {
@@ -493,8 +493,8 @@ s, content, headers = call_raw("POST", "/api/candidates/export",
                                ctype="application/json")
 check("选中数据导出Excel", s == 200 and content[:2] == b"PK" and headers.get("X-Export-Count") == "6")
 exp_headers = [c.value for c in load_workbook(io.BytesIO(content)).active[1]]
-check("导出Excel前两列为应聘档案编号+简历编号",
-      exp_headers[0] == "应聘档案编号" and exp_headers[1] == "简历编号")
+check("导出Excel首列为应聘档案编号且无简历编号",
+      exp_headers[0] == "应聘档案编号" and "简历编号" not in exp_headers)
 
 s, _ = call("DELETE", f"/api/candidates/{cid}/resume")
 check("删除简历", s == 200)

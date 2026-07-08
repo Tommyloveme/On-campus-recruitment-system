@@ -291,7 +291,7 @@ def api_master_import_upload():
 @bp.post("/api/master-import/refresh")
 @login_required
 def api_master_import_refresh():
-    """读取已上传双表，按简历编号关联后全局刷新全部候选人。"""
+    """读取已上传双表，按应聘档案编号关联后全局刷新全部候选人。"""
     page = request.form.get("page", "registration")
     if not request.form and request.is_json:
         page = (request.get_json(silent=True) or {}).get("page", page)

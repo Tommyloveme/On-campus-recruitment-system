@@ -1,5 +1,5 @@
 {
-  "comment": "各流程标签页共用的候选人身份字段（登记阶段可编辑；简历编号在登记界面第一列展示）",
+  "comment": "各流程标签页共用的候选人身份字段（登记界面展示应聘档案编号；resume_id 仅历史兼容）",
   "fields": [
     {
       "key": "resume_id",
@@ -11,7 +11,7 @@
       "type": "text",
       "visible": false,
       "editable": true,
-      "importable": true
+      "importable": false
     },
     {
       "key": "name",

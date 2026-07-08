@@ -4,7 +4,7 @@
 - Application_test.xlsx：applicationProcessList 风格主表（含冗余列，自动入库）；
 - 候选人面试安排管理列表_test.xlsx：面试安排管理表（按应聘档案编号关联）。
 
-应聘档案编号/简历编号统一为 SR+YYYYMMDD+5位序号（如 SR2025081100434），共15位，日期段即投递时间。
+应聘档案编号统一为 SR+YYYYMMDD+5位序号（如 SR2025081100434），共15位，日期段即投递时间。
 """
 import os
 import random
@@ -15,7 +15,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(ROOT, "tests", "fixtures", "master_import")
 
 APP_HEADERS = [
-    "简历编号", "应聘档案编号", "候选人", "电话", "学历", "毕业院校", "专业",
+    "应聘档案编号", "候选人", "电话", "学历", "毕业院校", "专业",
     "二层部门", "三层部门",
     "拓源人", "拓源人部门", "接口人", "接口人部门",
     "来源渠道", "拟录取工作地",
@@ -50,7 +50,7 @@ def sr_id(date_str, seq):
 
 
 def _app_row(
-    resume_id, name, phone, education, school, major,
+    archive_id, name, phone, education, school, major,
     dept_l2=None, dept_l3=None, sourcer="hr01", iface="hr02",
     reg_status="已登记", resume_screening="通过", qualification="通过",
     commercial_secret="已签署", written_test="已完成",
@@ -62,7 +62,7 @@ def _app_row(
     dept_l2 = dept_l2 or random.choice(DEPT_L2)
     dept_l3 = dept_l3 or random.choice(DEPT_L3)
     return [
-        resume_id, resume_id, name, phone, education, school, major,
+        archive_id, name, phone, education, school, major,
         dept_l2, dept_l3,
         sourcer, "软件部", iface, "软件部",
         random.choice(SOURCES), random.choice(LOCATIONS),
@@ -70,7 +70,7 @@ def _app_row(
         tech_status, manager_status, approval, salary,
         offer, sign, onboarded,
         current_step, current_step_status, progress, risk,
-        hr_code or f"HR-{resume_id[-4:]}",
+        hr_code or f"HR-{archive_id[-4:]}",
         note or f"{name}样例备注",
         "官网+宣讲会",
         "2026春招",

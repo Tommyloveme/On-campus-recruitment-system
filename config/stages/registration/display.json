@@ -3,7 +3,7 @@
   "column_order": [
     "registration_time",
     "delivery_time",
-    "resume_id",
+    "application_archive_id",
     "name",
     "phone",
     "sourcer",
@@ -32,7 +32,8 @@
   "visible": {
     "registration_time": true,
     "delivery_time": true,
-    "resume_id": true,
+    "application_archive_id": true,
+    "resume_id": false,
     "name": true,
     "phone": true,
     "sourcer": true,

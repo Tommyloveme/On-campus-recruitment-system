@@ -121,7 +121,6 @@ def app_values(case):
     rid = sr_id(case["date"], case["seq"])
     return {
         "应聘档案编号": rid,
-        "简历编号": rid,
         "姓名": case["name"],
         "候选人": case["name"],
         "联系电话": case["phone"],

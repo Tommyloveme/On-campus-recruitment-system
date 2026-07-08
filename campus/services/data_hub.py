@@ -5,8 +5,8 @@
 - 一级层级 source 区分数据来源（master_import 主数据导入 / manual 手动录入与
   页面编辑 / ui 界面专属列），避免同名字段混淆；
 - 二级 tab_key 记录来源子标签（页面/阶段 key），同字段不同页面可快速检索；
-- 统一使用「简历编号」(resume_id) 关联；手动登记无简历编号的候选人使用
-  特殊键「无编号-<手机号>」，待主数据导入补齐简历编号后自然并轨。
+- 统一优先使用「应聘档案编号」关联；手动登记无档案编号的候选人使用
+  特殊键「无编号-<手机号>」，待主数据导入补齐应聘档案编号后自然并轨。
 """
 from campus.db.connection import now_str
 from campus.db.field_store import legacy_to_storage
@@ -19,7 +19,7 @@ NO_RESUME_PREFIX = "无编号-"
 
 
 def hub_resume_key(data):
-    """总表唯一化关联键：应聘档案编号 → 简历编号 → 无编号-<手机号>。"""
+    """总表唯一化关联键：应聘档案编号 → 内部历史关联键 → 无编号-<手机号>。"""
     from campus.db.field_store import field_get
     for key in ("application_archive_id", "resume_id"):
         v = str(field_get(data, key) or "").strip()

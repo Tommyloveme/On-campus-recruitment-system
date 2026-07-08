@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""主数据表导入：Excel 解析、按唯一键（应聘档案编号→简历编号→手机号）合并、写入候选人。
+"""主数据表导入：Excel 解析、按唯一键（应聘档案编号→手机号）合并、写入候选人。
 
 配置加载在 campus.core.master_import_config；上传文件存储在
 campus.services.master_import_store。
@@ -197,8 +197,8 @@ def parse_excel_file(path, source_cfg):
 # ---------------------------------------------------------------------------
 
 #: 候选人唯一化匹配键优先级（可被 index.json 的 match_keys 覆盖）。
-#: 一旦存在应聘档案编号，后续各流程数据都以它唯一化；否则退化到简历编号、手机号。
-MATCH_KEYS_DEFAULT = ["application_archive_id", "resume_id", "phone"]
+#: 一旦存在应聘档案编号，后续各流程数据都以它唯一化；否则退化到手机号。
+MATCH_KEYS_DEFAULT = ["application_archive_id", "phone"]
 
 
 def row_identity(data, match_keys=None):
@@ -219,7 +219,7 @@ def row_identity(data, match_keys=None):
 
 
 def merge_rows_by_identity(rows, match_keys=None):
-    """按身份键（档案编号→简历编号→电话）合并导入行；同一人多行合并为一行。
+    """按身份键（档案编号→电话）合并导入行；同一人多行合并为一行。
 
     没有任何身份键的行无法唯一化，直接丢弃。
     """
@@ -327,15 +327,16 @@ def merge_master_import_data(old, incoming, cfg=None):
     from campus.services.candidates import delivery_date_from_resume_id
 
     delivery = delivery_date_from_resume_id(
-        field_get(merged, "resume_id") or field_get(incoming, "resume_id"))
+        field_get(merged, "application_archive_id") or field_get(incoming, "application_archive_id")
+        or field_get(merged, "resume_id") or field_get(incoming, "resume_id"))
     if delivery:
         field_set(merged, "delivery_time", delivery)
     field_set(merged, "registration_status", "已投递")
     return merged
 
 
-def join_master_rows(app_rows, mgmt_rows, join_key="resume_id", match_keys=None):
-    """双表按 join_key（简历编号）关联，再按身份键优先级唯一化合并。"""
+def join_master_rows(app_rows, mgmt_rows, join_key="application_archive_id", match_keys=None):
+    """双表按 join_key（默认应聘档案编号）关联，再按身份键优先级唯一化合并。"""
     mgmt_by_key = {}
     for row in mgmt_rows:
         key = str(row.get(join_key, "") or "").strip()
@@ -438,7 +439,7 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn):
             field_set(data, "phone", "")
         elif phone:
             field_set(data, "phone", phone)
-        # 需要姓名 + 至少一个身份键（应聘档案编号/简历编号/电话）才能唯一化建档
+        # 需要姓名 + 至少一个身份键（应聘档案编号/电话）才能唯一化建档
         if not field_get(data, "name") or not row_identity(data, match_keys):
             skipped += 1
             continue
@@ -477,7 +478,7 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn):
 
 
 def run_dual_master_refresh(db, cfg, can_edit_fn, user, compute_stage_fn=None):
-    """读取全部已上传数据源，按唯一键（应聘档案编号→简历编号→手机号）合并后刷新候选人。
+    """读取全部已上传数据源，按唯一键（应聘档案编号→手机号）合并后刷新候选人。
 
     数据源顺序（index.json 的 source_keys）即合并优先级：靠前的表先入底，
     后续表只补空值，不覆盖冲突值。任一数据源就绪即可单独刷新。

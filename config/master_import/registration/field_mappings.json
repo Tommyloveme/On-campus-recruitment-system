@@ -20,22 +20,6 @@
   },
   "fields": [
     {
-      "field_key": "resume_id",
-      "ui_label": "简历编号",
-      "lock_on_import": true,
-      "sources": {
-        "application": {
-          "excel_column": "简历编号",
-          "required": true,
-          "match_patterns": []
-        },
-        "interview_mgmt": {
-          "excel_column": "候选人编号",
-          "match_patterns": []
-        }
-      }
-    },
-    {
       "field_key": "application_archive_id",
       "ui_label": "应聘档案编号",
       "lock_on_import": true,

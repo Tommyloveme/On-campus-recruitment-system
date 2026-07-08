@@ -4,7 +4,7 @@
 导出列在后端 JSON 中配置，可卷积多张表的信息：
 - candidates 预处理表字段（source=data，默认）；
 - 系统派生字段（source=computed：当前流程、停留时长、SLA、最新进展）；
-- data_hub 汇总总表字段（source=hub），各表按应聘档案编号→简历编号→手机号唯一化关联。
+- data_hub 汇总总表字段（source=hub），各表按应聘档案编号→手机号唯一化关联。
 """
 import json
 import os

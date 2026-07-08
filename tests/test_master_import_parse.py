@@ -35,7 +35,7 @@ class TestMasterImportParse(unittest.TestCase):
         valid = [r for r in rows if r.get("phone") and r.get("name")]
         self.assertGreaterEqual(len(valid), 1)
         row = valid[0]
-        self.assertTrue(str(row.get("resume_id", "")).startswith("CV"))
+        self.assertTrue(str(row.get("application_archive_id", "")).startswith("SR"))
         self.assertTrue(str(row.get("phone", "")).isdigit())
         self.assertTrue(str(row.get("current_step", "")).strip())
         compute_current_stage(row, cfg=self.cfg)
@@ -58,7 +58,7 @@ class TestMasterImportParse(unittest.TestCase):
         self.assertGreaterEqual(len(valid), 2)
         row = valid[0]
         self.assertTrue(str(row.get("application_archive_id", "")).startswith("SR"))
-        self.assertTrue(str(row.get("resume_id", "")).startswith("CV"))
+        self.assertTrue(str(row.get("application_archive_id", "")).startswith("SR"))
         self.assertTrue(str(row.get("current_step", "")).strip())
 
     def test_identity_merge_by_archive_id(self):
@@ -82,7 +82,7 @@ class TestMasterImportParse(unittest.TestCase):
         rows = parse_excel_file(LEGACY, self.app_src)
         valid = [r for r in rows if r.get("name")]
         self.assertGreaterEqual(len(valid), 2)
-        row = next(r for r in valid if r.get("resume_id") == "SR2026010100001")
+        row = next(r for r in valid if r.get("application_archive_id") == "SR2026010100001")
         self.assertEqual(row.get("name"), "主表新人")
         self.assertEqual(row.get("phone"), "13790001001")
         self.assertEqual(row.get("application_archive_id"), "SR2026010100001")
