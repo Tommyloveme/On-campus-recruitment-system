@@ -185,8 +185,8 @@ async function renderPivotPanel(rootEl, opts = {}) {
   let lastGrid = null;   // 导出 CSV 用
 
   async function loadData() {
-    // 看板始终只看当前流程候选人（与列表一致）
-    const url = stageKey ? `/api/candidates?stage=${stageKey}` : "/api/candidates";
+    // 登记页看板使用登记列表可见的全量候选人；其他流程看当前流程候选人
+    const url = !stageKey || stageKey === "registration" ? "/api/candidates" : `/api/candidates?stage=${stageKey}`;
     st.list = await api(url);
     draw();
   }

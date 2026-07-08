@@ -1,20 +1,28 @@
 {
   "comment": "阶段「contract_signing」界面配置：未在 visible/editable 中列出的字段默认不可见、不可编辑",
   "column_order": [
+    "application_archive_id",
     "name",
     "phone",
+    "interface_person",
+    "interface_dept",
+    "interface_person_pl_group",
     "contract_signing_status",
     "contract_signing_time",
     "contract_signing_remark"
   ],
-  "frozen_column_count": 2,
+  "frozen_column_count": 7,
   "visible": {
     "name": true,
     "phone": true,
     "resume_id": false,
     "contract_signing_status": true,
     "contract_signing_time": true,
-    "contract_signing_remark": true
+    "contract_signing_remark": true,
+    "application_archive_id": true,
+    "interface_person": true,
+    "interface_dept": true,
+    "interface_person_pl_group": true
   },
   "editable": {
     "contract_signing_status": true,

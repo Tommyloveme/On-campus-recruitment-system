@@ -1,25 +1,40 @@
 {
   "comment": "阶段「offer」界面配置：未在 visible/editable 中列出的字段默认不可见、不可编辑。ui_columns 为仅界面存在的附加列（format: text|number|date），取值存入总表 data_hub（source=ui，按简历编号关联）",
   "ui_columns": [
-    { "key": "ui_follow_note", "label": "跟进备注", "format": "text" },
-    { "key": "ui_follow_date", "label": "下次跟进", "format": "date" }
+    {
+      "key": "ui_follow_note",
+      "label": "跟进备注",
+      "format": "text"
+    },
+    {
+      "key": "ui_follow_date",
+      "label": "下次跟进",
+      "format": "date"
+    }
   ],
   "column_order": [
-    "resume_id",
+    "application_archive_id",
     "name",
     "phone",
+    "interface_person",
+    "interface_dept",
+    "interface_person_pl_group",
     "offer_status",
     "offer_send_time",
     "offer_accept_deadline"
   ],
-  "frozen_column_count": 2,
+  "frozen_column_count": 7,
   "visible": {
     "name": true,
     "phone": true,
-    "resume_id": true,
+    "resume_id": false,
     "offer_status": true,
     "offer_send_time": true,
-    "offer_accept_deadline": true
+    "offer_accept_deadline": true,
+    "application_archive_id": true,
+    "interface_person": true,
+    "interface_dept": true,
+    "interface_person_pl_group": true
   },
   "editable": {
     "offer_status": true,
