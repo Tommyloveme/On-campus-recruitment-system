@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""主数据表导入：Excel 解析、按电话合并、写入候选人。
+"""主数据表导入：Excel 解析、按唯一键（应聘档案编号→简历编号→手机号）合并、写入候选人。
 
 配置加载在 campus.core.master_import_config；上传文件存储在
 campus.services.master_import_store。
@@ -171,6 +171,47 @@ def parse_excel_file(path, source_cfg):
 # 数据合并
 # ---------------------------------------------------------------------------
 
+#: 候选人唯一化匹配键优先级（可被 index.json 的 match_keys 覆盖）。
+#: 一旦存在应聘档案编号，后续各流程数据都以它唯一化；否则退化到简历编号、手机号。
+MATCH_KEYS_DEFAULT = ["application_archive_id", "resume_id", "phone"]
+
+
+def row_identity(data, match_keys=None):
+    """按优先级提取一行数据的身份键列表 [(kind, value), ...]。"""
+    from campus.services.candidates import normalize_candidate_phone
+
+    out = []
+    for k in (match_keys or MATCH_KEYS_DEFAULT):
+        v = str(field_get(data, k) or "").strip()
+        if k == "phone":
+            v = normalize_candidate_phone(v)
+        if v:
+            out.append((k, v))
+    return out
+
+
+def merge_rows_by_identity(rows, match_keys=None):
+    """按身份键（档案编号→简历编号→电话）合并导入行；同一人多行合并为一行。
+
+    没有任何身份键的行无法唯一化，直接丢弃。
+    """
+    index = {}
+    merged = []
+    for row in rows:
+        ids = row_identity(row, match_keys)
+        if not ids:
+            continue
+        target = next((index[i] for i in ids if i in index), None)
+        if target is None:
+            target = len(merged)
+            merged.append(dict(row))
+        else:
+            merged[target] = merge_import_row_data(merged[target], row)
+        for i in row_identity(merged[target], match_keys):
+            index.setdefault(i, target)
+    return merged
+
+
 def merge_import_row_data(base, incoming):
     """合并两行导入数据：空值填充、相同保留、冲突不覆盖。"""
     merged = dict(base)
@@ -265,8 +306,8 @@ def merge_master_import_data(old, incoming, cfg=None):
     return merged
 
 
-def join_master_rows(app_rows, mgmt_rows, join_key="resume_id"):
-    """关联双表后按电话再合并；无 join_key 但有电话的行也会保留。"""
+def join_master_rows(app_rows, mgmt_rows, join_key="resume_id", match_keys=None):
+    """双表按 join_key（简历编号）关联，再按身份键优先级唯一化合并。"""
     mgmt_by_key = {}
     for row in mgmt_rows:
         key = str(row.get(join_key, "") or "").strip()
@@ -296,9 +337,7 @@ def join_master_rows(app_rows, mgmt_rows, join_key="resume_id"):
         if mgmt_row.get("name") or mgmt_row.get("phone"):
             merged.append(dict(mgmt_row))
 
-    no_phone = [r for r in merged if not str(r.get("phone") or "").strip()]
-    with_phone = merge_rows_by_phone([r for r in merged if str(r.get("phone") or "").strip()])
-    return with_phone + no_phone
+    return merge_rows_by_identity(merged, match_keys)
 
 
 # ---------------------------------------------------------------------------
@@ -319,6 +358,30 @@ def build_global_candidate_index(db):
     return by_phone
 
 
+def build_candidate_identity_index(db, match_keys=None):
+    """现有候选人的身份键索引 {(kind, value): row}，按 match_keys 优先。"""
+    index = {}
+    for row in db.execute("SELECT * FROM candidates").fetchall():
+        data = json.loads(row["data"])
+        for i in row_identity(data, match_keys):
+            index.setdefault(i, row)
+    return index
+
+
+def match_candidate(index, data, match_keys=None):
+    """按身份键优先级在索引中查找已有候选人行。"""
+    for i in row_identity(data, match_keys):
+        if i in index:
+            return index[i]
+    return None
+
+
+def _index_candidate(index, row, match_keys=None):
+    data = json.loads(row["data"])
+    for i in row_identity(data, match_keys):
+        index[i] = row
+
+
 def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn):
     from campus.services.candidates import (
         insert_candidate_row,
@@ -332,7 +395,8 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn):
 
     created = updated = skipped = 0
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    by_phone = build_global_candidate_index(db)
+    match_keys = cfg.get("match_keys") or MATCH_KEYS_DEFAULT
+    index = build_candidate_identity_index(db, match_keys)
     hub_labels = master_field_label_map(cfg.get("field_mappings") or {})
     hub_tab = cfg.get("page", "registration")
     user_name = user["display_name"] if user else ""
@@ -340,28 +404,29 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn):
     for data in rows_data:
         data = normalize_record(dict(data))
         phone = normalize_candidate_phone(field_get(data, "phone"))
-        if not phone:
-            skipped += 1
-            continue
-        field_set(data, "phone", phone)
-        if not field_get(data, "name"):
+        if phone:
+            field_set(data, "phone", phone)
+        # 需要姓名 + 至少一个身份键（应聘档案编号/简历编号/电话）才能唯一化建档
+        if not field_get(data, "name") or not row_identity(data, match_keys):
             skipped += 1
             continue
 
         compute_stage_fn(data, cfg)
-        match = by_phone.get(phone)
+        match = match_candidate(index, data, match_keys)
 
         can_edit = can_edit_fn(user)
-        if can_edit:
-            record_hub_fields(db, SOURCE_MASTER, hub_tab, hub_resume_key(data),
-                              data, hub_labels, user_name)
+        if not can_edit:
+            skipped += 1
+            continue
+        record_hub_fields(db, SOURCE_MASTER, hub_tab, hub_resume_key(data),
+                          data, hub_labels, user_name)
         cn_labels = {hub_labels.get(k, k): v for k, v in data.items()
                      if not k.startswith("_")}
+        raw_phone = phone or (normalize_candidate_phone(
+            field_get(json.loads(match["data"]), "phone")) if match else "")
+        if raw_phone:
+            record_master(db, raw_phone, data, labels=cn_labels, ts=now)
         if match:
-            if not can_edit:
-                skipped += 1
-                continue
-            record_master(db, phone, data, labels=cn_labels, ts=now)
             old = json.loads(match["data"])
             merged = merge_master_import_data(old, data, cfg)
             compute_stage_fn(merged, cfg)
@@ -369,16 +434,12 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn):
                 update_candidate_row(db, match["id"], merged, ts=now)
                 updated += 1
                 match = db.execute("SELECT * FROM candidates WHERE id=?", (match["id"],)).fetchone()
-                by_phone[phone] = match
+            _index_candidate(index, match, match_keys)
         else:
-            if not can_edit:
-                skipped += 1
-                continue
-            record_master(db, phone, data, labels=cn_labels, ts=now)
             payload = merge_master_import_data({}, data, cfg)
             cid = insert_candidate_row(db, payload, group_id=None, ts=now)
             row = db.execute("SELECT * FROM candidates WHERE id=?", (cid,)).fetchone()
-            by_phone[phone] = row
+            _index_candidate(index, row, match_keys)
             created += 1
     return created, updated, skipped
 
@@ -391,22 +452,23 @@ def run_dual_master_refresh(db, cfg, can_edit_fn, user, compute_stage_fn=None):
 
     page = cfg.get("page", "registration")
     if not both_files_ready(page, cfg):
-        raise ValueError("请先上传 Application 主表（application*.xlsx 或 applicationProcessList*.xlsx）")
+        raise ValueError("请先上传主数据表（application*.xlsx / applicationProcessList*.xlsx / 候选人管理*.xlsx 任一）")
 
     files = get_stored_files(page, cfg)
     join_key = cfg.get("join_key", "resume_id")
     source_map = {s["key"]: s for s in cfg["sources"]}
 
+    app_rows = []
     app_info = files.get("application") or {}
-    if not app_info.get("ready") or not app_info.get("path"):
-        raise ValueError("Application 主表未上传或文件丢失")
-    app_rows = parse_excel_file(app_info["path"], source_map["application"])
+    if app_info.get("ready") and app_info.get("path"):
+        app_rows = parse_excel_file(app_info["path"], source_map["application"])
 
     mgmt_rows = []
     mgmt_info = files.get("candidate_mgmt") or {}
     if mgmt_info.get("ready") and mgmt_info.get("path"):
         mgmt_rows = parse_excel_file(mgmt_info["path"], source_map["candidate_mgmt"])
-    rows_data = join_master_rows(app_rows, mgmt_rows, join_key)
+    rows_data = join_master_rows(app_rows, mgmt_rows, join_key,
+                                 cfg.get("match_keys") or MATCH_KEYS_DEFAULT)
 
     created, updated, skipped = apply_master_rows(
         rows_data, db, cfg, can_edit_fn, user, compute_stage_fn)

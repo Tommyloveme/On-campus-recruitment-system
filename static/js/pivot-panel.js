@@ -1,8 +1,9 @@
-/* 可复用数据看板（Excel 式数据透视）。
+/* 可复用数据看板（Excel 式数据透视图）。
  * 用法：renderPivotPanel(容器, { stageKey })
  *
- * 能力对标 Excel 透视表：
- * - 行/列维度可选页面内任意字段（含文本/下拉/日期），日期支持粒度切换；
+ * 能力对标 Excel 透视图：
+ * - 行（类别轴）与列（图例/系列）均支持多字段叠加（组合维度，如 学历 / 性别）；
+ * - 字段可选页面内任意字段（含文本/下拉/日期），日期支持粒度切换；
  * - 值汇总：计数 / 去重计数 / 数值字段求和、平均、最大、最小；
  * - 多条件筛选（等于/不等于/包含/为空/非空，可叠加任意多条，AND 关系）；
  * - 排序（按名称/按数值升降序）、Top N 截断、行列小计与占比；
@@ -10,19 +11,19 @@
 "use strict";
 
 const PIVOT_DEFAULTS = {
-  registration: { row: "来源渠道", col: "学历" },
-  resume_screening: { row: "简历筛选状态" },
-  qualification: { row: "资审状态" },
-  written_test: { row: "笔试状态" },
-  personality_test: { row: "性格测评状态" },
-  qualification_interview: { row: "资格面试状态" },
-  tech_interview: { row: "技术面状态", col: "技术面结果" },
-  manager_interview: { row: "主管面状态", col: "主管面结果" },
-  approval: { row: "报批状态" },
-  salary: { row: "谈薪状态" },
-  offer: { row: "Offer状态" },
-  contract_signing: { row: "签约状态" },
-  onboarding: { row: "入职风险", col: "是否入职" },
+  registration: { rows: ["来源渠道"], cols: ["学历"] },
+  resume_screening: { rows: ["简历筛选状态"] },
+  qualification: { rows: ["资审状态"] },
+  written_test: { rows: ["笔试状态"] },
+  personality_test: { rows: ["性格测评状态"] },
+  qualification_interview: { rows: ["资格面试状态"] },
+  tech_interview: { rows: ["技术面状态"], cols: ["技术面结果"] },
+  manager_interview: { rows: ["主管面状态"], cols: ["主管面结果"] },
+  approval: { rows: ["报批状态"] },
+  salary: { rows: ["谈薪状态"] },
+  offer: { rows: ["Offer状态"] },
+  contract_signing: { rows: ["签约状态"] },
+  onboarding: { rows: ["入职风险"], cols: ["是否入职"] },
 };
 
 const PIVOT_OPS = [
@@ -30,11 +31,13 @@ const PIVOT_OPS = [
   ["not_contains", "不包含"], ["empty", "为空"], ["not_empty", "非空"],
 ];
 
+const PIVOT_MAX_ZONE_FIELDS = 3;
+
 function pivotAllFields(stageKey) {
   // 当前页字段优先，其余阶段字段补全（同名去重），全部可作维度/筛选
   const seen = new Set();
   const out = [];
-  for (const f of fieldsForStage(stageKey)) {
+  for (const f of (stageKey ? fieldsForStage(stageKey) : [])) {
     if (!seen.has(f.key)) { seen.add(f.key); out.push(f); }
   }
   for (const f of allFieldsFlat()) {
@@ -85,16 +88,17 @@ async function renderPivotPanel(rootEl, opts = {}) {
   const defaults = PIVOT_DEFAULTS[stageKey] || {};
   const hasField = k => dimFields.some(f => f.key === k);
   const st = {
-    row: hasField(defaults.row) ? defaults.row : dimFields[0].key,
-    col: hasField(defaults.col) ? defaults.col : "",
+    rows: (defaults.rows || []).filter(hasField),
+    cols: (defaults.cols || []).filter(hasField),
     agg: "count", aggField: "",
     view: "bar", gran: "ym", colGran: "ym",
     sort: "value_desc", topN: 20,
     pct: "none",
-    onlyStage: true,
+    onlyStage: !!stageKey,
     filters: [],
     list: [], chart: null,
   };
+  if (!st.rows.length) st.rows = [dimFields[0].key];
 
   const fieldOpts = (selected, withEmpty) =>
     (withEmpty ? `<option value="">（无）</option>` : "") +
@@ -104,15 +108,17 @@ async function renderPivotPanel(rootEl, opts = {}) {
   rootEl.innerHTML = `
     <div class="card pv-panel">
       <div class="pv-toolbar">
-        <div class="pv-group">
-          <span class="pv-cap">行</span><select data-pv="row">${fieldOpts(st.row, false)}</select>
+        <div class="pv-group pv-zone-wrap">
+          <span class="pv-cap">行（类别轴）</span>
+          <span class="pv-zone" data-pv-zone="rows"></span>
           <select data-pv="gran" class="pv-gran hidden">
             <option value="ymd">按日</option><option value="ym" selected>按月</option>
             <option value="y">按年</option><option value="m">仅月份</option>
           </select>
         </div>
-        <div class="pv-group">
-          <span class="pv-cap">列</span><select data-pv="col">${fieldOpts(st.col, true)}</select>
+        <div class="pv-group pv-zone-wrap">
+          <span class="pv-cap">列（图例/系列）</span>
+          <span class="pv-zone" data-pv-zone="cols"></span>
         </div>
         <div class="pv-group">
           <span class="pv-cap">值</span>
@@ -153,7 +159,7 @@ async function renderPivotPanel(rootEl, opts = {}) {
             <option value="table">仅透视表</option>
           </select>
         </div>
-        <label class="chk-inline"><input type="checkbox" data-pv-onlystage checked> 仅本流程</label>
+        ${stageKey ? `<label class="chk-inline"><input type="checkbox" data-pv-onlystage checked> 仅本流程</label>` : ""}
         <div class="spacer"></div>
         <button class="btn btn-sm" data-pv-export>导出 CSV</button>
         <span class="badge badge-blue" data-pv-count></span>
@@ -179,9 +185,46 @@ async function renderPivotPanel(rootEl, opts = {}) {
   let lastGrid = null;   // 导出 CSV 用
 
   async function loadData() {
-    const url = st.onlyStage ? `/api/candidates?stage=${stageKey}` : "/api/candidates";
+    const url = st.onlyStage && stageKey ? `/api/candidates?stage=${stageKey}` : "/api/candidates";
     st.list = await api(url);
     draw();
+  }
+
+  /* ---------- 行/列多字段区（Excel 式叠加） ---------- */
+
+  function renderZones() {
+    for (const zone of ["rows", "cols"]) {
+      const el = $$(`[data-pv-zone="${zone}"]`);
+      const keys = st[zone];
+      const canRemove = zone === "cols" || keys.length > 1;
+      el.innerHTML = keys.map((k, i) => `
+        <span class="pv-zone-item">
+          <select data-zone="${zone}" data-zi="${i}">${fieldOpts(k, false)}</select>
+          ${canRemove ? `<button class="pv-filter-del" data-zone-del="${zone}" data-zi="${i}" title="移除该字段">×</button>` : ""}
+        </span>`).join("")
+        + (keys.length < PIVOT_MAX_ZONE_FIELDS
+          ? `<button class="btn btn-sm pv-zone-add" data-zone-add="${zone}" title="叠加一个字段（组合维度）">+</button>` : "");
+
+      el.querySelectorAll("select[data-zone]").forEach(sel =>
+        sel.addEventListener("change", () => {
+          st[zone][+sel.dataset.zi] = sel.value;
+          draw();
+        }));
+      el.querySelectorAll("[data-zone-del]").forEach(btn =>
+        btn.addEventListener("click", () => {
+          st[zone].splice(+btn.dataset.zi, 1);
+          renderZones();
+          draw();
+        }));
+      const addBtn = el.querySelector("[data-zone-add]");
+      if (addBtn) addBtn.addEventListener("click", () => {
+        const used = new Set([...st.rows, ...st.cols]);
+        const next = dimFields.find(f => !used.has(f.key)) || dimFields[0];
+        st[zone].push(next.key);
+        renderZones();
+        draw();
+      });
+    }
   }
 
   /* ---------- 多条件筛选 ---------- */
@@ -239,6 +282,14 @@ async function renderPivotPanel(rootEl, opts = {}) {
     return f ? f.label : key;
   }
 
+  function zoneLabel(keys) {
+    return keys.map(labelOf).join(" / ");
+  }
+
+  function zoneBucket(c, keys, gran) {
+    return keys.map(k => pivotBucket(c, k, isDateField(k) ? gran : null)).join(" / ");
+  }
+
   function aggName() {
     const names = { count: "人数", distinct: "去重计数", sum: "求和", avg: "平均", max: "最大", min: "最小" };
     let n = names[st.agg] || "人数";
@@ -249,7 +300,7 @@ async function renderPivotPanel(rootEl, opts = {}) {
   function aggregate(items) {
     if (st.agg === "count") return items.length;
     if (st.agg === "distinct") {
-      return new Set(items.map(c => pivotRawValue(c, st.aggField || st.row)).filter(Boolean)).size;
+      return new Set(items.map(c => pivotRawValue(c, st.aggField || st.rows[0])).filter(Boolean)).size;
     }
     const nums = items.map(c => parseFloat(pivotRawValue(c, st.aggField))).filter(n => !isNaN(n));
     if (!nums.length) return 0;
@@ -262,15 +313,14 @@ async function renderPivotPanel(rootEl, opts = {}) {
 
   function buildGrid() {
     const list = filteredList();
-    const rowGran = isDateField(st.row) ? st.gran : null;
-    const colGran = st.col && isDateField(st.col) ? st.colGran : null;
+    const hasCols = st.cols.length > 0;
 
     const cellItems = new Map();   // `${r}\u0001${c}` -> items[]
     const rowItems = new Map();
     const colItems = new Map();
     for (const c of list) {
-      const r = pivotBucket(c, st.row, rowGran);
-      const cl = st.col ? pivotBucket(c, st.col, colGran) : "值";
+      const r = zoneBucket(c, st.rows, st.gran);
+      const cl = hasCols ? zoneBucket(c, st.cols, st.colGran) : "值";
       const ck = r + "\u0001" + cl;
       (cellItems.get(ck) || cellItems.set(ck, []).get(ck)).push(c);
       (rowItems.get(r) || rowItems.set(r, []).get(r)).push(c);
@@ -278,7 +328,7 @@ async function renderPivotPanel(rootEl, opts = {}) {
     }
 
     let rows = [...rowItems.keys()];
-    let cols = st.col ? [...colItems.keys()] : ["值"];
+    let cols = hasCols ? [...colItems.keys()] : ["值"];
 
     const rowVal = r => aggregate(rowItems.get(r) || []);
     const sorters = {
@@ -287,11 +337,9 @@ async function renderPivotPanel(rootEl, opts = {}) {
       label_asc: (a, b) => String(a).localeCompare(String(b), "zh"),
       label_desc: (a, b) => String(b).localeCompare(String(a), "zh"),
     };
-    // 日期行维度默认按时间排序（名称序），除非用户显式选数值排序
-    if (rowGran && (st.sort === "label_asc" || st.sort === "label_desc")) {
-      rows.sort(sorters[st.sort]);
-    } else if (rowGran && st.sort.startsWith("value")) {
-      rows.sort(sorters[st.sort]);
+    // 首字段为日期时默认按名称（时间）排序更符合直觉
+    if (isDateField(st.rows[0]) && st.sort.startsWith("value") && st.sort === "value_desc" && !st._userSorted) {
+      rows.sort(sorters.label_asc);
     } else {
       rows.sort(sorters[st.sort] || sorters.value_desc);
     }
@@ -310,20 +358,20 @@ async function renderPivotPanel(rootEl, opts = {}) {
     const colTotals = cols.map(cl => aggregate(colItems.get(cl) || []));
     const grand = aggregate(list);
 
-    return { rows, cols: st.col ? cols : null, matrix, rowTotals, colTotals, grand, total: list.length, truncated };
+    return { rows, cols: hasCols ? cols : null, matrix, rowTotals, colTotals, grand, total: list.length, truncated };
   }
 
   /* ---------- 绘制 ---------- */
 
   function draw() {
-    $$('[data-pv="gran"]').classList.toggle("hidden", !isDateField(st.row));
+    $$('[data-pv="gran"]').classList.toggle("hidden", !st.rows.some(isDateField));
     $$('[data-pv="aggField"]').classList.toggle("hidden", st.agg === "count");
 
     const grid = buildGrid();
     lastGrid = grid;
     $$("[data-pv-count]").textContent = `${grid.total} 人`;
     $$("[data-pv-title]").textContent =
-      `${labelOf(st.row)} × ${st.col ? labelOf(st.col) : aggName()}` +
+      `${zoneLabel(st.rows)}${st.cols.length ? " × " + zoneLabel(st.cols) : ""} · ${aggName()}` +
       (st.filters.length ? `（已筛 ${st.filters.length} 条件）` : "");
     drawChart(grid);
     drawTable(grid);
@@ -379,13 +427,15 @@ async function renderPivotPanel(rootEl, opts = {}) {
         responsive: true, maintainAspectRatio: false,
         scales: {
           x: { stacked, grid: { display: false }, ticks: { font: baseFont },
-               title: { display: true, text: labelOf(st.row), font: baseFont, color: "#64748b" } },
+               title: { display: true, text: zoneLabel(st.rows), font: baseFont, color: "#64748b" } },
           y: { stacked, beginAtZero: true, grid: { color: "rgba(148,163,184,.18)" },
                ticks: { font: baseFont },
                title: { display: true, text: aggName(), font: baseFont, color: "#64748b" } },
         },
         plugins: {
-          legend: { display: !!grid.cols, position: "bottom", labels: { font: baseFont, usePointStyle: true } },
+          legend: { display: !!grid.cols, position: "bottom",
+                    title: grid.cols ? { display: true, text: zoneLabel(st.cols), font: baseFont } : undefined,
+                    labels: { font: baseFont, usePointStyle: true } },
           tooltip: { callbacks: { label: c => ` ${c.dataset.label}：${c.parsed.y ?? c.parsed}` } },
         },
       },
@@ -407,7 +457,7 @@ async function renderPivotPanel(rootEl, opts = {}) {
     $$("[data-pv-table]").innerHTML = `
       <div class="table-wrap"><table class="pv-table" style="min-width:0">
         <thead><tr>
-          <th>${esc(labelOf(st.row))}</th>
+          <th>${esc(zoneLabel(st.rows))}</th>
           ${heads.map(h => `<th>${esc(h)}</th>`).join("")}
           ${grid.cols ? `<th>合计</th>` : ""}
         </tr></thead>
@@ -418,7 +468,7 @@ async function renderPivotPanel(rootEl, opts = {}) {
               const v = grid.matrix[ci][ri] || 0;
               return `<td>${v}${pctCell(v, ri, ci, grid)}</td>`;
             }).join("")}
-            ${grid.cols ? `<td><b>${grid.rowTotals[ri]}</b>${pctCell(grid.rowTotals[ri], ri, -1, grid) && st.pct === "grand" ? pctCell(grid.rowTotals[ri], ri, -1, grid) : ""}</td>` : ""}
+            ${grid.cols ? `<td><b>${grid.rowTotals[ri]}</b></td>` : ""}
           </tr>`).join("")}
           <tr class="pv-total-row">
             <td><b>合计</b></td>
@@ -434,7 +484,7 @@ async function renderPivotPanel(rootEl, opts = {}) {
     if (!lastGrid) return;
     const g = lastGrid;
     const heads = g.cols || [aggName()];
-    const lines = [[labelOf(st.row), ...heads, g.cols ? "合计" : null].filter(x => x !== null)];
+    const lines = [[zoneLabel(st.rows), ...heads, g.cols ? "合计" : null].filter(x => x !== null)];
     g.rows.forEach((r, ri) => {
       const row = [r, ...heads.map((_, ci) => g.matrix[ci][ri] || 0)];
       if (g.cols) row.push(g.rowTotals[ri]);
@@ -447,7 +497,7 @@ async function renderPivotPanel(rootEl, opts = {}) {
       l.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\r\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    a.download = `数据看板_${labelOf(st.row)}${st.col ? "_x_" + labelOf(st.col) : ""}.csv`;
+    a.download = `数据看板_${zoneLabel(st.rows)}${st.cols.length ? "_x_" + zoneLabel(st.cols) : ""}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   }
@@ -457,9 +507,11 @@ async function renderPivotPanel(rootEl, opts = {}) {
   rootEl.querySelectorAll("[data-pv]").forEach(sel =>
     sel.addEventListener("change", () => {
       st[sel.dataset.pv] = sel.value;
+      if (sel.dataset.pv === "sort") st._userSorted = true;
       draw();
     }));
-  $$("[data-pv-onlystage]").addEventListener("change", e => {
+  const onlyStageEl = $$("[data-pv-onlystage]");
+  if (onlyStageEl) onlyStageEl.addEventListener("change", e => {
     st.onlyStage = e.target.checked;
     loadData().then(renderFilters);
   });
@@ -469,6 +521,7 @@ async function renderPivotPanel(rootEl, opts = {}) {
   });
   $$("[data-pv-export]").addEventListener("click", exportCsv);
 
+  renderZones();
   await loadData();
   renderFilters();
 }

@@ -279,13 +279,23 @@ def build_overview_payload(db):
         c["stay_days"] = dw.get("days", 0)
         c["sla_status"] = dw.get("sla_status", "ok")
         c["stage_entered_at"] = dw.get("entered_at", "")
-        cands.append(c)
         d = c["data"]
-        if field_get(d, "sign_status") == "已签约":
+        # KPI 标志 + 各流程状态分类：随候选人下发，前端筛选后可全量联动重算
+        c["flags"] = {
+            "signed": field_get(d, "sign_status") == "已签约",
+            "onboarded": field_get(d, "onboarded") == "是",
+            "high_risk": field_get(d, "onboard_risk") == "高",
+        }
+        c["stage_status"] = {
+            sk: cls for sk, cfg_ in STAGE_PASS_CONFIG.items()
+            if (cls := _classify_status(field_get(d, cfg_["status_key"]), cfg_)) != "none"
+        }
+        cands.append(c)
+        if c["flags"]["signed"]:
             stats["signed"] += 1
-        if field_get(d, "onboarded") == "是":
+        if c["flags"]["onboarded"]:
             stats["onboarded"] += 1
-        if field_get(d, "onboard_risk") == "高":
+        if c["flags"]["high_risk"]:
             stats["high_risk"] += 1
         if c["sla_status"] == "overdue":
             stats["sla_overdue"] += 1

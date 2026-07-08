@@ -1042,6 +1042,97 @@
         "registration"
       ]
     },
+    "gender": {
+      "legacy_key": "gender",
+      "storage_key": "性别",
+      "label": "性别",
+      "path": [
+        "候选人",
+        "扩展",
+        "性别"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "birth_date": {
+      "legacy_key": "birth_date",
+      "storage_key": "出生日期",
+      "label": "出生日期",
+      "path": [
+        "候选人",
+        "扩展",
+        "出生日期"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "graduation_year": {
+      "legacy_key": "graduation_year",
+      "storage_key": "毕业届次",
+      "label": "毕业届次",
+      "path": [
+        "候选人",
+        "扩展",
+        "毕业届次"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "work_intent_location": {
+      "legacy_key": "work_intent_location",
+      "storage_key": "工作意向地",
+      "label": "工作意向地",
+      "path": [
+        "候选人",
+        "扩展",
+        "工作意向地"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "planned_position": {
+      "legacy_key": "planned_position",
+      "storage_key": "拟录岗位",
+      "label": "拟录岗位",
+      "path": [
+        "候选人",
+        "扩展",
+        "拟录岗位"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "planned_level": {
+      "legacy_key": "planned_level",
+      "storage_key": "拟录职级",
+      "label": "拟录职级",
+      "path": [
+        "候选人",
+        "扩展",
+        "拟录职级"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "recruit_type": {
+      "legacy_key": "recruit_type",
+      "storage_key": "招聘类型",
+      "label": "招聘类型",
+      "path": [
+        "候选人",
+        "扩展",
+        "招聘类型"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
     "email": {
       "legacy_key": "email",
       "storage_key": "电子邮箱",
@@ -1215,6 +1306,13 @@
     "候选人.入职.入职风险": "入职风险",
     "候选人.扩展.当前进展": "当前进展",
     "候选人.扩展.应聘档案编号": "应聘档案编号",
+    "候选人.扩展.性别": "性别",
+    "候选人.扩展.出生日期": "出生日期",
+    "候选人.扩展.毕业届次": "毕业届次",
+    "候选人.扩展.工作意向地": "工作意向地",
+    "候选人.扩展.拟录岗位": "拟录岗位",
+    "候选人.扩展.拟录职级": "拟录职级",
+    "候选人.扩展.招聘类型": "招聘类型",
     "候选人.基本信息.电子邮箱": "电子邮箱",
     "候选人.扩展.拟录取工作地": "拟录取工作地",
     "候选人.扩展.当前环节": "当前环节",
@@ -1304,6 +1402,13 @@
     "入职风险": "onboard_risk",
     "当前进展": "progress",
     "应聘档案编号": "application_archive_id",
+    "性别": "gender",
+    "出生日期": "birth_date",
+    "毕业届次": "graduation_year",
+    "工作意向地": "work_intent_location",
+    "拟录岗位": "planned_position",
+    "拟录职级": "planned_level",
+    "招聘类型": "recruit_type",
     "电子邮箱": "email",
     "拟录取工作地": "work_location",
     "当前环节": "current_step",

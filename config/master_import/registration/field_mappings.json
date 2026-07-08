@@ -1,5 +1,5 @@
 {
-  "comment": "主数据导入字段映射。sources 配置各 Excel 的文件名模式与工作表；ui_label 为空则网页不可见；lock_on_import 为 true 导入后不可编辑。未配置的 Excel 列按表头拼音自动入库。",
+  "comment": "主数据导入字段映射（外部 Excel 列 ↔ 内部字段的隔离层）。sources 配置各 Excel 的文件名模式与工作表；excel_column/excel_aliases 支持精确名与 * 通配；ui_label 为空则网页不可见；lock_on_import 为 true 导入后不可编辑。未配置的 Excel 列按表头原文自动入库（界面默认不可见），外部表头变化只需改本文件。",
   "sources": {
     "application": {
       "file_pattern": "application*.xlsx",
@@ -49,7 +49,64 @@
       "ui_label": "电话",
       "lock_on_import": true,
       "sources": {
-        "application": { "excel_column": "电话", "required": true, "excel_aliases": ["联系电话"], "match_patterns": [] }
+        "application": { "excel_column": "电话", "excel_aliases": ["联系电话"], "match_patterns": [] },
+        "candidate_mgmt": { "excel_column": "电话", "excel_aliases": ["联系电话"], "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "gender",
+      "ui_label": "性别",
+      "lock_on_import": true,
+      "sources": {
+        "application": { "excel_column": "性别", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "birth_date",
+      "ui_label": "出生日期",
+      "lock_on_import": true,
+      "sources": {
+        "application": { "excel_column": "出生日期", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "graduation_year",
+      "ui_label": "毕业届次",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "毕业届次", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "work_intent_location",
+      "ui_label": "工作意向地",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "工作意向地", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "planned_position",
+      "ui_label": "拟录岗位",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "拟录岗位", "excel_aliases": ["对外发布岗位名称", "对外发布职位名称"], "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "planned_level",
+      "ui_label": "拟录职级",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "拟录职级", "match_patterns": [] }
+      }
+    },
+    {
+      "field_key": "recruit_type",
+      "ui_label": "招聘类型",
+      "lock_on_import": false,
+      "sources": {
+        "application": { "excel_column": "招聘类型", "match_patterns": [] }
       }
     },
     {

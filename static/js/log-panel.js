@@ -43,6 +43,7 @@ function renderLogPanel(rootEl, opts = {}) {
       <div class="log-panel-bar">
         ${logPanelLegendHtml()}
         <span class="spacer"></span>
+        <button class="btn btn-sm" data-lp-export title="导出当前页日志为 CSV">导出</button>
         <button class="btn btn-sm" data-lp-refresh title="重新加载日志">刷新</button>
       </div>
       <div class="log-table-wrap">
@@ -83,6 +84,8 @@ function renderLogPanel(rootEl, opts = {}) {
     }
   };
   rootEl.querySelector("[data-lp-refresh]")?.addEventListener("click", () => load());
+  rootEl.querySelector("[data-lp-export]")?.addEventListener("click", () =>
+    exportTableCsv(rootEl.querySelector(".log-table"), "操作日志"));
   load();
   return { reload: () => { page = 1; load(); } };
 }

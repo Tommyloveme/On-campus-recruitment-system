@@ -232,17 +232,12 @@ def api_master_import_upload():
         except ValueError as e:
             errors.append(str(e))
 
-    # 兼容单文件字段 file + 自动识别文件名
-    f = request.files.get("file")
-    if f and f.filename:
+    # 通用入口：file 字段可携带多个文件，按文件名 → 表头特征自动识别数据源
+    for f in request.files.getlist("file"):
+        if not f or not f.filename:
+            continue
         detected = detect_source_key(f.filename, cfg)
-        if detected and detected not in [u["key"] for u in uploaded]:
-            try:
-                save_upload(page, detected, f, f.filename, cfg)
-                uploaded.append({"key": detected, "filename": f.filename})
-            except ValueError as e:
-                errors.append(str(e))
-        elif not detected:
+        if not detected:
             try:
                 from io import BytesIO
                 buf = BytesIO(f.read())
@@ -253,18 +248,18 @@ def api_master_import_upload():
                 detected = detect_source_key_by_headers(header_row, cfg)
             except Exception:
                 detected = None
-            if detected and detected not in [u["key"] for u in uploaded]:
-                try:
-                    f.stream.seek(0)
-                    save_upload(page, detected, f, f.filename, cfg)
-                    uploaded.append({"key": detected, "filename": f.filename})
-                except ValueError as e:
-                    errors.append(str(e))
-            else:
-                errors.append(
-                    f"无法识别文件「{f.filename}」，请使用 application*.xlsx、"
-                    f"applicationProcessList*.xlsx 或 候选人管理*.xlsx"
-                )
+        if detected:
+            try:
+                f.stream.seek(0)
+                save_upload(page, detected, f, f.filename, cfg, enforce_pattern=False)
+                uploaded.append({"key": detected, "filename": f.filename})
+            except ValueError as e:
+                errors.append(str(e))
+        else:
+            errors.append(
+                f"无法识别文件「{f.filename}」，请使用 application*.xlsx、"
+                f"applicationProcessList*.xlsx 或 候选人管理*.xlsx"
+            )
 
     if not uploaded and errors:
         return jsonify({"error": "；".join(errors)}), 400
@@ -307,7 +302,7 @@ def api_master_import_refresh():
         return jsonify({"error": str(e)}), 400
 
     if not both_files_ready(page, cfg):
-        return jsonify({"error": "请先上传 Application 主表（application*.xlsx 或 applicationProcessList*.xlsx）"}), 400
+        return jsonify({"error": "请先上传主数据表（application*.xlsx / applicationProcessList*.xlsx / 候选人管理*.xlsx 任一）"}), 400
 
     db = get_db()
     try:
@@ -340,6 +335,13 @@ def api_master_import_legacy():
 @bp.post("/api/candidates/export")
 @login_required
 def api_candidates_export():
+    """阶段表导出：优先使用 export_profiles.json 中 stage:<阶段> 方案，否则按界面可见字段。"""
+    from campus.services.export_service import (
+        build_export_workbook,
+        export_candidates_rows,
+        get_export_profile,
+    )
+
     b = request.get_json(force=True)
     ids = b.get("ids") or []
     stage = b.get("stage", "registration")
@@ -352,29 +354,21 @@ def api_candidates_export():
     db = get_db()
     placeholders = ",".join("?" * len(ids))
     rows = db.execute(f"SELECT * FROM candidates WHERE id IN ({placeholders})", ids).fetchall()
-
-    fields = [f for f in load_stage_fields(stage) if f.get("visible", True)]
-    stage_label = get_stage_meta(stage)["label"]
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = stage_label
-    headers = [f["label"] for f in fields]
-    ws.append(headers)
-    exported = 0
-    for row in rows:
-        if not can_see_candidate(get_db(), g.user, row):
-            continue
-        data = json.loads(row["data"])
-        ws.append([data.get(f["key"], "") for f in fields])
-        exported += 1
-    if exported == 0:
+    rows = [r for r in rows if can_see_candidate(db, g.user, r)]
+    if not rows:
         return jsonify({"error": "选中的候选人均无导出权限"}), 403
-    for i, h in enumerate(headers, start=1):
-        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = max(12, len(h) * 2 + 4)
+
+    stage_label = get_stage_meta(stage)["label"]
+    profile = get_export_profile(f"stage:{stage}")
+    if not profile:
+        fields = [f for f in load_stage_fields(stage) if f.get("visible", True)]
+        profile = {"label": stage_label,
+                   "columns": [{"key": f["key"], "label": f["label"]} for f in fields]}
+    headers, data_rows = export_candidates_rows(db, rows, profile)
+    wb = build_export_workbook(headers, data_rows, stage_label)
 
     add_log(g.user, "export",
-            f"{g.user['display_name']} 从{stage_label}导出了 {exported} 名候选人的Excel数据", module=stage)
+            f"{g.user['display_name']} 从{stage_label}导出了 {len(rows)} 名候选人的Excel数据", module=stage)
     db.commit()
     buf = io.BytesIO()
     wb.save(buf)
@@ -382,5 +376,49 @@ def api_candidates_export():
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     resp = send_file(buf, as_attachment=True, download_name=f"{stage_label}导出_{ts}.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    resp.headers["X-Export-Count"] = str(exported)
+    resp.headers["X-Export-Count"] = str(len(rows))
+    return resp
+
+
+@bp.post("/api/export/candidates")
+@login_required
+def api_export_by_profile():
+    """按导出方案（export_profiles.json）导出候选人，可卷积 data_hub 跨表字段。"""
+    from campus.services.export_service import (
+        build_export_workbook,
+        export_candidates_rows,
+        get_export_profile,
+    )
+
+    b = request.get_json(force=True)
+    profile_name = str(b.get("profile") or "").strip()
+    ids = b.get("ids") or []
+    profile = get_export_profile(profile_name)
+    if not profile:
+        return jsonify({"error": f"未找到导出方案「{profile_name}」，请检查 config/export_profiles.json"}), 400
+
+    db = get_db()
+    if ids:
+        placeholders = ",".join("?" * len(ids))
+        rows = db.execute(f"SELECT * FROM candidates WHERE id IN ({placeholders})", ids).fetchall()
+    else:
+        rows = db.execute("SELECT * FROM candidates").fetchall()
+    rows = [r for r in rows if can_see_candidate(db, g.user, r)]
+    if not rows:
+        return jsonify({"error": "没有可导出的候选人（或无权限）"}), 403
+
+    headers, data_rows = export_candidates_rows(db, rows, profile)
+    label = profile.get("label") or profile_name
+    wb = build_export_workbook(headers, data_rows, label)
+
+    add_log(g.user, "export",
+            f"{g.user['display_name']} 按方案「{label}」导出了 {len(rows)} 名候选人", module="overview")
+    db.commit()
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    resp = send_file(buf, as_attachment=True, download_name=f"{label}_{ts}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    resp.headers["X-Export-Count"] = str(len(rows))
     return resp

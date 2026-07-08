@@ -1,0 +1,50 @@
+{
+  "comment": "表格导出配置。profiles 下按导出方案定义列；候选人数据跨表（candidates / data_hub 汇总总表）按应聘档案编号→简历编号→手机号唯一化关联。列 source: data=候选人字段(默认，key 支持中文/英文/嵌套路径)；computed=系统派生(current_stage_label/stay_days/sla_status/latest_log/hub_key)；hub=汇总总表取值(hub_source 可选 master_import/manual/ui，field 匹配字段键或中文列名)。改动本文件即可调整各界面导出内容，无需改代码。",
+  "profiles": {
+    "overview": {
+      "label": "全局总览明细",
+      "columns": [
+        { "key": "application_archive_id", "label": "应聘档案编号" },
+        { "key": "resume_id", "label": "简历编号" },
+        { "key": "name", "label": "候选人" },
+        { "key": "phone", "label": "电话" },
+        { "key": "gender", "label": "性别" },
+        { "source": "computed", "key": "current_stage_label", "label": "当前流程" },
+        { "source": "computed", "key": "stay_days", "label": "停留时长(天)" },
+        { "source": "computed", "key": "sla_status", "label": "SLA状态" },
+        { "key": "education", "label": "学历" },
+        { "key": "school", "label": "毕业院校" },
+        { "key": "major", "label": "专业" },
+        { "key": "work_location", "label": "拟录取工作地" },
+        { "key": "delivery_time", "label": "投递时间" },
+        { "source": "hub", "hub_source": "master_import", "field": "当前环节", "label": "主数据-当前环节" },
+        { "source": "hub", "hub_source": "master_import", "field": "当前环节状态", "label": "主数据-当前环节状态" },
+        { "source": "hub", "hub_source": "master_import", "field": "应聘状态", "label": "主数据-应聘状态" },
+        { "source": "computed", "key": "latest_log", "label": "最新进展" }
+      ]
+    },
+    "stage:registration": {
+      "label": "候选人登记导出",
+      "columns": [
+        { "key": "application_archive_id", "label": "应聘档案编号" },
+        { "key": "resume_id", "label": "简历编号" },
+        { "key": "registration_time", "label": "登记时间" },
+        { "key": "name", "label": "候选人" },
+        { "key": "phone", "label": "电话" },
+        { "key": "sourcer", "label": "拓源人" },
+        { "key": "sourcer_dept", "label": "拓源人部门" },
+        { "key": "interface_person", "label": "接口人" },
+        { "key": "interface_dept", "label": "接口人部门" },
+        { "key": "education", "label": "学历" },
+        { "key": "school", "label": "毕业院校" },
+        { "key": "major", "label": "专业" },
+        { "key": "registration_source", "label": "来源渠道" },
+        { "key": "delivery_time", "label": "投递时间" },
+        { "key": "registration_status", "label": "登记状态" },
+        { "source": "computed", "key": "current_stage_label", "label": "当前流程" },
+        { "source": "hub", "hub_source": "master_import", "field": "当前环节", "label": "主数据-当前环节" },
+        { "source": "hub", "hub_source": "master_import", "field": "应聘状态", "label": "主数据-应聘状态" }
+      ]
+    }
+  }
+}

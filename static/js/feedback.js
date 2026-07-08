@@ -317,6 +317,7 @@ async function renderFeedback() {
             <button class="btn btn-sm iv-view-btn" data-fb-view-tab="logs">日志</button>
           </div>
           <span id="fb-count" class="muted" style="font-size:12px"></span>
+          <button type="button" class="btn btn-sm" id="fb-export-btn" title="导出反馈列表为 CSV">导出</button>
           <button type="button" class="btn btn-primary btn-sm" id="fb-add-btn">+ 新增反馈</button>
         </div>
       </div>
@@ -368,6 +369,7 @@ async function renderFeedback() {
     }));
 
   $("#fb-add-btn")?.addEventListener("click", () => openFeedbackModal());
+  $("#fb-export-btn")?.addEventListener("click", () => exportTableCsv($("#fb-table"), "问题反馈"));
   document.querySelectorAll("[data-fb-filter]").forEach(el => {
     const key = el.dataset.fbFilter;
     const run = () => {

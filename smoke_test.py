@@ -329,7 +329,8 @@ s, r = call("POST", "/api/master-import/upload", raw=body_m.getvalue(),
 check("主数据表双文件上传成功", s == 200 and r.get("both_ready"))
 s, cfg_mi = call("GET", "/api/master-import/config?page=registration")
 check("主数据表配置含双数据源", len(cfg_mi.get("sources", [])) == 2 and cfg_mi.get("join_key") == "resume_id")
-check("主数据匹配键为手机号", cfg_mi.get("match_keys") == ["phone"])
+check("主数据匹配键为档案编号→简历编号→手机号",
+      cfg_mi.get("match_keys") == ["application_archive_id", "resume_id", "phone"])
 boundary_r = uuid.uuid4().hex
 body_r = io.BytesIO()
 body_r.write(f"--{boundary_r}\r\n".encode())

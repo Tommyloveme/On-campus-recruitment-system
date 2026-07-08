@@ -80,6 +80,11 @@ SLA 目标配置：`config/sla.json`（各阶段 `warn_days` 预警 / `max_days`
 
 维度：`source` × `tab_key` × `resume_id` × `field_key`（中文）。
 
+`resume_id` 列存放候选人**唯一化关联键**，优先级：应聘档案编号 → 简历编号 →
+`无编号-<手机号>`（主数据导入补齐编号后自然并轨）。主数据导入的候选人匹配
+（`config/master_import/registration/index.json` 的 `match_keys`）与各表导出
+（`config/export_profiles.json`）均按同一优先级唯一化。
+
 | source | 含义 |
 |--------|------|
 | master_import | 主数据导入 |

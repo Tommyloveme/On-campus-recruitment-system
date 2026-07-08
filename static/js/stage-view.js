@@ -69,6 +69,9 @@ function stageUiColumns(stageKey) {
 }
 
 function candHubKey(c) {
+  // 与后端 hub_resume_key 保持一致：应聘档案编号 → 简历编号 → 无编号-<手机号>
+  const aid = String(c.data["应聘档案编号"] || c.data.application_archive_id || "").trim();
+  if (aid) return aid;
   const rid = String(c.data.resume_id || "").trim();
   if (rid) return rid;
   const phone = String(c.data.phone || "").trim();

@@ -95,6 +95,7 @@ async function renderBackups() {
             <button class="btn btn-sm iv-view-btn active" data-bk-view="list">备份列表</button>
             <button class="btn btn-sm iv-view-btn" data-bk-view="logs">日志</button>
           </div>
+          <button class="btn btn-sm" id="bk-export" title="导出备份列表为 CSV">导出</button>
           <button class="btn btn-primary btn-sm" id="bk-now" title="恢复前会自动保存当前状态">立即备份</button>
         </div>
       </div>
@@ -146,6 +147,7 @@ async function renderBackups() {
     } catch (e) { list.innerHTML = `<tr><td colspan="5" class="bk-empty">备份加载失败：${esc(e.message)}</td></tr>`; }
   };
   await load();
+  $("#bk-export").addEventListener("click", () => exportTableCsv($(".bk-table"), "数据备份"));
   $("#bk-now").addEventListener("click", async () => {
     try {
       const r = await api("/api/backups", { method: "POST" });

@@ -19,11 +19,12 @@ NO_RESUME_PREFIX = "无编号-"
 
 
 def hub_resume_key(data):
-    """总表关联键：优先简历编号；无简历编号的手动候选人 → 无编号-<手机号>。"""
+    """总表唯一化关联键：应聘档案编号 → 简历编号 → 无编号-<手机号>。"""
     from campus.db.field_store import field_get
-    rid = str(field_get(data, "resume_id") or "").strip()
-    if rid:
-        return rid
+    for key in ("application_archive_id", "resume_id"):
+        v = str(field_get(data, key) or "").strip()
+        if v:
+            return v
     phone = str(field_get(data, "phone") or "").strip()
     return f"{NO_RESUME_PREFIX}{phone}" if phone else ""
 

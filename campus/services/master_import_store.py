@@ -69,12 +69,15 @@ def storage_path(page, source_cfg):
     return os.path.join(page_dir(page), name)
 
 
-def save_upload(page, source_key, file_storage, original_filename, cfg):
-    """保存上传文件并更新 meta；返回 (source_cfg, meta)。"""
+def save_upload(page, source_key, file_storage, original_filename, cfg, enforce_pattern=True):
+    """保存上传文件并更新 meta；返回 (source_cfg, meta)。
+
+    enforce_pattern=False 用于表头特征识别成功但文件名不符合模式的场景。
+    """
     source = next((s for s in cfg["sources"] if s["key"] == source_key), None)
     if not source:
         raise ValueError(f"未知数据源: {source_key}")
-    if not filename_matches(source_key, original_filename, cfg):
+    if enforce_pattern and not filename_matches(source_key, original_filename, cfg):
         pattern = (cfg.get("file_patterns") or {}).get(source_key, "*")
         raise ValueError(f"文件名「{original_filename}」不匹配要求：{pattern}")
 
@@ -114,13 +117,10 @@ def get_stored_files(page, cfg):
 
 
 def both_files_ready(page, cfg):
-    """Application 主表就绪即可刷新；候选人管理表为可选补充。"""
+    """任一数据表就绪即可刷新（支持单表单独上传后刷新，按唯一键合并）。"""
     files = get_stored_files(page, cfg)
     keys = cfg.get("source_keys") or []
-    if not keys:
-        return False
-    primary = "application" if "application" in keys else keys[0]
-    return bool(files.get(primary, {}).get("ready"))
+    return any(files.get(k, {}).get("ready") for k in keys)
 
 
 def clear_page(page):

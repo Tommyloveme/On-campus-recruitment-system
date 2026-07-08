@@ -494,7 +494,14 @@ def _seed_stage_history(db):
 
 def _migrate_chinese_field_keys(db):
     """历史数据：已知英文字段键 → 中文 storage_key；未注册英文键保留。"""
-    from campus.db.field_store import legacy_to_storage, normalize_record, reload_field_registry
+    from campus.db.field_store import (
+        build_field_registry,
+        legacy_to_storage,
+        normalize_record,
+        reload_field_registry,
+    )
+    # 启动时按最新配置（阶段字段 + 主数据映射）重建注册表，保证新增映射字段立即生效
+    build_field_registry(save=True)
     reload_field_registry()
 
     def _migrate_json(raw):

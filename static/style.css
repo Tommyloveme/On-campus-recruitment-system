@@ -929,6 +929,14 @@ th.sortable:hover { color: var(--primary); }
   font-size: 12px; background: #fff; max-width: 170px;
 }
 .pv-gran { max-width: 90px; }
+.pv-zone-wrap { flex-wrap: wrap; }
+.pv-zone { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.pv-zone-item {
+  display: inline-flex; align-items: center; gap: 2px;
+  background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 2px 4px;
+}
+.pv-zone-item select { border: none; background: transparent; padding: 2px 2px; }
+.pv-zone-add { padding: 2px 8px; font-size: 13px; line-height: 1.2; }
 .pv-filters {
   display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap;
   margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);

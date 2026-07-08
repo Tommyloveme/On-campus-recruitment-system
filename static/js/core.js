@@ -203,6 +203,50 @@ function fieldInput(f, value, opts) {
   return `<input type="${type}" data-field="${f.key}" value="${ve}">`;
 }
 
+/** 按后端导出方案（config/export_profiles.json）导出候选人 Excel。 */
+async function exportByProfile(profile, ids) {
+  try {
+    const res = await fetch("/api/export/candidates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile, ids: ids || [] }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `导出失败 (${res.status})`);
+    }
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${profile}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast(`已导出 ${res.headers.get("X-Export-Count") || ids?.length || ""} 条`);
+  } catch (e) { toast(e.message, true); }
+}
+
+/** 把页面上的表格导出为 CSV（通用，所有界面表格可用）。 */
+function exportTableCsv(tableEl, filename) {
+  if (!tableEl) { toast("没有可导出的表格", true); return; }
+  const lines = [];
+  tableEl.querySelectorAll("tr").forEach(tr => {
+    if (tr.classList.contains("filter-row") || tr.classList.contains("fb-filter-row")
+        || tr.classList.contains("perm-filter-row")) return;
+    const cells = [...tr.querySelectorAll("th,td")].map(td => {
+      const inp = td.querySelector("input[type=text],input[type=number],select");
+      const v = inp ? (inp.value || "") : (td.innerText || "").trim().replace(/\s*\n\s*/g, " ");
+      return `"${v.replace(/"/g, '""')}"`;
+    });
+    if (cells.length) lines.push(cells.join(","));
+  });
+  if (!lines.length) { toast("表格为空", true); return; }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
+  a.download = `${filename || "表格导出"}_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 function showLogin() {
   state.me = null;
   $("#app-view").classList.add("hidden");
