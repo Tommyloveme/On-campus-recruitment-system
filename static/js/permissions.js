@@ -512,10 +512,9 @@ function permRowCells(u, cols) {
       return `<td class="col-role"><span class="badge badge-${tone}">${esc(label)}</span></td>`;
     }
     if (c.kind === "log_level") {
-      const isAdminRole = (permOptions.roles || []).some(r => r.key === u.role && r.bypass) || u.role === "admin";
-      return `<td><select class="perm-log-level" data-loglv-uid="${u.id}" ${isAdminRole ? "disabled title=\"系统管理员恒为 L1\"" : ""}>
-        ${LOG_LEVELS.map(l => `<option value="${l}" ${String(u.log_level ?? 10) === String(l) ? "selected" : ""}>L${l}</option>`).join("")}
-      </select></td>`;
+      const rdef = (permOptions.roles || []).find(r => r.key === u.role);
+      const lv = rdef?.log_level ?? u.log_level ?? 10;
+      return `<td><span class="badge badge-${lv <= 3 ? "blue" : "gray"}" title="由所属角色/组授予">L${esc(lv)}</span></td>`;
     }
     if (c.kind === "module") {
       const a = aclOf(u.id, c.module.key);
@@ -604,8 +603,6 @@ function renderPermGridBody(cols) {
   leftTb.querySelectorAll(".perm-row-check").forEach(cb => cb.addEventListener("change", refreshPermBatchBtn));
   rightTb.querySelectorAll(".perm-flag-cb").forEach(cb =>
     cb.addEventListener("change", () => onPermFlagToggle(+cb.dataset.uid, cb.dataset.mk, cb.dataset.flag, cb.checked)));
-  rightTb.querySelectorAll("[data-loglv-uid]").forEach(sel =>
-    sel.addEventListener("change", () => onPermLogLevelChange(+sel.dataset.loglvUid, sel.value)));
   rightTb.querySelectorAll("[data-feat-uid]").forEach(b =>
     b.addEventListener("click", () => openFeatureModal(+b.dataset.featUid, b.dataset.featMk)));
   rightTb.querySelectorAll("[data-uedit]").forEach(b =>
@@ -816,8 +813,7 @@ function openUserModal(user) {
       ${fieldRows}
     </div>
     ${jobRolesCheckboxHtml(user?.job_roles, user?.role || "user")}
-    <label class="perm-flag-toggle" style="margin-top:8px"><input type="checkbox" id="uf-apply-role" ${isNew ? "checked" : ""}>
-      <span>${isNew ? "创建后应用该角色权限模板" : "重新应用该角色权限模板（覆盖此用户当前模块权限）"}</span></label>`,
+    <p class="muted" style="font-size:12px;margin:8px 0 0">模块权限与日志等级由所选角色/组统一授予。</p>`,
     `<button class="btn" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="uf-save">保存</button>`);
   bindUserJobRolesVisibility();
@@ -827,7 +823,6 @@ function openUserModal(user) {
       username: $("#uf-username").value.trim(),
       password: $("#uf-password").value,
       role,
-      apply_role: $("#uf-apply-role").checked,
     };
     if (role === "interviewer") {
       payload.job_roles = [...document.querySelectorAll(".uf-job-role:checked")].map(cb => cb.value);

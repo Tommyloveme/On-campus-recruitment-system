@@ -146,9 +146,8 @@ def api_user_create():
     except sqlite3.IntegrityError:
         return jsonify({"error": "工号已存在"}), 400
     uid = db.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()["id"]
-    # 新建用户默认应用角色权限模板（除非显式关闭）
-    if b.get("apply_role", True):
-        apply_role_to_user(db, uid, role)
+    # 权限由角色/组决定；这里仅同步角色日志等级并清理历史用户直授权。
+    apply_role_to_user(db, uid, role)
     add_log(g.user, "user", f"{g.user['display_name']} 创建了用户「{fields['builtin'].get('display_name')}」（角色：{role_label(role)}）",
             module="permissions", level=1)
     db.commit()
@@ -183,10 +182,8 @@ def api_user_update(uid):
 
     persist_user_columns(db, uid, fields, role, password=b.get("password"),
                           job_roles=_resolve_job_roles_update(b, role, user))
+    apply_role_to_user(db, uid, role)
     sync_registration_employee_snapshots(db, user["username"])
-    # 显式要求重新应用角色权限（覆盖该用户模块权限）
-    if b.get("apply_role"):
-        apply_role_to_user(db, uid, role)
     add_log(g.user, "user", f"{g.user['display_name']} 更新了用户「{user['display_name']}」的信息",
             module="permissions", level=1)
     db.commit()
@@ -196,14 +193,14 @@ def api_user_update(uid):
 @bp.post("/api/users/<int:uid>/apply-role")
 @admin_required
 def api_user_apply_role(uid):
-    """将用户当前角色的权限模板应用到其 module_acl（覆盖原有模块权限）。"""
+    """同步用户所属角色/组设置（清理历史用户直授权并同步日志等级）。"""
     db = get_db()
     user = db.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
     if not user:
         return jsonify({"error": "用户不存在"}), 404
     cnt = apply_role_to_user(db, uid, user["role"])
     add_log(g.user, "permission",
-            f"{g.user['display_name']} 对用户「{user['display_name']}」应用了角色「{role_label(user['role'])}」权限（{cnt} 项）",
+            f"{g.user['display_name']} 同步了用户「{user['display_name']}」所属角色/组「{role_label(user['role'])}」设置",
             module="permissions", level=1)
     db.commit()
     return jsonify({"ok": True, "applied": cnt})
@@ -212,7 +209,7 @@ def api_user_apply_role(uid):
 @bp.post("/api/users/apply-role-batch")
 @admin_required
 def api_users_apply_role_batch():
-    """批量对所选用户应用其当前角色的权限模板。"""
+    """批量同步所选用户所属角色/组设置。"""
     b = request.get_json(force=True)
     ids = b.get("ids") or []
     if not ids:
@@ -225,7 +222,7 @@ def api_users_apply_role_batch():
             continue
         total += apply_role_to_user(db, int(uid), user["role"])
     add_log(g.user, "permission",
-            f"{g.user['display_name']} 批量应用角色权限到 {len(ids)} 个用户（共 {total} 项）",
+            f"{g.user['display_name']} 批量同步了 {len(ids)} 个用户的角色/组设置",
             module="permissions", level=1)
     db.commit()
     return jsonify({"ok": True, "applied": total})

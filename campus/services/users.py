@@ -82,12 +82,14 @@ def persist_user_columns(db, uid, fields, role, password=None, is_create=False, 
              b.get("dept_level2", ""), b.get("dept_level3", ""), jr, extra, log_level, now_str()),
         )
     else:
+        from campus.core.roles_store import role_log_level
+        log_level = role_log_level(role)
         sql = (
             "UPDATE users SET display_name=?, role=?, supervisor=?, department=?, "
-            "dept_level2=?, dept_level3=?, extra=?"
+            "dept_level2=?, dept_level3=?, extra=?, log_level=?"
         )
         params = [b.get("display_name", ""), role, b.get("supervisor", ""), b.get("department", ""),
-                  b.get("dept_level2", ""), b.get("dept_level3", ""), extra]
+                  b.get("dept_level2", ""), b.get("dept_level3", ""), extra, log_level]
         if job_roles is not None:
             sql += ", job_roles=?"
             params.append(jr)
