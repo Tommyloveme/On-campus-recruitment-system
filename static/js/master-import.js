@@ -26,12 +26,12 @@ async function openMasterImportModal() {
   }
   const sources = status.sources || [];
   const patterns = status.file_patterns || {};
-  const appPat = patterns.application || "Application*.xlsx";
-  const mgmtPat = patterns.candidate_mgmt || "候选人管理*.xlsx";
+  const appPat = patterns.application || "application*.xlsx / applicationProcessList*.xlsx";
+  const mgmtPat = patterns.candidate_mgmt || "候选人管理*.xlsx（可选）";
 
   openModal("主数据表导入", `
     <p style="font-size:12px;color:#64748b;line-height:1.8;margin-bottom:12px">
-      默认导入两张 Excel：<strong>${esc(appPat)}</strong> 与 <strong>${esc(mgmtPat)}</strong>。
+      默认导入 <strong>${esc(appPat)}</strong> 主表；<strong>${esc(mgmtPat)}</strong> 为可选补充表。
       列映射与工作表见 <code>config/master_import/registration/field_mappings.json</code>。
       两张表通过<strong>简历编号</strong>关联；与系统候选人通过<strong>手机号</strong>匹配合并（同号合并、冲突字段保留原值）。
       配置为 <code>lock_on_import: true</code> 的字段导入后不可在界面编辑；未映射的 Excel 列会自动入库（界面默认不可见）。

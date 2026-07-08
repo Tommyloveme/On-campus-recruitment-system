@@ -25,6 +25,7 @@ from campus.services.master_import import run_dual_master_refresh
 from campus.services.master_import_store import (
     both_files_ready,
     detect_source_key,
+    detect_source_key_by_headers,
     get_stored_files,
     load_meta,
     save_upload,
@@ -239,7 +240,28 @@ def api_master_import_upload():
             except ValueError as e:
                 errors.append(str(e))
         elif not detected:
-            errors.append(f"无法识别文件「{f.filename}」，请使用 Application*.xlsx 或 候选人管理*.xlsx")
+            try:
+                from io import BytesIO
+                buf = BytesIO(f.read())
+                f.stream.seek(0)
+                wb = load_workbook(buf, read_only=True, data_only=True)
+                ws = wb.active
+                header_row = next(ws.iter_rows(max_row=1, values_only=True), ())
+                detected = detect_source_key_by_headers(header_row, cfg)
+            except Exception:
+                detected = None
+            if detected and detected not in [u["key"] for u in uploaded]:
+                try:
+                    f.stream.seek(0)
+                    save_upload(page, detected, f, f.filename, cfg)
+                    uploaded.append({"key": detected, "filename": f.filename})
+                except ValueError as e:
+                    errors.append(str(e))
+            else:
+                errors.append(
+                    f"无法识别文件「{f.filename}」，请使用 application*.xlsx、"
+                    f"applicationProcessList*.xlsx 或 候选人管理*.xlsx"
+                )
 
     if not uploaded and errors:
         return jsonify({"error": "；".join(errors)}), 400
@@ -282,7 +304,7 @@ def api_master_import_refresh():
         return jsonify({"error": str(e)}), 400
 
     if not both_files_ready(page, cfg):
-        return jsonify({"error": "请先上传 Application*.xlsx 与 候选人管理*.xlsx"}), 400
+        return jsonify({"error": "请先上传 Application 主表（application*.xlsx 或 applicationProcessList*.xlsx）"}), 400
 
     db = get_db()
     try:

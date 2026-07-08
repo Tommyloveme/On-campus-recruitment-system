@@ -863,7 +863,10 @@ function roleCellValue(role, col) {
 function rolePermOf(roleKey, mk) {
   const role = rolesCache().find(r => r.key === roleKey);
   const p = role?.perms?.[mk] || {};
-  return { v: +(p.v || 0), r: +(p.r || 0), w: +(p.w || 0), m: +(p.m || 0) };
+  return {
+    v: +(p.v || 0), r: +(p.r || 0), w: +(p.w || 0), m: +(p.m || 0),
+    feats: p.features || {},
+  };
 }
 
 function rowPassesRoleFilter(role, cols) {
@@ -1076,10 +1079,16 @@ function roleRowCells(role, cols) {
     if (c.kind === "module") {
       if (role.bypass) return `<td class="col-module perm-mod-cell"><span class="perm-dash" title="全权角色">—</span></td>`;
       const a = rolePermOf(role.key, c.module.key);
+      const feats = permFeatureRegistry[c.module.key];
+      const hasCustom = feats && Object.values(a.feats || {}).some(v => v === 0);
+      const gear = feats
+        ? `<button class="perm-feat-btn${hasCustom ? " has-custom" : ""}" data-role-feat="${esc(role.key)}"
+             data-feat-mk="${c.module.key}" title="细粒度权限（子标签/按钮可见性）">⚙</button>`
+        : "";
       return `<td class="col-module perm-mod-cell">${PERM_FLAGS.map(([s, , label, color]) =>
         `<label class="perm-flag" title="${label}"><input type="checkbox" class="role-flag-cb"
           data-rkey="${esc(role.key)}" data-mk="${c.module.key}" data-flag="${s}" ${a[s] ? "checked" : ""}
-          style="--flag-color:${color}"></label>`).join("")}</td>`;
+          style="--flag-color:${color}"></label>`).join("")}${gear}</td>`;
     }
     const val = roleCellValue(role, c);
     const inner = val === "" ? `<span class="perm-dash">—</span>` : esc(val);
@@ -1153,6 +1162,8 @@ function renderRoleGridBody(cols) {
 
   rightTb.querySelectorAll(".role-flag-cb").forEach(cb =>
     cb.addEventListener("change", () => onRoleFlagToggle(cb.dataset.rkey, cb.dataset.mk, cb.dataset.flag, cb.checked)));
+  rightTb.querySelectorAll("[data-role-feat]").forEach(b =>
+    b.addEventListener("click", () => openRoleFeatureModal(b.dataset.roleFeat, b.dataset.featMk)));
   rightTb.querySelectorAll("[data-role-edit]").forEach(b =>
     b.addEventListener("click", () => openRoleModal(rolesCache().find(r => r.key === b.dataset.roleEdit))));
   rightTb.querySelectorAll("[data-role-del]").forEach(b =>
@@ -1190,6 +1201,58 @@ async function onRoleFlagToggle(roleKey, mk, flag, checked) {
     await loadPermData();
     renderRoleGrid();
   }
+}
+
+function openRoleFeatureModal(roleKey, mk) {
+  const feats = permFeatureRegistry[mk] || [];
+  const role = rolesCache().find(r => r.key === roleKey);
+  if (!role || role.bypass) return;
+  const mod = permModuleCols.find(m => m.key === mk);
+  const cur = rolePermOf(roleKey, mk);
+  const isOn = k => !((cur.feats || {})[k] === 0);
+  const kinds = [["tab", "子标签可见性"], ["button", "按钮可见性"]];
+  const sections = kinds.map(([kind, title]) => {
+    const items = feats.filter(f => f.kind === kind);
+    if (!items.length) return "";
+    return `
+      <div class="feat-section">
+        <div class="feat-section-title">${title}</div>
+        <div class="feat-list">
+          ${items.map(f => `
+            <label class="feat-switch">
+              <input type="checkbox" class="role-feat-cb" data-fk="${f.key}" ${isOn(f.key) ? "checked" : ""}>
+              <span class="feat-slider"></span>
+              <span class="feat-name">${esc(f.label)}</span>
+            </label>`).join("")}
+        </div>
+      </div>`;
+  }).join("");
+
+  openModal(`细粒度权限 · 角色「${esc(role?.label || roleKey)}」× ${esc(mod?.label || mk)}`, `
+    <p class="muted" style="font-size:12px;margin:0 0 12px">
+      配置该角色权限模板在页面内的子标签/按钮可见性。应用角色到用户时会一并写入。默认全部开启。</p>
+    ${sections}`,
+    `<button class="btn" onclick="closeModal()">取消</button>
+     <button class="btn btn-sm" id="role-feat-reset">全部恢复默认</button>
+     <button class="btn btn-primary" id="role-feat-save">保存</button>`);
+
+  $("#role-feat-reset").addEventListener("click", () => {
+    document.querySelectorAll(".role-feat-cb").forEach(cb => { cb.checked = true; });
+  });
+  $("#role-feat-save").addEventListener("click", async () => {
+    const features = {};
+    document.querySelectorAll(".role-feat-cb").forEach(cb => { features[cb.dataset.fk] = cb.checked ? 1 : 0; });
+    const perms = JSON.parse(JSON.stringify(role.perms || {}));
+    if (!perms[mk]) perms[mk] = { v: 0, r: 0, w: 0, m: 0 };
+    perms[mk].features = features;
+    try {
+      await api(`/api/roles/${encodeURIComponent(roleKey)}`, { method: "PUT", json: { perms } });
+      toast("角色细粒度权限已保存");
+      closeModal();
+      await loadPermData();
+      renderRoleGrid();
+    } catch (e) { toast(e.message, true); }
+  });
 }
 
 async function roleBatchApply(revoke) {

@@ -127,11 +127,15 @@ def _select_workbook_sheet(wb, source_cfg, source_label=""):
     label = source_label or source_cfg.get("label") or source_cfg.get("key") or "Excel"
     name = (source_cfg.get("sheet_name") or "").strip()
     if name:
-        if name not in wb.sheetnames:
-            raise ValueError(
-                f"「{label}」中未找到工作表「{name}」，当前工作表：{', '.join(wb.sheetnames)}"
-            )
-        return wb[name]
+        if name in wb.sheetnames:
+            return wb[name]
+        # 兼容 Sheet / Sheet1 等命名差异：配置的工作表不存在时回退 sheet_index
+        idx = int(source_cfg.get("sheet_index", 0))
+        if 0 <= idx < len(wb.sheetnames):
+            return wb[wb.sheetnames[idx]]
+        raise ValueError(
+            f"「{label}」中未找到工作表「{name}」，当前工作表：{', '.join(wb.sheetnames)}"
+        )
     idx = int(source_cfg.get("sheet_index", 0))
     if idx < 0 or idx >= len(wb.sheetnames):
         raise ValueError(
@@ -367,14 +371,21 @@ def run_dual_master_refresh(db, cfg, can_edit_fn, user, compute_stage_fn=None):
 
     page = cfg.get("page", "registration")
     if not both_files_ready(page, cfg):
-        raise ValueError("请先上传 Application*.xlsx 与 候选人管理*.xlsx 两个文件")
+        raise ValueError("请先上传 Application 主表（application*.xlsx 或 applicationProcessList*.xlsx）")
 
     files = get_stored_files(page, cfg)
     join_key = cfg.get("join_key", "resume_id")
     source_map = {s["key"]: s for s in cfg["sources"]}
 
-    app_rows = parse_excel_file(files["application"]["path"], source_map["application"])
-    mgmt_rows = parse_excel_file(files["candidate_mgmt"]["path"], source_map["candidate_mgmt"])
+    app_info = files.get("application") or {}
+    if not app_info.get("ready") or not app_info.get("path"):
+        raise ValueError("Application 主表未上传或文件丢失")
+    app_rows = parse_excel_file(app_info["path"], source_map["application"])
+
+    mgmt_rows = []
+    mgmt_info = files.get("candidate_mgmt") or {}
+    if mgmt_info.get("ready") and mgmt_info.get("path"):
+        mgmt_rows = parse_excel_file(mgmt_info["path"], source_map["candidate_mgmt"])
     rows_data = join_master_rows(app_rows, mgmt_rows, join_key)
 
     created, updated, skipped = apply_master_rows(

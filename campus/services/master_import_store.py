@@ -52,6 +52,18 @@ def detect_source_key(original_name, cfg):
     return None
 
 
+def detect_source_key_by_headers(header_row, cfg):
+    """按表头特征识别数据源（文件名不匹配时的兜底）。"""
+    headers = {str(h or "").strip() for h in (header_row or []) if str(h or "").strip()}
+    if not headers:
+        return None
+    if {"简历编号", "姓名", "联系电话"} <= headers or {"简历编号", "应聘档案编号"} <= headers:
+        return "application"
+    if {"简历编号", "测评结果"} <= headers or {"简历编号", "当前进展"} <= headers:
+        return "candidate_mgmt"
+    return None
+
+
 def storage_path(page, source_cfg):
     name = source_cfg.get("storage_name") or f"{source_cfg['key']}.xlsx"
     return os.path.join(page_dir(page), name)
@@ -102,8 +114,13 @@ def get_stored_files(page, cfg):
 
 
 def both_files_ready(page, cfg):
+    """Application 主表就绪即可刷新；候选人管理表为可选补充。"""
     files = get_stored_files(page, cfg)
-    return all(files[k]["ready"] for k in cfg.get("source_keys", []))
+    keys = cfg.get("source_keys") or []
+    if not keys:
+        return False
+    primary = "application" if "application" in keys else keys[0]
+    return bool(files.get(primary, {}).get("ready"))
 
 
 def clear_page(page):

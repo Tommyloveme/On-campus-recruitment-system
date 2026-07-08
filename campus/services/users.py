@@ -214,13 +214,16 @@ def apply_role_to_user(db, uid, role_key):
     for mk, flags in perms.items():
         if not flags or not (flags.get("v") or flags.get("r") or flags.get("w") or flags.get("m")):
             continue
+        feats = flags.get("features") or {}
+        feat_json = json.dumps(feats, ensure_ascii=False) if feats else ""
         db.execute(
             "INSERT INTO module_acl (subject_type, subject_id, module_key, "
-            "perm_visibility, perm_read, perm_write, perm_manage, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?)",
+            "perm_visibility, perm_read, perm_write, perm_manage, perm_features, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
             ("user", uid, mk,
              1 if flags.get("v") else 0, 1 if flags.get("r") else 0,
-             1 if flags.get("w") else 0, 1 if flags.get("m") else 0, now),
+             1 if flags.get("w") else 0, 1 if flags.get("m") else 0,
+             feat_json, now),
         )
         cnt += 1
     return cnt

@@ -89,8 +89,17 @@ def valid_role_key(key):
     return all(ch.isalnum() or ch == "_" or "\u4e00" <= ch <= "\u9fff" for ch in key)
 
 
+def _normalize_module_features(module_key, raw):
+    """仅保留该模块已注册的特性键。"""
+    from campus.core.features import feature_keys
+    known = set(feature_keys(module_key))
+    if not known or not isinstance(raw, dict):
+        return {}
+    return {fk: (1 if raw[fk] else 0) for fk in known if fk in raw}
+
+
 def _normalize_perms(perms):
-    """规范化 perms：仅保留合法模块与 0/1 标志。"""
+    """规范化 perms：仅保留合法模块与 0/1 标志；可选 features 子对象。"""
     from campus.core.modules import module_keys
     valid_keys = set(module_keys())
     out = {}
@@ -101,12 +110,16 @@ def _normalize_perms(perms):
             continue
         if not isinstance(flags, dict):
             continue
-        out[mk] = {
+        entry = {
             "v": 1 if flags.get("v") or flags.get("perm_visibility") else 0,
             "r": 1 if flags.get("r") or flags.get("perm_read") else 0,
             "w": 1 if flags.get("w") or flags.get("perm_write") else 0,
             "m": 1 if flags.get("m") or flags.get("perm_manage") else 0,
         }
+        feats = _normalize_module_features(mk, flags.get("features"))
+        if feats:
+            entry["features"] = feats
+        out[mk] = entry
     return out
 
 
