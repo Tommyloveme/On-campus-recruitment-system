@@ -74,15 +74,16 @@ class TestMasterImportParse(unittest.TestCase):
         self.assertEqual(merged[0].get("interview_progress"), "专业面试")
         self.assertEqual(merged[0].get("phone"), "13000000001")
 
-    def test_parse_legacy_application_test(self):
+    def test_parse_application_fixture(self):
         if not os.path.isfile(LEGACY):
             self.skipTest("Application_test.xlsx 不存在")
         rows = parse_excel_file(LEGACY, self.app_src)
         valid = [r for r in rows if r.get("name")]
         self.assertGreaterEqual(len(valid), 2)
-        row = next(r for r in valid if r.get("resume_id") == "RS2026001")
+        row = next(r for r in valid if r.get("resume_id") == "SR20260101001")
         self.assertEqual(row.get("name"), "主表新人")
         self.assertEqual(row.get("phone"), "13790001001")
+        self.assertEqual(row.get("application_archive_id"), "SR20260101001")
 
 
 if __name__ == "__main__":

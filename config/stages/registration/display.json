@@ -19,6 +19,7 @@
     "registration_remark"
   ],
   "frozen_column_count": 5,
+  "keep_visible_in_range": ["delivery_time"],
   "default_sort": {
     "key": "registration_time",
     "dir": "desc"

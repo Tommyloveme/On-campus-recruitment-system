@@ -25,7 +25,6 @@ from campus.services.candidates import (
     candidate_dict,
     delete_candidate_row,
     find_candidate_by_phone,
-    group_name_map,
     insert_candidate_row,
     merge_candidate_rows,
     normalize_candidate_phone,
@@ -50,8 +49,7 @@ def api_candidates():
     rows = db.execute("SELECT * FROM candidates ORDER BY updated_at DESC").fetchall()
     # 共享池：所有登录用户可见
     rows = [r for r in rows if can_see_candidate(db, g.user, r)]
-    names = group_name_map()
-    result = [candidate_dict(r, names) for r in rows]
+    result = [candidate_dict(r) for r in rows]
     q = (request.args.get("q") or "").strip()
     stage_filter = request.args.get("stage")
     if q:
@@ -235,7 +233,7 @@ def api_candidate_update(cid):
     name = field_get(new, "name") or field_get(old, "name")
     add_log(g.user, "update",
             f"{g.user['display_name']} 修改了「{name}」：" + "；".join(changes),
-            cid, name, row["group_id"], module=stage)
+            cid, name, module=stage)
     db.commit()
     log.info("修改候选人 %s id=%d name=%s 变更%d项", who(g.user), cid, name, len(changes))
     log.debug("修改明细 id=%d %s", cid, "；".join(changes))
@@ -254,7 +252,7 @@ def api_candidate_delete(cid):
         return jsonify({"error": "无删除权限（需对候选人当前阶段模块具备写权限）"}), 403
     name = field_get(json.loads(row["data"]), "name")
     delete_candidate_row(db, row)
-    add_log(g.user, "delete", f"{g.user['display_name']} 删除了候选人「{name}」", cid, name, row["group_id"],
+    add_log(g.user, "delete", f"{g.user['display_name']} 删除了候选人「{name}」", cid, name,
             module=request.args.get("stage") or "registration")
     db.commit()
     log.info("删除候选人 %s id=%d name=%s", who(g.user), cid, name)
@@ -286,11 +284,79 @@ def api_candidates_batch_delete():
     shown = "、".join(deleted_names[:5]) + ("等" if len(deleted_names) > 5 else "")
     add_log(g.user, "delete",
             f"{g.user['display_name']} 批量删除了 {len(deleted_names)} 名候选人（{shown}）",
-            group_id=g.user["group_id"], module="registration")
+            module="registration")
     db.commit()
     log.info("批量删除 %s 删除%d 跳过%d", who(g.user), len(deleted_names), len(rows) - len(deleted_names))
     return jsonify({"ok": True, "deleted": len(deleted_names),
                     "skipped": len(rows) - len(deleted_names)})
+
+
+@bp.post("/api/candidates/<int:cid>/terminate")
+@login_required
+def api_candidate_terminate(cid):
+    """流程终止 / 恢复：action=terminate（终止，冻结当前阶段）/ restore（恢复终止前状态）。
+
+    终止时保存手动流转快照到 _终止前状态；恢复时还原快照并按规则重算阶段，
+    候选人回到终止前的状态。需登记模块写权限。
+    """
+    from campus.domain.stage_routing import (
+        MANUAL_STAGE_KEY,
+        TERMINATED_FLAG_KEY,
+        TERMINATED_SNAPSHOT_KEY,
+        is_terminated,
+        stage_label_map,
+    )
+
+    if not module_writable_for(g.user, "registration"):
+        return jsonify({"error": "无「候选人登记」模块的写入权限"}), 403
+
+    db = get_db()
+    row = db.execute("SELECT * FROM candidates WHERE id=?", (cid,)).fetchone()
+    if not row:
+        return jsonify({"error": "候选人不存在"}), 404
+
+    action = (request.get_json(force=True) or {}).get("action", "")
+    if action not in ("terminate", "restore"):
+        return jsonify({"error": "action 须为 terminate / restore"}), 400
+
+    data = json.loads(row["data"])
+    labels = stage_label_map()
+    stage_before = field_get(data, "current_stage") or "registration"
+
+    if action == "terminate":
+        if is_terminated(data):
+            return jsonify({"error": "该候选人已处于流程终止状态"}), 400
+        # 快照仅需手动流转状态：其余状态由数据按规则重算即可精确还原
+        data[TERMINATED_SNAPSHOT_KEY] = {
+            "手动流程阶段": str(field_get(data, MANUAL_STAGE_KEY) or ""),
+            "终止时阶段": stage_before,
+        }
+        field_set(data, TERMINATED_FLAG_KEY, "是")
+        detail = f"流程终止（终止于「{labels.get(stage_before, stage_before)}」）"
+    else:
+        if not is_terminated(data):
+            return jsonify({"error": "该候选人未处于流程终止状态"}), 400
+        snapshot = data.pop(TERMINATED_SNAPSHOT_KEY, None) or {}
+        field_set(data, TERMINATED_FLAG_KEY, "")
+        manual = str(snapshot.get("手动流程阶段") or "").strip()
+        if manual:
+            field_set(data, MANUAL_STAGE_KEY, manual)
+        detail = "从流程终止恢复"
+
+    compute_current_stage(data)
+    update_candidate_row(db, cid, data)
+    record_manual(db, normalize_candidate_phone(field_get(data, "phone")), data)
+    stage_after = field_get(data, "current_stage") or "registration"
+    if action == "restore":
+        detail += f"，回到「{labels.get(stage_after, stage_after)}」"
+    name = field_get(data, "name")
+    add_log(g.user, "update", f"{g.user['display_name']} 将候选人「{name}」{detail}",
+            cid, name, module="registration")
+    db.commit()
+    log.info("流程终止操作 %s cid=%d action=%s stage=%s→%s",
+             who(g.user), cid, action, stage_before, stage_after)
+    return jsonify({"ok": True, "terminated": action == "terminate",
+                    "current_stage": stage_after})
 
 
 @bp.post("/api/candidates/<int:cid>/stage-transition")
@@ -305,6 +371,7 @@ def api_candidate_stage_transition(cid):
     from campus.domain.stage_routing import (
         MANUAL_STAGE_KEY,
         OFFER_STRATEGY_STAGES,
+        is_terminated,
         manager_interview_passed,
         ordered_stage_keys,
         stage_label_map,
@@ -325,6 +392,8 @@ def api_candidate_stage_transition(cid):
         return jsonify({"error": "direction 须为 next / prev / auto"}), 400
 
     data = json.loads(row["data"])
+    if is_terminated(data):
+        return jsonify({"error": "该候选人已流程终止，请先在候选人登记页恢复"}), 400
     flow = load_stage_flow()
     current = field_get(data, "current_stage") or "registration"
     if current not in flow["stages"]:

@@ -22,20 +22,12 @@ from campus.domain.employees import user_dept_display
 from campus.domain.stage_routing import compute_current_stage
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS groups (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE NOT NULL,
-    description TEXT DEFAULT '',
-    parent_id INTEGER REFERENCES groups(id),
-    created_at TEXT NOT NULL
-);
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     display_name TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'user',
-    group_id INTEGER,
     supervisor TEXT DEFAULT '',
     department TEXT DEFAULT '',
     dept_level2 TEXT DEFAULT '',
@@ -47,7 +39,6 @@ CREATE TABLE IF NOT EXISTS users (
 );
 CREATE TABLE IF NOT EXISTS candidates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    group_id INTEGER,
     phone TEXT,
     resume_id TEXT,
     current_stage TEXT DEFAULT 'registration',
@@ -106,7 +97,6 @@ CREATE TABLE IF NOT EXISTS interviewer_availability (
     avail_date TEXT NOT NULL,
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
-    group_id INTEGER,
     created_at TEXT NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_iv_avail_unique
@@ -253,7 +243,7 @@ def migrate(db):
         db.executescript("""
         CREATE TABLE candidates_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            group_id INTEGER REFERENCES groups(id),
+            group_id INTEGER,
             data TEXT NOT NULL,
             resume_file TEXT,
             resume_name TEXT,
@@ -264,18 +254,6 @@ def migrate(db):
         DROP TABLE candidates;
         ALTER TABLE candidates_new RENAME TO candidates;
         """)
-
-    group_cols = {r["name"] for r in db.execute("PRAGMA table_info(groups)").fetchall()}
-    if "description" not in group_cols:
-        try:
-            db.execute("ALTER TABLE groups ADD COLUMN description TEXT DEFAULT ''")
-        except sqlite3.OperationalError:
-            pass
-    if "parent_id" not in group_cols:
-        try:
-            db.execute("ALTER TABLE groups ADD COLUMN parent_id INTEGER")
-        except sqlite3.OperationalError:
-            pass
 
     # ---- 候选人电话唯一标识（补列 + 去重回填 + 唯一索引） --------------------
     cand_cols = {r["name"] for r in db.execute("PRAGMA table_info(candidates)").fetchall()}
@@ -312,6 +290,14 @@ def migrate(db):
         db.execute("ALTER TABLE feedback ADD COLUMN reply_at TEXT")
 
     # ---- 历史结构清理：用户分组/资源分组/模板/资源ACL 已取消 -----------------
+    # 先去掉各表遗留的 group_id 列（携带对 groups 的外键），再删除 groups 表
+    for table in ("users", "candidates", "interviewer_availability"):
+        cols = {r["name"] for r in db.execute(f"PRAGMA table_info({table})").fetchall()}
+        if "group_id" in cols:
+            try:
+                db.execute(f"ALTER TABLE {table} DROP COLUMN group_id")
+            except sqlite3.OperationalError:
+                pass
     db.executescript("""
         DROP TABLE IF EXISTS user_group_members;
         DROP TABLE IF EXISTS user_groups;
@@ -319,10 +305,8 @@ def migrate(db):
         DROP TABLE IF EXISTS permission_templates;
         DROP TABLE IF EXISTS acl;
         DROP TABLE IF EXISTS module_acl_meta;
+        DROP TABLE IF EXISTS groups;
     """)
-
-    # 候选人统一归为共享池（取消资源分组）
-    db.execute("UPDATE candidates SET group_id=NULL")
 
     # 历史角色收敛：非 roles.json 中定义的角色一律归为 user
     from campus.core.roles_store import role_keys
@@ -360,7 +344,20 @@ def migrate(db):
     _migrate_pinyin_keys(db)
     _sync_candidate_index_columns(db)
     _seed_stage_history(db)
+    _backfill_process_status(db)
     db.commit()
+
+
+def _backfill_process_status(db):
+    """为缺少「流程状态」的候选人按规则重算补齐（列表展示用）。"""
+    from campus.db.field_store import field_get
+    for row in db.execute("SELECT id, data FROM candidates").fetchall():
+        data = json.loads(row["data"])
+        if str(field_get(data, "process_status") or "").strip():
+            continue
+        stage = compute_current_stage(data)
+        db.execute("UPDATE candidates SET data=?, current_stage=? WHERE id=?",
+                   (json.dumps(data, ensure_ascii=False), stage, row["id"]))
 
 
 def _pinyin_reverse_map(db):
@@ -709,9 +706,9 @@ def seed_demo(db):
     )
     for username, display, sup, dept, l2, l3 in demo_users:
         db.execute(
-            "INSERT INTO users (username, display_name, password_hash, role, group_id, supervisor, department, dept_level2, dept_level3, extra, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (username, display, generate_password_hash("123456"), "user", None,
+            "INSERT INTO users (username, display_name, password_hash, role, supervisor, department, dept_level2, dept_level3, extra, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (username, display, generate_password_hash("123456"), "user",
              sup, dept, l2, l3, "{}", now_str()),
         )
     samples = [
@@ -744,8 +741,8 @@ def seed_demo(db):
     for data in samples:
         compute_current_stage(data)
         db.execute(
-            "INSERT INTO candidates (group_id, data, phone, created_at, updated_at) VALUES (?,?,?,?,?)",
-            (None, json.dumps(data, ensure_ascii=False), data.get("phone") or None, now_str(), now_str()),
+            "INSERT INTO candidates (data, phone, created_at, updated_at) VALUES (?,?,?,?)",
+            (json.dumps(data, ensure_ascii=False), data.get("phone") or None, now_str(), now_str()),
         )
     # 示例用户按 roles.json 的 user 角色模板补齐基线模块权限
     now = now_str()
@@ -773,9 +770,9 @@ def init_db(demo=False):
     migrate(db)
     if db.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"] == 0:
         db.execute(
-            "INSERT INTO users (username, display_name, password_hash, role, group_id, supervisor, department, extra, log_level, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?)",
-            ("admin", "系统管理员", generate_password_hash("admin123"), "admin", None,
+            "INSERT INTO users (username, display_name, password_hash, role, supervisor, department, extra, log_level, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            ("admin", "系统管理员", generate_password_hash("admin123"), "admin",
              "", "", "{}", 1, now_str()),
         )
         db.commit()

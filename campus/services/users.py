@@ -74,11 +74,11 @@ def persist_user_columns(db, uid, fields, role, password=None, is_create=False, 
         from campus.core.roles_store import role_bypass
         log_level = 1 if (role == "admin" or role_bypass(role)) else 10
         db.execute(
-            "INSERT INTO users (username, display_name, password_hash, role, group_id, "
+            "INSERT INTO users (username, display_name, password_hash, role, "
             "supervisor, department, dept_level2, dept_level3, job_roles, extra, log_level, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (username, b.get("display_name", ""), generate_password_hash(password),
-             role, None, b.get("supervisor", ""), b.get("department", ""),
+             role, b.get("supervisor", ""), b.get("department", ""),
              b.get("dept_level2", ""), b.get("dept_level3", ""), jr, extra, log_level, now_str()),
         )
     else:
@@ -269,18 +269,18 @@ def _employee_brief(row):
 
 
 def _employee_search_where(q):
-    """构建登记页用户联想 SQL 条件（工号/姓名/部门/主管）。"""
+    """构建登记页用户联想 SQL 条件。
+
+    只按工号、姓名匹配：部门/主管等字段参与匹配会造成误命中
+    （如输入「拥璐」联想出主管为拥璐的其他员工）。
+    """
     like = f"%{q}%"
     prefix = f"{q}%"
     parts = [
         "username LIKE ?",
         "display_name LIKE ?",
-        "department LIKE ?",
-        "dept_level2 LIKE ?",
-        "dept_level3 LIKE ?",
-        "supervisor LIKE ?",
     ]
-    params = [like] * 6
+    params = [like] * 2
     if q.isdigit():
         parts.append("username LIKE ?")
         params.append(f"%{q}")

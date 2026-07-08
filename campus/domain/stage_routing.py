@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""候选人流程阶段判定：条件字段均来自 Application*.xlsx / 候选人管理*.xlsx 映射列。
+"""候选人流程阶段判定：条件字段均来自 applicationProcessList*.xlsx / 候选人面试安排管理列表*.xlsx 映射列。
 
 规则文件 config/master_import/<page>/stage_rules.json，两种规则格式并存：
 
@@ -39,6 +39,14 @@ _ROUTING_FIELD_CACHE = None
 _ALIAS_CACHE = None
 
 MANUAL_STAGE_KEY = "manual_stage"
+
+#: 流程终止标记字段（值「是」时冻结在当前阶段）与终止前快照（内部键）
+TERMINATED_FLAG_KEY = "process_terminated"
+TERMINATED_SNAPSHOT_KEY = "_终止前状态"
+
+
+def is_terminated(data):
+    return str(field_get(data, TERMINATED_FLAG_KEY) or "").strip() == "是"
 
 # Offer 策略各子阶段：须主管面通过后方可进入（自动判定与手动流转均校验）
 OFFER_STRATEGY_STAGES = frozenset({"approval", "salary", "offer", "contract_signing"})
@@ -141,10 +149,18 @@ def compute_current_stage(data, cfg=None, tables=None):
     else:
         data = payload
 
+    # 流程终止：冻结在终止时所处阶段，不再按规则/手动状态推进
+    if is_terminated(data):
+        stage = str(field_get(data, field_key) or "registration").strip() or "registration"
+        field_set(data, field_key, stage)
+        field_set(data, "process_status", "流程终止")
+        return stage
+
     known_stages = {s["key"] for s in load_stages_meta()}
     manual = str(field_get(data, MANUAL_STAGE_KEY) or field_get(data, "_手动流程阶段") or "").strip()
     if manual in known_stages:
         field_set(data, field_key, manual)
+        field_set(data, "process_status", "手动流转")
         return manual
 
     ctx_tables = {
@@ -161,12 +177,17 @@ def compute_current_stage(data, cfg=None, tables=None):
         key=lambda r: r.get("priority", 0),
         reverse=True,
     )
+    labels = stage_label_map()
     for rule in rules:
         if _rule_matches(data, rule, resolver):
             stage = apply_offer_strategy_gate(rule["stage"], data)
             field_set(data, field_key, stage)
+            # 流程状态：命中的规则标签（由原始数据表信息匹配生成），各流程列表展示用
+            field_set(data, "process_status",
+                      rule.get("label") or labels.get(stage, stage))
             return stage
     field_set(data, field_key, "registration")
+    field_set(data, "process_status", "待完善")
     return "registration"
 
 

@@ -58,7 +58,7 @@ def _sync_pipeline(db, cid, stage, manual="", ts=None):
 
 
 def delivery_date_from_resume_id(resume_id):
-    """从简历编号解析投递日期（YYYY-MM-DD）。支持 RS20260115… 内嵌 YYYYMMDD，或 RS2026001 形式 YYYY+年内序号。"""
+    """从简历编号解析投递日期（YYYY-MM-DD）。支持 SR20250811… 内嵌 YYYYMMDD，或历史 RS2026001 形式 YYYY+年内序号。"""
     raw = str(resume_id or "").strip().upper()
     if not raw:
         return None
@@ -83,10 +83,6 @@ def delivery_date_from_resume_id(resume_id):
             except ValueError:
                 pass
     return None
-
-
-def group_name_map():
-    return {r["id"]: r["name"] for r in get_db().execute("SELECT id, name FROM groups").fetchall()}
 
 
 def find_candidate_by_phone(db, phone, exclude_id=None):
@@ -130,15 +126,18 @@ class PhoneDuplicateError(Exception):
 
 
 def insert_candidate_row(db, data, group_id=None, ts=None):
-    """写入候选人并同步 phone/resume_id/current_stage 与 pipeline 表。"""
+    """写入候选人并同步 phone/resume_id/current_stage 与 pipeline 表。
+
+    group_id 为历史遗留参数（资源分组已取消），仅为兼容旧调用保留、不再落库。
+    """
     ts = ts or now_str()
     data, phone, rid, stage = _prepare_candidate_data(data)
     manual = str(field_get(data, "manual_stage") or field_get(data, "_手动流程阶段") or "").strip()
     try:
         cur = db.execute(
-            "INSERT INTO candidates (group_id, data, phone, resume_id, current_stage, "
-            "created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
-            (group_id, json.dumps(data, ensure_ascii=False), phone or None, rid or None,
+            "INSERT INTO candidates (data, phone, resume_id, current_stage, "
+            "created_at, updated_at) VALUES (?,?,?,?,?,?)",
+            (json.dumps(data, ensure_ascii=False), phone or None, rid or None,
              stage, ts, ts),
         )
         cid = cur.lastrowid
@@ -241,17 +240,11 @@ def merge_candidate_rows(db, edited_row, edited_data, target_row):
     return keep_row["id"], merged
 
 
-def candidate_dict(row, group_names=None):
+def candidate_dict(row):
     data = normalize_record(json.loads(row["data"]))
-    gname = (group_names or {}).get(row["group_id"])
-    if gname is None and row["group_id"]:
-        r = get_db().execute("SELECT name FROM groups WHERE id=?", (row["group_id"],)).fetchone()
-        gname = r["name"] if r else ""
     keys = row.keys() if hasattr(row, "keys") else []
     return {
         "id": row["id"],
-        "group_id": row["group_id"],
-        "group_name": gname or "",
         "updated_at": row["updated_at"],
         "resume_name": row["resume_name"],
         "phone": row["phone"] if "phone" in keys else field_get(data, "phone"),

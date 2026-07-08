@@ -48,7 +48,7 @@ def api_resume_upload(cid):
     name = field_get(json.loads(row["data"]), "name")
     verb = "更新" if row["resume_file"] else "上传"
     add_log(g.user, "update", f"{g.user['display_name']} {verb}了「{name}」的简历（{f.filename}）",
-            cid, name, row["group_id"], module="registration")
+            cid, name, module="registration")
     db.commit()
     log.info("简历%s %s cid=%d name=%s file=%s", verb, who(g.user), cid, name, f.filename)
     return jsonify({"ok": True, "resume_name": f.filename})
@@ -110,7 +110,7 @@ def api_resume_delete(cid):
                (now_str(), cid))
     name = field_get(json.loads(row["data"]), "name")
     add_log(g.user, "delete", f"{g.user['display_name']} 删除了「{name}」的简历（{row['resume_name']}）",
-            cid, name, row["group_id"], module="registration")
+            cid, name, module="registration")
     db.commit()
     log.info("删除简历 %s cid=%d name=%s", who(g.user), cid, name)
     return jsonify({"ok": True})

@@ -489,7 +489,7 @@ def run_dual_master_refresh(db, cfg, can_edit_fn, user, compute_stage_fn=None):
 
     page = cfg.get("page", "registration")
     if not both_files_ready(page, cfg):
-        raise ValueError("请先上传主数据表（applicationProcessList*.xlsx / 候选人面试安排管理列表*.xlsx 等任一）")
+        raise ValueError("请先上传主数据表（applicationProcessList*.xlsx / 候选人面试安排管理列表*.xlsx 任一）")
 
     files = get_stored_files(page, cfg)
     source_map = {s["key"]: s for s in cfg["sources"]}

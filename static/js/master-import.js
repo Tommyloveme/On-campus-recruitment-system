@@ -1,4 +1,4 @@
-/* 主数据表导入：application*.xlsx / applicationProcessList*.xlsx + 候选人管理*.xlsx
+/* 主数据表导入：applicationProcessList*.xlsx + 候选人面试安排管理列表*.xlsx
  * 单一入口：选择文件（自动识别数据源）→「导入并刷新」一步完成；
  * 也可不选新文件，直接基于已上传的表重新刷新合并。 */
 "use strict";

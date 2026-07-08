@@ -126,9 +126,9 @@ def create_availability(db, user_id, itype, entries):
         end_time = fmt_hm(parse_hm(entry["start_time"]) + entry["slot_minutes"])
         try:
             db.execute(
-                "INSERT INTO interviewer_availability (user_id, interview_type, avail_date, start_time, end_time, group_id, created_at) "
-                "VALUES (?,?,?,?,?,?,?)",
-                (user_id, itype, entry["date"], entry["start_time"], end_time, None, now_str()),
+                "INSERT INTO interviewer_availability (user_id, interview_type, avail_date, start_time, end_time, created_at) "
+                "VALUES (?,?,?,?,?,?)",
+                (user_id, itype, entry["date"], entry["start_time"], end_time, now_str()),
             )
             created += 1
         except sqlite3.IntegrityError:
@@ -273,7 +273,7 @@ def book_interview(db, user, itype, cand, interviewer_id, start_at, slot_minutes
         add_log(user, "update",
                 f"{user['display_name']} 为「{cname}」（{field_get(data, 'phone')}）预约了 {start_at} 的"
                 f"{get_stage_meta(itype)['label']}（面试官 {iv['display_name'] if iv else ''}）",
-                cand["id"], cname, cand["group_id"], module=itype)
+                cand["id"], cname, module=itype)
         db.commit()
     except sqlite3.IntegrityError:
         db.rollback()
@@ -295,4 +295,4 @@ def cancel_booking(db, user, booking, cand):
     update_candidate_row(db, cand["id"], data)
     add_log(user, "update",
             f"{user['display_name']} 取消了「{cname}」的 {booking['start_at']} 面试预约（{get_stage_meta(itype)['label']}）",
-            cand["id"], cname, cand["group_id"], module=itype)
+            cand["id"], cname, module=itype)

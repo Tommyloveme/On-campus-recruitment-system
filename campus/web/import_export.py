@@ -213,7 +213,7 @@ def api_master_import_config():
 @bp.post("/api/master-import/upload")
 @login_required
 def api_master_import_upload():
-    """上传 Application*.xlsx 或 候选人管理*.xlsx（可一次上传一个或两个）。"""
+    """上传 applicationProcessList*.xlsx / 候选人面试安排管理列表*.xlsx（可一次上传一个或多个）。"""
     page = request.form.get("page", "registration")
     try:
         cfg = load_master_import_config(page)
@@ -257,8 +257,8 @@ def api_master_import_upload():
                 errors.append(str(e))
         else:
             errors.append(
-                f"无法识别文件「{f.filename}」，请使用 applicationProcessList*.xlsx、"
-                f"候选人面试安排管理列表*.xlsx 或 候选人管理*.xlsx"
+                f"无法识别文件「{f.filename}」，请使用 applicationProcessList*.xlsx "
+                f"或 候选人面试安排管理列表*.xlsx"
             )
 
     if not uploaded and errors:
@@ -302,7 +302,7 @@ def api_master_import_refresh():
         return jsonify({"error": str(e)}), 400
 
     if not both_files_ready(page, cfg):
-        return jsonify({"error": "请先上传主数据表（application*.xlsx / applicationProcessList*.xlsx / 候选人管理*.xlsx 任一）"}), 400
+        return jsonify({"error": "请先上传主数据表（applicationProcessList*.xlsx / 候选人面试安排管理列表*.xlsx 任一）"}), 400
 
     db = get_db()
     try:

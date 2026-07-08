@@ -307,11 +307,13 @@ def build_field_registry(save: bool = False) -> dict:
         path_index[".".join(path)] = storage
 
     # 系统派生字段（非 Excel 列，由服务端补全的展示字段）
-    for k, label in (("sourcer_name", "拓源人姓名"),
-                     ("interface_person_name", "接口人姓名")):
+    for k, label, cat in (("sourcer_name", "拓源人姓名", "登记拓源"),
+                          ("interface_person_name", "接口人姓名", "登记拓源"),
+                          ("process_status", "流程状态", "流程状态"),
+                          ("process_terminated", "流程终止", "流程状态")):
         if k not in fields and label not in used_storage:
             used_storage.add(label)
-            path = ["候选人", "登记拓源", label]
+            path = ["候选人", cat, label]
             fields[k] = {
                 "legacy_key": k, "storage_key": label, "label": label,
                 "path": path, "stages": ["registration"],

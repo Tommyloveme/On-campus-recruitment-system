@@ -68,6 +68,18 @@ function stageUiColumns(stageKey) {
   return stageTableCfg(stageKey).ui_columns || [];
 }
 
+/** 列表展示字段：在「候选人」列前注入“流程状态”列（由规则匹配生成，存于 data.流程状态）。 */
+function stageListFields(stageKey) {
+  const fields = visibleFields(stageKey).slice();
+  if (!fields.some(f => f.key === "流程状态" || f.legacy_key === "process_status")) {
+    const idx = fields.findIndex(f => f.legacy_key === "name" || f.key === "候选人");
+    fields.splice(idx >= 0 ? idx : 0, 0, {
+      key: "流程状态", legacy_key: "process_status", label: "流程状态", type: "text",
+    });
+  }
+  return fields;
+}
+
 function candHubKey(c) {
   // 与后端 hub_resume_key 保持一致：应聘档案编号 → 简历编号 → 无编号-<手机号>
   const aid = String(c.data["应聘档案编号"] || c.data.application_archive_id || "").trim();
@@ -81,7 +93,7 @@ function candHubKey(c) {
 async function renderStageList(stageKey) {
   const meta = state.stages.find(s => s.key === stageKey);
   const ss = getStageState(stageKey);
-  const fields = visibleFields(stageKey);
+  const fields = stageListFields(stageKey);
   const uiCols = stageUiColumns(stageKey);
   const showResume = stageKey === "registration";
   const canAdd = typeof moduleWritable === "function" && moduleWritable(stageKey) && meta.can_create
@@ -263,6 +275,10 @@ function toggleSort(stageKey, key) {
   renderCandidateRows(stageKey);
 }
 
+function candTerminated(c) {
+  return (c.data["流程终止"] || c.data.process_terminated || "") === "是";
+}
+
 function candidateCellValue(c, f) {
   if (f.key === "sourcer") {
     return c.data.sourcer_name || c.data.sourcer || "";
@@ -299,7 +315,7 @@ function renderCandidateRows(stageKey) {
   const tbody = $("#cand-tbody");
   if (!tbody) return;
   const ss = getStageState(stageKey);
-  const fields = visibleFields(stageKey);
+  const fields = stageListFields(stageKey);
   const uiCols = stageUiColumns(stageKey);
   const showResume = stageKey === "registration";
   const list = filteredCandidates(stageKey);
@@ -307,6 +323,8 @@ function renderCandidateRows(stageKey) {
   const uiEditable = uiCols.length && moduleWritable(stageKey);
   const canFlow = (state.stageFlow?.stages || []).includes(stageKey) &&
     state.stageFlow?.can_transition && featureAllowed(stageKey, "btn_stage_transition");
+  const canTerminate = stageKey === "registration" && canEdit() &&
+    featureAllowed(stageKey, "btn_terminate");
 
   const total = list.length;
   const pages = ss.pageSize > 0 ? Math.max(1, Math.ceil(total / ss.pageSize)) : 1;
@@ -336,6 +354,8 @@ function renderCandidateRows(stageKey) {
           } else if (f.key === "phone" && stageKey === "registration" && ss.duplicatePhones &&
             ss.duplicatePhones.has(normalizeCandidatePhone(c.data.phone))) {
             inner = `<span class="cell-phone-dup">${esc(candidateCellValue(c, f) || "")}</span>`;
+          } else if (f.key === "流程状态" && candTerminated(c)) {
+            inner = `<span class="badge badge-red" title="已流程终止，可在候选人登记页恢复">流程终止</span>`;
           } else {
             inner = cellHtml(f, candidateCellValue(c, f));
           }
@@ -355,7 +375,10 @@ function renderCandidateRows(stageKey) {
               (canDelete() && stageKey === "registration"
                 ? `<button class="btn btn-sm btn-danger" data-del="${c.id}">删除</button>` : "")
             : `<span style="color:#94a3b8;font-size:12px">只读</span>`}
-          ${canFlow ? `
+          ${canTerminate ? (candTerminated(c)
+            ? `<button class="btn btn-sm" data-term-restore="${c.id}" title="恢复到终止前的状态（按规则/手动状态重新判定）">恢复</button>`
+            : `<button class="btn btn-sm btn-danger" data-terminate="${c.id}" title="终止该候选人的招聘流程（可随时恢复）">终止</button>`) : ""}
+          ${canFlow && !candTerminated(c) ? `
             <span class="flow-btns" title="手动流转（写入手动状态，优先于自动判定）">
               <button class="btn btn-sm" data-flowprev="${c.id}" title="退回上一流程">←退回</button>
               <button class="btn btn-sm" data-flownext="${c.id}" title="切换到下一流程">推进→</button>
@@ -424,6 +447,24 @@ function renderCandidateRows(stageKey) {
       b.addEventListener("click", () => doFlow(+b.dataset.flowauto, "auto")));
   }
 
+  const doTerminate = async (id, action) => {
+    try {
+      const r = await api(`/api/candidates/${id}/terminate`, { method: "POST", json: { action } });
+      toast(action === "terminate" ? "已终止流程（可随时恢复）"
+        : `已恢复到终止前状态（${(state.stages.find(s => s.key === r.current_stage) || {}).label || r.current_stage}）`);
+      await loadCandidateTable(stageKey);
+    } catch (e) { toast(e.message, true); }
+  };
+  tbody.querySelectorAll("[data-terminate]").forEach(b =>
+    b.addEventListener("click", () => {
+      const c = pageList.find(x => x.id === +b.dataset.terminate);
+      if (confirm(`确定终止候选人「${c?.data?.name || ""}」的招聘流程？\n终止后冻结在当前阶段、不再流转，可随时点「恢复」回到终止前状态。`)) {
+        doTerminate(+b.dataset.terminate, "terminate");
+      }
+    }));
+  tbody.querySelectorAll("[data-term-restore]").forEach(b =>
+    b.addEventListener("click", () => doTerminate(+b.dataset.termRestore, "restore")));
+
   renderPager(stageKey, total, pages);
   updateSelectionUI(stageKey, list);
   applyCandColWidths(getStageState(stageKey));
@@ -478,7 +519,7 @@ function autoFitCandColumns(stageKey) {
     applyCandColWidths(ss);
     return;
   }
-  const fields = visibleFields(stageKey);
+  const fields = stageListFields(stageKey);
   const showResume = stageKey === "registration";
   const list = ss.list || [];
   const widths = {};
@@ -495,7 +536,8 @@ function autoFitCandColumns(stageKey) {
   stageUiColumns(stageKey).forEach(() => { widths[colIdx++] = 150; });
   if (showResume) widths[colIdx++] = 148;
   const hasFlow = (state.stageFlow?.stages || []).includes(stageKey) && state.stageFlow?.can_transition;
-  widths[colIdx] = hasFlow ? 236 : 108;
+  const hasTerm = stageKey === "registration" && canEdit() && featureAllowed(stageKey, "btn_terminate");
+  widths[colIdx] = 108 + (hasFlow ? 128 : 0) + (hasTerm ? 52 : 0);
   ss.colWidths = widths;
   applyCandColWidths(ss);
 }
@@ -650,8 +692,8 @@ function registrationEmployeeFieldHtml(f, cand, locked) {
   const nameVal = cand
     ? (cand.data[empKey === "sourcer" ? "sourcer_name" : "interface_person_name"] || "")
     : "";
-  const displayVal = nameVal || empVal;
-  const ve = esc(displayVal);
+  // 输入框始终存工号（保存校验按工号），姓名在下方 meta 行展示
+  const ve = esc(empVal);
   const inputHtml = locked
     ? `<input type="text" data-field="${empKey}" class="master-locked-field" value="${ve}" disabled title="该字段已由主数据表导入，不可修改">`
     : `<input type="text" class="emp-suggest-input" data-field="${empKey}" value="${ve}" placeholder="输入工号或姓名" autocomplete="off">`;

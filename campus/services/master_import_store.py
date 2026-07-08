@@ -63,8 +63,6 @@ def detect_source_key_by_headers(header_row, cfg):
         return "interview_mgmt"
     if {"简历编号", "姓名", "联系电话"} <= headers or {"简历编号", "应聘档案编号"} <= headers:
         return "application"
-    if {"简历编号", "测评结果"} <= headers or {"简历编号", "当前进展"} <= headers:
-        return "candidate_mgmt"
     return None
 
 

@@ -21,6 +21,7 @@ _REGISTRATION_EXTRA = [
     {"key": "btn_master_import", "label": "主数据表导入按钮", "kind": "button"},
     {"key": "btn_batch_delete", "label": "批量删除按钮", "kind": "button"},
     {"key": "btn_export_resume", "label": "导出简历按钮", "kind": "button"},
+    {"key": "btn_terminate", "label": "流程终止/恢复按钮", "kind": "button"},
 ]
 
 _TRANSITION_EXTRA = [

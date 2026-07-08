@@ -5,7 +5,7 @@
 ## 功能特性
 
 - **全流程阶段管理**：流程阶段与各阶段字段全部由 `config/stages.json` 与 `config/stages/<stage>/fields.json` 配置驱动，加字段/加阶段无需改代码或数据库。
-- **主数据表导入**：上传 Application 表与候选人管理表双 Excel，按简历编号关联后全局刷新，`current_stage` 按 `stage_rules.json` 规则自动判定。
+- **主数据表导入**：上传 applicationProcessList 主表与候选人面试安排管理列表双 Excel，按应聘档案编号关联、按 应聘档案编号→简历编号→手机号 唯一化合并，`current_stage` 按 `stage_rules.json` 规则自动判定。
 - **Excel 批量导入/导出**：各阶段支持模板下载、按电话去重导入、勾选导出。
 - **面试管理**：面试官自助设置可约时段，接口人按日历预约技术面/主管面，岗位方向自动匹配。
 - **简历管理**：上传（.pdf/.docx）、在线预览（PDF 内嵌、DOCX 转网页）、下载、批量打包 zip。

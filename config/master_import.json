@@ -1,5 +1,0 @@
-{
-  "comment": "【已迁移】主数据表导入配置已拆分至 config/master_import/<页面>/ 目录，本文件不再读取",
-  "deprecated": true,
-  "redirect": "config/master_import/registration/"
-}

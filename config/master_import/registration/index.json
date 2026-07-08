@@ -5,7 +5,7 @@
   "current_stage_field": "current_stage",
   "global_import": true,
   "join_key": "application_archive_id",
-  "source_keys": ["application", "interview_mgmt", "candidate_mgmt"],
+  "source_keys": ["application", "interview_mgmt"],
   "match_keys": ["application_archive_id", "resume_id", "phone"],
   "field_mappings_file": "field_mappings.json"
 }

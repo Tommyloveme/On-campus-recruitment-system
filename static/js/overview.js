@@ -10,9 +10,8 @@ const OV_OPS = [
 
 const ovState = {
   grp: null,
-  filters: [],        // {key, op, val}
+  filters: [],        // {key, op, val}（与数据看板一致的多条件叠加，AND 关系）
   stageFilter: "",    // 流程快捷筛选（漏斗行点击 / 下拉）
-  slaFilter: "",      // ok / warn / overdue
   sortKey: "stay_days",
   sortDir: "desc",
 };
@@ -62,7 +61,6 @@ function ovSlaBadge(c) {
 function ovFilteredCandidates() {
   let list = ovState.grp.candidates || [];
   if (ovState.stageFilter) list = list.filter(c => c.current_stage === ovState.stageFilter);
-  if (ovState.slaFilter) list = list.filter(c => c.sla_status === ovState.slaFilter);
   if (ovState.filters.length) list = list.filter(c => ovState.filters.every(f => ovMatch(c, f)));
   return list;
 }
@@ -73,7 +71,6 @@ async function renderOverview() {
   ovState.grp = groups[0] || { stats: {}, candidates: [], dashboard: {}, stage_dwell: [], sla_config: {} };
   ovState.filters = [];
   ovState.stageFilter = "";
-  ovState.slaFilter = "";
   ovRenderShell();
 }
 
@@ -85,7 +82,7 @@ function ovRenderShell() {
     <div class="card pagehead">
       <div class="pagehead-text">
         <div class="pagehead-title">全局总览</div>
-        <div class="pagehead-sub">跨流程的候选人分布、SLA 停留时长与通过率概览；顶部筛选后所有数据联动刷新</div>
+        <div class="pagehead-sub">跨流程的候选人分布、停留时长与通过率概览；顶部按登记字段组合筛选后所有数据联动刷新</div>
       </div>
       <div class="pagehead-side"><span class="badge badge-blue" data-ov-listcount></span></div>
     </div>
@@ -101,19 +98,14 @@ function ovRenderShell() {
       </div>
       <div class="page-section-body">
         <div class="pv-filters" style="margin:0;padding-top:0;border-top:none">
-          <span class="pv-cap">流程</span>
-          <select data-ov-stagesel style="width:auto;padding:4px 6px;font-size:12px">
-            <option value="">全部流程</option>
-            ${state.stages.map(s => `<option value="${esc(s.key)}">${esc(s.short_label || s.label)}</option>`).join("")}
-          </select>
-          <span class="pv-cap">SLA</span>
-          <select data-ov-slasel style="width:auto;padding:4px 6px;font-size:12px">
-            <option value="">全部</option>
-            <option value="ok">正常</option>
-            <option value="warn">预警</option>
-            <option value="overdue">超期</option>
-          </select>
-          <span class="pv-cap">条件</span>
+          <div class="pv-group">
+            <span class="pv-cap">流程</span>
+            <select data-ov-stagesel>
+              <option value="">全部流程</option>
+              ${state.stages.map(s => `<option value="${esc(s.key)}">${esc(s.short_label || s.label)}</option>`).join("")}
+            </select>
+          </div>
+          <span class="pv-cap">筛选</span>
           <div class="pv-filter-list" data-ov-filterlist></div>
           <button class="btn btn-sm" data-ov-addfilter>+ 条件</button>
         </div>
@@ -132,9 +124,8 @@ function ovRenderShell() {
 
     <div class="overview-dashboard-grid">
       <div class="card page-section">
-        <div class="page-section-head" title="停留时长 = 候选人进入当前流程至今的天数；SLA 目标见 config/sla.json">
-          <div class="page-section-title">各流程停留时长与 SLA
-            <span class="page-section-sub">点击「超期 / 预警」徽标可快捷筛选</span></div>
+        <div class="page-section-head" title="停留时长 = 候选人进入当前流程至今的天数">
+          <div class="page-section-title">各流程停留时长</div>
         </div>
         <div class="page-section-body" data-ov-sla></div>
       </div>
@@ -159,10 +150,6 @@ function ovRenderShell() {
     ovState.stageFilter = e.target.value;
     ovRefresh();
   });
-  document.querySelector("[data-ov-slasel]").addEventListener("change", e => {
-    ovState.slaFilter = e.target.value;
-    ovRefresh();
-  });
   document.querySelector("[data-ov-addfilter]").addEventListener("click", () => {
     const flds = ovFields();
     ovState.filters.push({ key: flds[0]?.key || "候选人", op: "contains", val: "" });
@@ -171,9 +158,7 @@ function ovRenderShell() {
   document.querySelector("[data-ov-clear]").addEventListener("click", () => {
     ovState.filters = [];
     ovState.stageFilter = "";
-    ovState.slaFilter = "";
     document.querySelector("[data-ov-stagesel]").value = "";
-    document.querySelector("[data-ov-slasel]").value = "";
     ovRenderFilters();
   });
   document.querySelector("[data-ov-export]").addEventListener("click", () => {
@@ -242,7 +227,6 @@ function ovRefresh() {
   if (afEl) {
     const parts = [];
     if (ovState.stageFilter) parts.push(`流程=${ovStageLabel(ovState.stageFilter)}`);
-    if (ovState.slaFilter) parts.push(`SLA=${{ warn: "预警", overdue: "超期", ok: "正常" }[ovState.slaFilter]}`);
     if (ovState.filters.length) parts.push(`${ovState.filters.length} 个条件`);
     afEl.textContent = parts.length ? `（${parts.join("，")}）` : "（未筛选，显示全部）";
   }
@@ -306,50 +290,31 @@ function ovDrawFunnel(list) {
 function ovDrawSla(list) {
   const el = document.querySelector("[data-ov-sla]");
   if (!el) return;
-  const slaCfg = ovState.grp.sla_config || {};
-  const defaultSla = slaCfg.default || { warn_days: 5, max_days: 10 };
   const agg = {};
   for (const c of list) {
     const k = c.current_stage || "registration";
-    const a = agg[k] || (agg[k] = { count: 0, total: 0, max: 0, warn: 0, overdue: 0 });
+    const a = agg[k] || (agg[k] = { count: 0, total: 0, max: 0 });
     a.count++;
     a.total += c.stay_days || 0;
     a.max = Math.max(a.max, c.stay_days || 0);
-    if (c.sla_status === "warn") a.warn++;
-    else if (c.sla_status === "overdue") a.overdue++;
   }
   const rows = state.stages.map(s => {
-    const a = agg[s.key] || { count: 0, total: 0, max: 0, warn: 0, overdue: 0 };
-    const sla = (slaCfg.stages || {})[s.key] || defaultSla;
+    const a = agg[s.key] || { count: 0, total: 0, max: 0 };
     return `
     <tr>
       <td>${esc(s.short_label || s.label)}</td>
       <td>${a.count}</td>
       <td>${a.count ? (a.total / a.count).toFixed(1) : 0}</td>
       <td>${a.max.toFixed ? a.max.toFixed(1) : a.max}</td>
-      <td class="muted">≤${sla.warn_days} / ≤${sla.max_days} 天</td>
-      <td>
-        ${a.overdue ? `<span class="badge badge-red" data-ov-sla="overdue" data-ov-slastage="${esc(s.key)}" style="cursor:pointer" title="点击筛选超期候选人">超期 ${a.overdue}</span>` : ""}
-        ${a.warn ? `<span class="badge badge-yellow" data-ov-sla="warn" data-ov-slastage="${esc(s.key)}" style="cursor:pointer" title="点击筛选预警候选人">预警 ${a.warn}</span>` : ""}
-        ${!a.overdue && !a.warn ? `<span class="badge badge-${a.count ? "green" : "gray"}">${a.count ? "正常" : "—"}</span>` : ""}
-      </td>
     </tr>`;
   }).join("");
   el.innerHTML = `
     <div class="table-wrap">
       <table class="overview-mini-table">
-        <thead><tr><th>流程</th><th>人数</th><th>平均停留(天)</th><th>最长停留(天)</th><th>SLA 目标</th><th>状态</th></tr></thead>
+        <thead><tr><th>流程</th><th>人数</th><th>平均停留(天)</th><th>最长停留(天)</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
-  el.querySelectorAll("[data-ov-sla]").forEach(b =>
-    b.addEventListener("click", () => {
-      ovState.slaFilter = b.dataset.ovSla;
-      ovState.stageFilter = b.dataset.ovSlastage || "";
-      document.querySelector("[data-ov-stagesel]").value = ovState.stageFilter;
-      document.querySelector("[data-ov-slasel]").value = ovState.slaFilter;
-      ovRefresh();
-    }));
 }
 
 function ovDrawPassRate(list) {

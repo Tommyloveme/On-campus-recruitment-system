@@ -16,14 +16,6 @@
       "label": "面试安排管理表",
       "description": "候选人面试安排管理列表（真实业务表，与主表按应聘档案编号关联）",
       "storage_name": "interview_mgmt.xlsx"
-    },
-    "candidate_mgmt": {
-      "file_pattern": "候选人管理*.xlsx",
-      "sheet_name": "Sheet",
-      "sheet_index": 0,
-      "label": "候选人管理表",
-      "description": "候选人补充状态表（历史格式，可选）",
-      "storage_name": "candidate_mgmt.xlsx"
     }
   },
   "fields": [
@@ -32,9 +24,15 @@
       "ui_label": "简历编号",
       "lock_on_import": true,
       "sources": {
-        "application": { "excel_column": "简历编号", "required": true, "match_patterns": [] },
-        "interview_mgmt": { "excel_column": "候选人编号", "match_patterns": [] },
-        "candidate_mgmt": { "excel_column": "简历编号", "required": true, "match_patterns": [] }
+        "application": {
+          "excel_column": "简历编号",
+          "required": true,
+          "match_patterns": []
+        },
+        "interview_mgmt": {
+          "excel_column": "候选人编号",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -42,8 +40,15 @@
       "ui_label": "应聘档案编号",
       "lock_on_import": true,
       "sources": {
-        "application": { "excel_column": "应聘档案编号", "match_patterns": [] },
-        "interview_mgmt": { "excel_column": "应聘档案编号", "required": true, "match_patterns": [] }
+        "application": {
+          "excel_column": "应聘档案编号",
+          "match_patterns": []
+        },
+        "interview_mgmt": {
+          "excel_column": "应聘档案编号",
+          "required": true,
+          "match_patterns": []
+        }
       }
     },
     {
@@ -51,8 +56,19 @@
       "ui_label": "候选人",
       "lock_on_import": true,
       "sources": {
-        "application": { "excel_column": "候选人", "required": true, "excel_aliases": ["姓名"], "match_patterns": [] },
-        "interview_mgmt": { "excel_column": "候选人姓名", "required": true, "match_patterns": [] }
+        "application": {
+          "excel_column": "候选人",
+          "required": true,
+          "excel_aliases": [
+            "姓名"
+          ],
+          "match_patterns": []
+        },
+        "interview_mgmt": {
+          "excel_column": "候选人姓名",
+          "required": true,
+          "match_patterns": []
+        }
       }
     },
     {
@@ -60,9 +76,17 @@
       "ui_label": "电话",
       "lock_on_import": true,
       "sources": {
-        "application": { "excel_column": "电话", "excel_aliases": ["联系电话"], "match_patterns": [] },
-        "interview_mgmt": { "excel_column": "候选人手机号", "match_patterns": [] },
-        "candidate_mgmt": { "excel_column": "电话", "excel_aliases": ["联系电话"], "match_patterns": [] }
+        "application": {
+          "excel_column": "电话",
+          "excel_aliases": [
+            "联系电话"
+          ],
+          "match_patterns": []
+        },
+        "interview_mgmt": {
+          "excel_column": "候选人手机号",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -70,7 +94,10 @@
       "ui_label": "性别",
       "lock_on_import": true,
       "sources": {
-        "application": { "excel_column": "性别", "match_patterns": [] }
+        "application": {
+          "excel_column": "性别",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -78,7 +105,10 @@
       "ui_label": "出生日期",
       "lock_on_import": true,
       "sources": {
-        "application": { "excel_column": "出生日期", "match_patterns": [] }
+        "application": {
+          "excel_column": "出生日期",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -86,7 +116,10 @@
       "ui_label": "毕业届次",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "毕业届次", "match_patterns": [] }
+        "application": {
+          "excel_column": "毕业届次",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -94,7 +127,10 @@
       "ui_label": "工作意向地",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "工作意向地", "match_patterns": [] }
+        "application": {
+          "excel_column": "工作意向地",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -102,7 +138,14 @@
       "ui_label": "拟录岗位",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "拟录岗位", "excel_aliases": ["对外发布岗位名称", "对外发布职位名称"], "match_patterns": [] }
+        "application": {
+          "excel_column": "拟录岗位",
+          "excel_aliases": [
+            "对外发布岗位名称",
+            "对外发布职位名称"
+          ],
+          "match_patterns": []
+        }
       }
     },
     {
@@ -110,7 +153,10 @@
       "ui_label": "拟录职级",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "拟录职级", "match_patterns": [] }
+        "application": {
+          "excel_column": "拟录职级",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -118,7 +164,10 @@
       "ui_label": "招聘类型",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "招聘类型", "match_patterns": [] }
+        "application": {
+          "excel_column": "招聘类型",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -126,8 +175,14 @@
       "ui_label": "电子邮箱",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "电子邮箱", "match_patterns": [] },
-        "interview_mgmt": { "excel_column": "候选人邮箱", "match_patterns": [] }
+        "application": {
+          "excel_column": "电子邮箱",
+          "match_patterns": []
+        },
+        "interview_mgmt": {
+          "excel_column": "候选人邮箱",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -135,8 +190,17 @@
       "ui_label": "学历",
       "lock_on_import": true,
       "sources": {
-        "application": { "excel_column": "学历", "excel_aliases": ["学历（1）"], "match_patterns": [] },
-        "interview_mgmt": { "excel_column": "最高学历", "match_patterns": [] }
+        "application": {
+          "excel_column": "学历",
+          "excel_aliases": [
+            "学历（1）"
+          ],
+          "match_patterns": []
+        },
+        "interview_mgmt": {
+          "excel_column": "最高学历",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -144,8 +208,17 @@
       "ui_label": "毕业院校",
       "lock_on_import": true,
       "sources": {
-        "application": { "excel_column": "毕业院校", "excel_aliases": ["毕业学校（1）"], "match_patterns": [] },
-        "interview_mgmt": { "excel_column": "最高学历毕业院校", "match_patterns": [] }
+        "application": {
+          "excel_column": "毕业院校",
+          "excel_aliases": [
+            "毕业学校（1）"
+          ],
+          "match_patterns": []
+        },
+        "interview_mgmt": {
+          "excel_column": "最高学历毕业院校",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -153,8 +226,17 @@
       "ui_label": "专业",
       "lock_on_import": true,
       "sources": {
-        "application": { "excel_column": "专业", "excel_aliases": ["专业（1）"], "match_patterns": [] },
-        "interview_mgmt": { "excel_column": "最高学历毕业院校专业", "match_patterns": [] }
+        "application": {
+          "excel_column": "专业",
+          "excel_aliases": [
+            "专业（1）"
+          ],
+          "match_patterns": []
+        },
+        "interview_mgmt": {
+          "excel_column": "最高学历毕业院校专业",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -162,7 +244,14 @@
       "ui_label": "三层部门",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "三层部门", "excel_aliases": ["入职三层", "拟录二层部门"], "match_patterns": [] }
+        "application": {
+          "excel_column": "三层部门",
+          "excel_aliases": [
+            "入职三层",
+            "拟录二层部门"
+          ],
+          "match_patterns": []
+        }
       }
     },
     {
@@ -170,7 +259,13 @@
       "ui_label": "",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "二层部门", "excel_aliases": ["拟录一层部门"], "match_patterns": [] }
+        "application": {
+          "excel_column": "二层部门",
+          "excel_aliases": [
+            "拟录一层部门"
+          ],
+          "match_patterns": []
+        }
       }
     },
     {
@@ -178,7 +273,10 @@
       "ui_label": "拓源人",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "拓源人", "match_patterns": [] }
+        "application": {
+          "excel_column": "拓源人",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -186,7 +284,10 @@
       "ui_label": "拓源人部门",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "拓源人部门", "match_patterns": [] }
+        "application": {
+          "excel_column": "拓源人部门",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -194,7 +295,10 @@
       "ui_label": "接口人",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "接口人", "match_patterns": [] }
+        "application": {
+          "excel_column": "接口人",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -202,7 +306,10 @@
       "ui_label": "接口人部门",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "接口人部门", "match_patterns": [] }
+        "application": {
+          "excel_column": "接口人部门",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -210,7 +317,14 @@
       "ui_label": "来源渠道",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "来源渠道", "excel_aliases": ["渠道名称", "渠道类型"], "match_patterns": [] }
+        "application": {
+          "excel_column": "来源渠道",
+          "excel_aliases": [
+            "渠道名称",
+            "渠道类型"
+          ],
+          "match_patterns": []
+        }
       }
     },
     {
@@ -218,7 +332,15 @@
       "ui_label": "拟录取工作地",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "拟录取工作地", "excel_aliases": ["工作地", "拟录工作地", "岗位地点"], "match_patterns": [] }
+        "application": {
+          "excel_column": "拟录取工作地",
+          "excel_aliases": [
+            "工作地",
+            "拟录工作地",
+            "岗位地点"
+          ],
+          "match_patterns": []
+        }
       }
     },
     {
@@ -226,8 +348,17 @@
       "ui_label": "当前环节",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "当前环节", "excel_aliases": ["当前缓解"], "match_patterns": [] },
-        "interview_mgmt": { "excel_column": "当前环节", "match_patterns": [] }
+        "application": {
+          "excel_column": "当前环节",
+          "excel_aliases": [
+            "当前缓解"
+          ],
+          "match_patterns": []
+        },
+        "interview_mgmt": {
+          "excel_column": "当前环节",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -235,8 +366,14 @@
       "ui_label": "当前环节状态",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "当前环节状态", "match_patterns": [] },
-        "interview_mgmt": { "excel_column": "当前环节状态", "match_patterns": [] }
+        "application": {
+          "excel_column": "当前环节状态",
+          "match_patterns": []
+        },
+        "interview_mgmt": {
+          "excel_column": "当前环节状态",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -244,7 +381,10 @@
       "ui_label": "面试进展",
       "lock_on_import": false,
       "sources": {
-        "interview_mgmt": { "excel_column": "面试进展", "match_patterns": [] }
+        "interview_mgmt": {
+          "excel_column": "面试进展",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -252,7 +392,10 @@
       "ui_label": "面试考核状态",
       "lock_on_import": false,
       "sources": {
-        "interview_mgmt": { "excel_column": "面试考核状态", "match_patterns": [] }
+        "interview_mgmt": {
+          "excel_column": "面试考核状态",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -260,7 +403,10 @@
       "ui_label": "面试结论",
       "lock_on_import": false,
       "sources": {
-        "interview_mgmt": { "excel_column": "面试结论", "match_patterns": [] }
+        "interview_mgmt": {
+          "excel_column": "面试结论",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -268,7 +414,10 @@
       "ui_label": "投递时间",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "投递时间", "match_patterns": [] }
+        "application": {
+          "excel_column": "投递时间",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -276,7 +425,10 @@
       "ui_label": "应聘状态",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "应聘状态", "match_patterns": [] }
+        "application": {
+          "excel_column": "应聘状态",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -284,7 +436,10 @@
       "ui_label": "登记状态",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "登记状态", "match_patterns": [] }
+        "application": {
+          "excel_column": "登记状态",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -292,7 +447,10 @@
       "ui_label": "简历筛选状态",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "简历筛选状态", "match_patterns": [] }
+        "application": {
+          "excel_column": "简历筛选状态",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -300,7 +458,10 @@
       "ui_label": "资审状态",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "资审状态", "match_patterns": [] }
+        "application": {
+          "excel_column": "资审状态",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -308,8 +469,14 @@
       "ui_label": "笔试状态",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "笔试状态", "match_patterns": [] },
-        "interview_mgmt": { "excel_column": "考试状态", "match_patterns": [] }
+        "application": {
+          "excel_column": "笔试状态",
+          "match_patterns": []
+        },
+        "interview_mgmt": {
+          "excel_column": "考试状态",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -317,8 +484,14 @@
       "ui_label": "性格测评状态",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "性格测评状态", "match_patterns": [] },
-        "interview_mgmt": { "excel_column": "综测状态", "match_patterns": [] }
+        "application": {
+          "excel_column": "性格测评状态",
+          "match_patterns": []
+        },
+        "interview_mgmt": {
+          "excel_column": "综测状态",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -326,7 +499,10 @@
       "ui_label": "资格面试状态",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "资格面试状态", "match_patterns": [] }
+        "application": {
+          "excel_column": "资格面试状态",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -334,7 +510,10 @@
       "ui_label": "技术面状态",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "技术面状态", "match_patterns": [] }
+        "application": {
+          "excel_column": "技术面状态",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -342,7 +521,10 @@
       "ui_label": "主管面状态",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "主管面状态", "match_patterns": [] }
+        "application": {
+          "excel_column": "主管面状态",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -350,7 +532,10 @@
       "ui_label": "报批状态",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "报批状态", "match_patterns": [] }
+        "application": {
+          "excel_column": "报批状态",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -358,7 +543,10 @@
       "ui_label": "谈薪状态",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "谈薪状态", "match_patterns": [] }
+        "application": {
+          "excel_column": "谈薪状态",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -366,7 +554,10 @@
       "ui_label": "Offer状态",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "Offer状态", "match_patterns": [] }
+        "application": {
+          "excel_column": "Offer状态",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -374,7 +565,10 @@
       "ui_label": "签约情况状态",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "签约情况状态", "match_patterns": [] }
+        "application": {
+          "excel_column": "签约情况状态",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -382,7 +576,10 @@
       "ui_label": "签约状态",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "签约状态", "match_patterns": [] }
+        "application": {
+          "excel_column": "签约状态",
+          "match_patterns": []
+        }
       }
     },
     {
@@ -390,32 +587,36 @@
       "ui_label": "是否入职",
       "lock_on_import": false,
       "sources": {
-        "application": { "excel_column": "是否入职", "match_patterns": [] }
+        "application": {
+          "excel_column": "是否入职",
+          "match_patterns": []
+        }
       }
     },
     {
       "field_key": "personality_test_result",
       "ui_label": "测评结果",
       "lock_on_import": false,
-      "sources": {
-        "candidate_mgmt": { "excel_column": "测评结果", "match_patterns": [] }
-      }
+      "sources": {}
     },
     {
       "field_key": "qualification_interview_result",
       "ui_label": "资格面试结果",
       "lock_on_import": false,
-      "sources": {
-        "candidate_mgmt": { "excel_column": "资格面试结果", "match_patterns": [] }
-      }
+      "sources": {}
     },
     {
       "field_key": "tech_interview_result",
       "ui_label": "技术面结果",
       "lock_on_import": false,
       "sources": {
-        "interview_mgmt": { "excel_column": "专业面试-面试结论", "excel_aliases": ["专业面试1-面试结论"], "match_patterns": [] },
-        "candidate_mgmt": { "excel_column": "技术面结果", "match_patterns": [] }
+        "interview_mgmt": {
+          "excel_column": "专业面试-面试结论",
+          "excel_aliases": [
+            "专业面试1-面试结论"
+          ],
+          "match_patterns": []
+        }
       }
     },
     {
@@ -423,41 +624,35 @@
       "ui_label": "主管面结果",
       "lock_on_import": false,
       "sources": {
-        "interview_mgmt": { "excel_column": "业务主管面试-面试结论", "match_patterns": [] },
-        "candidate_mgmt": { "excel_column": "主管面结果", "match_patterns": [] }
+        "interview_mgmt": {
+          "excel_column": "业务主管面试-面试结论",
+          "match_patterns": []
+        }
       }
     },
     {
       "field_key": "offer_send_time",
       "ui_label": "Offer发放时间",
       "lock_on_import": false,
-      "sources": {
-        "candidate_mgmt": { "excel_column": "Offer发放时间", "match_patterns": [] }
-      }
+      "sources": {}
     },
     {
       "field_key": "expected_onboard_time",
       "ui_label": "预计入职时间",
       "lock_on_import": false,
-      "sources": {
-        "candidate_mgmt": { "excel_column": "预计入职时间", "match_patterns": [] }
-      }
+      "sources": {}
     },
     {
       "field_key": "onboard_risk",
       "ui_label": "入职风险",
       "lock_on_import": false,
-      "sources": {
-        "candidate_mgmt": { "excel_column": "入职风险", "match_patterns": [] }
-      }
+      "sources": {}
     },
     {
       "field_key": "progress",
       "ui_label": "当前进展",
       "lock_on_import": false,
-      "sources": {
-        "candidate_mgmt": { "excel_column": "当前进展", "match_patterns": [] }
-      }
+      "sources": {}
     }
   ]
 }

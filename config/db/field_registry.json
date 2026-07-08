@@ -1262,6 +1262,32 @@
       "stages": [
         "registration"
       ]
+    },
+    "process_status": {
+      "legacy_key": "process_status",
+      "storage_key": "流程状态",
+      "label": "流程状态",
+      "path": [
+        "候选人",
+        "流程状态",
+        "流程状态"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "process_terminated": {
+      "legacy_key": "process_terminated",
+      "storage_key": "流程终止",
+      "label": "流程终止",
+      "path": [
+        "候选人",
+        "流程状态",
+        "流程终止"
+      ],
+      "stages": [
+        "registration"
+      ]
     }
   },
   "paths": {
@@ -1361,7 +1387,9 @@
     "候选人.面试测评.面试结论": "面试结论",
     "候选人.流程状态.应聘状态": "应聘状态",
     "候选人.登记拓源.拓源人姓名": "拓源人姓名",
-    "候选人.登记拓源.接口人姓名": "接口人姓名"
+    "候选人.登记拓源.接口人姓名": "接口人姓名",
+    "候选人.流程状态.流程状态": "流程状态",
+    "候选人.流程状态.流程终止": "流程终止"
   },
   "legacy_index": {
     "简历编号": "resume_id",
@@ -1460,7 +1488,9 @@
     "面试结论": "interview_conclusion",
     "应聘状态": "application_status",
     "拓源人姓名": "sourcer_name",
-    "接口人姓名": "interface_person_name"
+    "接口人姓名": "interface_person_name",
+    "流程状态": "process_status",
+    "流程终止": "process_terminated"
   },
   "extras_bucket": "扩展字段",
   "internal_keys": {

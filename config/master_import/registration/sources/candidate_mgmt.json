@@ -1,5 +1,0 @@
-{
-  "comment": "候选人管理数据源元数据；列映射、文件名与工作表见 field_mappings.json",
-  "key": "candidate_mgmt",
-  "label": "候选人管理表"
-}
