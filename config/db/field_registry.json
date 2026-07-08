@@ -327,6 +327,58 @@
         "qualification"
       ]
     },
+    "commercial_secret_status": {
+      "legacy_key": "commercial_secret_status",
+      "storage_key": "商业秘密签署状态",
+      "label": "商业秘密签署状态",
+      "path": [
+        "候选人",
+        "流程状态",
+        "商业秘密签署状态"
+      ],
+      "stages": [
+        "commercial_secret"
+      ]
+    },
+    "commercial_secret_time": {
+      "legacy_key": "commercial_secret_time",
+      "storage_key": "签署时间",
+      "label": "签署时间",
+      "path": [
+        "候选人",
+        "扩展",
+        "签署时间"
+      ],
+      "stages": [
+        "commercial_secret"
+      ]
+    },
+    "commercial_secret_handler": {
+      "legacy_key": "commercial_secret_handler",
+      "storage_key": "经办人",
+      "label": "经办人",
+      "path": [
+        "候选人",
+        "扩展",
+        "经办人"
+      ],
+      "stages": [
+        "commercial_secret"
+      ]
+    },
+    "commercial_secret_remark": {
+      "legacy_key": "commercial_secret_remark",
+      "storage_key": "签署备注",
+      "label": "签署备注",
+      "path": [
+        "候选人",
+        "扩展",
+        "签署备注"
+      ],
+      "stages": [
+        "commercial_secret"
+      ]
+    },
     "written_test_book_time": {
       "legacy_key": "written_test_book_time",
       "storage_key": "笔试预约时间",
@@ -1316,6 +1368,10 @@
     "候选人.扩展.审查人": "审查人",
     "候选人.扩展.审查时间": "审查时间",
     "候选人.扩展.资审备注": "资审备注",
+    "候选人.流程状态.商业秘密签署状态": "商业秘密签署状态",
+    "候选人.扩展.签署时间": "签署时间",
+    "候选人.扩展.经办人": "经办人",
+    "候选人.扩展.签署备注": "签署备注",
     "候选人.面试测评.笔试预约时间": "笔试预约时间",
     "候选人.面试测评.笔试时间": "笔试时间",
     "候选人.面试测评.笔试地点": "笔试地点",
@@ -1417,6 +1473,10 @@
     "审查人": "qualification_reviewer",
     "审查时间": "qualification_time",
     "资审备注": "qualification_remark",
+    "商业秘密签署状态": "commercial_secret_status",
+    "签署时间": "commercial_secret_time",
+    "经办人": "commercial_secret_handler",
+    "签署备注": "commercial_secret_remark",
     "笔试预约时间": "written_test_book_time",
     "笔试时间": "written_test_time",
     "笔试地点": "written_test_location",

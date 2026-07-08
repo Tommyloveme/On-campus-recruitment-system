@@ -465,6 +465,18 @@
       }
     },
     {
+      "field_key": "commercial_secret_status",
+      "ui_label": "商业秘密签署状态",
+      "lock_on_import": false,
+      "sources": {
+        "application": {
+          "excel_column": "商业秘密签署状态",
+          "excel_aliases": ["保密协议状态", "商业秘密状态"],
+          "match_patterns": []
+        }
+      }
+    },
+    {
       "field_key": "written_test_status",
       "ui_label": "笔试状态",
       "lock_on_import": false,

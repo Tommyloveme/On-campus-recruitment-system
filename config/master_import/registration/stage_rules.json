@@ -36,6 +36,11 @@
       {"field": "current_step", "op": "icontains", "value": "笔试"},
       {"field": "current_step", "op": "icontains", "value": "考试"}
     ]}},
+    { "priority": 85, "stage": "commercial_secret", "label": "环节-商业秘密签署", "when": {"any": [
+      {"field": "current_step", "op": "icontains", "value": "商业秘密"},
+      {"field": "current_step", "op": "icontains", "value": "保密"},
+      {"field": "current_step", "op": "icontains", "value": "签署"}
+    ]}},
     { "priority": 84, "stage": "qualification", "label": "环节-资审", "when": {"field": "current_step", "op": "icontains", "value": "资审"}},
     { "priority": 82, "stage": "resume_screening", "label": "环节-简历筛选", "when": {"field": "current_step", "op": "icontains", "value": "简历筛选"}},
     { "priority": 80, "stage": "tech_interview", "label": "环节-面试评价", "when": {"field": "current_step", "op": "icontains", "value": "面试"}},
@@ -69,8 +74,11 @@
     { "priority": 47, "stage": "personality_test", "label": "性格测评待资格面", "fields": ["personality_test_status", "qualification_interview_status"], "values": ["已完成", "待预约"] },
     { "priority": 40, "stage": "written_test", "label": "笔试进行中", "fields": ["written_test_status", "personality_test_status"], "values": ["已预约", "待测评"] },
     { "priority": 35, "stage": "written_test", "label": "笔试已完成", "fields": ["written_test_status", "personality_test_status"], "values": ["已完成", "待测评"] },
-    { "priority": 30, "stage": "qualification", "label": "资审阶段", "fields": ["qualification_status", "written_test_status"], "values": ["待审查", "待预约"] },
-    { "priority": 25, "stage": "qualification", "label": "资审通过待笔试", "fields": ["qualification_status", "written_test_status"], "values": ["通过", "待预约"] },
+    { "priority": 34, "stage": "commercial_secret", "label": "资审通过待商业秘密签署", "fields": ["qualification_status", "commercial_secret_status"], "values": ["通过", "待签署"] },
+    { "priority": 33, "stage": "commercial_secret", "label": "资审通过待商业秘密签署", "fields": ["qualification_status", "written_test_status"], "values": ["通过", "待预约"] },
+    { "priority": 32, "stage": "commercial_secret", "label": "商业秘密已签署待笔试", "fields": ["commercial_secret_status", "written_test_status"], "values": ["已签署", "待预约"] },
+    { "priority": 30, "stage": "qualification", "label": "资审阶段", "fields": ["qualification_status", "commercial_secret_status"], "values": ["待审查", "待签署"] },
+    { "priority": 25, "stage": "qualification", "label": "资审通过待商业秘密签署", "fields": ["qualification_status", "commercial_secret_status"], "values": ["通过", "待签署"] },
     {
       "priority": 22,
       "stage": "resume_screening",

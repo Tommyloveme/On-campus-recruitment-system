@@ -338,6 +338,47 @@ def apply_registration_employee_fields(db, data):
     return data
 
 
+def sync_registration_employee_snapshots(db, username):
+    """用户资料变更后，同步候选人登记里已落库的拓源人/接口人姓名与部门快照。
+
+    登记列表展示不实时查 users 表，因此账号信息变更时需要主动回写候选人 data。
+    """
+    username = (username or "").strip()
+    if not username:
+        return 0
+    user = lookup_employee_by_username(db, username)
+    if not user:
+        return 0
+
+    from campus.db.field_store import field_get, field_set
+    from campus.services.candidates import update_candidate_row
+
+    display_name = user["display_name"] or ""
+    dept = user_dept_display(user)
+    updated = 0
+    for row in db.execute("SELECT * FROM candidates").fetchall():
+        data = json.loads(row["data"])
+        changed = False
+        if str(field_get(data, "sourcer") or "").strip() == username:
+            if field_get(data, "sourcer_name") != display_name:
+                field_set(data, "sourcer_name", display_name)
+                changed = True
+            if field_get(data, "sourcer_dept") != dept:
+                field_set(data, "sourcer_dept", dept)
+                changed = True
+        if str(field_get(data, "interface_person") or "").strip() == username:
+            if field_get(data, "interface_person_name") != display_name:
+                field_set(data, "interface_person_name", display_name)
+                changed = True
+            if field_get(data, "interface_dept") != dept:
+                field_set(data, "interface_dept", dept)
+                changed = True
+        if changed:
+            update_candidate_row(db, row["id"], data)
+            updated += 1
+    return updated
+
+
 def apply_registration_candidate_defaults(data, user):
     """登记阶段新增：隐藏主数据/手填项，部门由工号在保存时解析。"""
     from campus.db.field_store import resolve_path

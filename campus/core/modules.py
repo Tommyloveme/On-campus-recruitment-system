@@ -16,6 +16,7 @@ MODULE_REGISTRY = [
     {"key": "recruit_flow", "label": "校招流程", "type": "section", "parent_key": None, "items": [
         {"key": "resume_screening", "label": "简历筛选", "type": "item", "parent_key": "recruit_flow"},
         {"key": "qualification", "label": "资格审查", "type": "item", "parent_key": "recruit_flow"},
+        {"key": "commercial_secret", "label": "商业秘密签署", "type": "item", "parent_key": "recruit_flow"},
         {"key": "written_test", "label": "笔试", "type": "item", "parent_key": "recruit_flow"},
         {"key": "personality_test", "label": "性格测评", "type": "item", "parent_key": "recruit_flow"},
         {"key": "qualification_interview", "label": "资格面试", "type": "item", "parent_key": "recruit_flow"},
@@ -27,8 +28,8 @@ MODULE_REGISTRY = [
         {"key": "salary", "label": "谈薪", "type": "item", "parent_key": "offer_strategy"},
         {"key": "offer", "label": "Offer管理", "type": "item", "parent_key": "offer_strategy"},
         {"key": "contract_signing", "label": "签约情况", "type": "item", "parent_key": "offer_strategy"},
+        {"key": "onboarding", "label": "入职管理", "type": "item", "parent_key": "offer_strategy"},
     ]},
-    {"key": "onboarding", "label": "入职管理", "type": "item", "parent_key": None},
     {"key": "data_board", "label": "数据看板", "type": "section", "parent_key": None, "items": [
         {"key": "overview", "label": "全局总览", "type": "item", "parent_key": "data_board"},
         {"key": "charts", "label": "数据图表", "type": "item", "parent_key": "data_board"},

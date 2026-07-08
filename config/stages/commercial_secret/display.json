@@ -1,0 +1,25 @@
+{
+  "comment": "阶段「commercial_secret」界面配置：未在 visible/editable 中列出的字段默认不可见、不可编辑",
+  "column_order": [
+    "name",
+    "phone",
+    "commercial_secret_status",
+    "commercial_secret_time",
+    "commercial_secret_handler"
+  ],
+  "frozen_column_count": 2,
+  "visible": {
+    "name": true,
+    "phone": true,
+    "resume_id": false,
+    "commercial_secret_status": true,
+    "commercial_secret_time": true,
+    "commercial_secret_handler": true
+  },
+  "editable": {
+    "commercial_secret_status": true,
+    "commercial_secret_time": true,
+    "commercial_secret_handler": true,
+    "commercial_secret_remark": true
+  }
+}

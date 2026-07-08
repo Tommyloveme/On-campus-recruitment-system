@@ -111,7 +111,7 @@ def _log_module_acl_change(user, b, perms, action):
     else:
         flags = [k.replace("perm_", "") for k in PERM_FIELDS if perms[k]]
         msg = f"{user['display_name']} 设置 {s_label} 对模块「{b.get('module_key')}」的权限：{('、'.join(flags)) or '无'}"
-    add_log(user, "permission", msg, module="permissions")
+    add_log(user, "permission", msg, module="permissions", level=1)
 
 
 def _features_from_body(b, module_key):
@@ -140,7 +140,7 @@ def api_module_acl_upsert():
         closed = [k for k, v in features.items() if not v]
         add_log(g.user, "permission",
                 f"{g.user['display_name']} 配置 用户#{b['subject_id']} 模块「{b['module_key']}」细粒度权限："
-                f"关闭 {('、'.join(closed)) or '无'}", module="permissions")
+                f"关闭 {('、'.join(closed)) or '无'}", module="permissions", level=1)
     db.commit()
     return jsonify({"ok": True})
 
@@ -222,7 +222,7 @@ def api_module_acl_batch():
         affected += 1
     add_log(g.user, "permission",
             f"{g.user['display_name']} 批量{('撤销' if mode == 'revoke' else '设置')}了 {affected} 条模块权限"
-            f"（影响 {len(subjects)} 个用户、{len(modules)} 个模块）", module="permissions")
+            f"（影响 {len(subjects)} 个用户、{len(modules)} 个模块）", module="permissions", level=1)
     db.commit()
     return jsonify({"ok": True, "affected": affected, "preview": preview})
 

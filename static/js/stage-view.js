@@ -188,17 +188,18 @@ async function renderStageList(stageKey) {
 
 async function loadCandidateTable(stageKey) {
   const ss = getStageState(stageKey);
-  // 各流程列表固定按当前流程加载（不再提供「仅登记阶段 / 仅当前流程」开关）
-  ss.list = await api(`/api/candidates?stage=${stageKey}`);
+  // 候选人登记作为总入口展示所有流程候选人；其他流程固定按当前流程加载
+  ss.list = stageKey === "registration"
+    ? await api("/api/candidates")
+    : await api(`/api/candidates?stage=${stageKey}`);
   if (stageUiColumns(stageKey).length) {
     try {
       ss.uiValues = (await api(`/api/data-hub/ui-values?tab=${stageKey}`)).values || {};
     } catch { ss.uiValues = {}; }
   }
   if (stageKey === "registration") {
-    const all = await api("/api/candidates");
-    ss.allCandidates = all;
-    ss.duplicatePhones = computeDuplicatePhones(all);
+    ss.allCandidates = ss.list;
+    ss.duplicatePhones = computeDuplicatePhones(ss.list);
   } else {
     ss.allCandidates = null;
     ss.duplicatePhones = null;

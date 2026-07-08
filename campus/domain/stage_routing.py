@@ -49,7 +49,34 @@ def is_terminated(data):
     return str(field_get(data, TERMINATED_FLAG_KEY) or "").strip() == "是"
 
 # Offer 策略各子阶段：须主管面通过后方可进入（自动判定与手动流转均校验）
-OFFER_STRATEGY_STAGES = frozenset({"approval", "salary", "offer", "contract_signing"})
+OFFER_STRATEGY_STAGES = frozenset({"approval", "salary", "offer", "contract_signing", "onboarding"})
+
+
+# 当前流程状态先使用稳定的序号 + 阶段名，实际阶段仍由规则条件组合判定。
+STAGE_STATUS_LABELS = {
+    "registration": "01 待投递",
+    "resume_screening": "02 简历筛选",
+    "qualification": "03 资格审查",
+    "commercial_secret": "04 商业秘密签署",
+    "written_test": "05 笔试",
+    "personality_test": "06 性格测评",
+    "qualification_interview": "07 资格面试",
+    "tech_interview": "08 技术面",
+    "manager_interview": "09 主管面",
+    "approval": "10 报批",
+    "salary": "11 谈薪",
+    "offer": "12 Offer",
+    "contract_signing": "13 签约",
+    "onboarding": "14 入职",
+}
+
+
+def stage_status_label(stage, data=None):
+    if stage == "registration":
+        reg = str(field_get(data or {}, "registration_status") or "").strip()
+        if reg and reg != "待投递":
+            return f"01 {reg}"
+    return STAGE_STATUS_LABELS.get(stage, stage_label_map().get(stage, stage))
 
 
 def manager_interview_passed(data):
@@ -160,7 +187,7 @@ def compute_current_stage(data, cfg=None, tables=None):
     manual = str(field_get(data, MANUAL_STAGE_KEY) or field_get(data, "_手动流程阶段") or "").strip()
     if manual in known_stages:
         field_set(data, field_key, manual)
-        field_set(data, "process_status", "手动流转")
+        field_set(data, "process_status", stage_status_label(manual, data))
         return manual
 
     ctx_tables = {
@@ -177,17 +204,15 @@ def compute_current_stage(data, cfg=None, tables=None):
         key=lambda r: r.get("priority", 0),
         reverse=True,
     )
-    labels = stage_label_map()
     for rule in rules:
         if _rule_matches(data, rule, resolver):
             stage = apply_offer_strategy_gate(rule["stage"], data)
             field_set(data, field_key, stage)
-            # 流程状态：命中的规则标签（由原始数据表信息匹配生成），各流程列表展示用
-            field_set(data, "process_status",
-                      rule.get("label") or labels.get(stage, stage))
+            # 流程状态：简单显示“序号 + 当前流程”，实际 stage 仍由规则条件组合判定。
+            field_set(data, "process_status", stage_status_label(stage, data))
             return stage
     field_set(data, field_key, "registration")
-    field_set(data, "process_status", "待完善")
+    field_set(data, "process_status", stage_status_label("registration", data))
     return "registration"
 
 

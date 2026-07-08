@@ -5,7 +5,7 @@
 - 带 module=<模块key>：该模块日志，具备该模块读权限即可（各页面日志标签页）。
 - 结果按查看者日志权限（users.log_level，1 最高 10 最低）过滤：
   只返回 level >= 查看者权限值的日志；管理员恒为 1（全部可见）。
-- DELETE /api/logs：管理员清理指定模块全量日志，或某时间点之后的日志。
+- DELETE /api/logs：管理员清理全量日志 / 指定模块日志，或某时间点之后的日志。
 """
 from flask import Blueprint, g, jsonify, request
 
@@ -72,15 +72,16 @@ def api_log_modules():
 @bp.delete("/api/logs")
 @admin_required
 def api_logs_delete():
-    """删除指定模块的全量日志，或该模块在某时间点之后的日志。
+    """删除全量日志 / 指定模块日志，或某时间点之后的日志。
 
-    Body: { module: 模块key, after?: "YYYY-MM-DD HH:MM:SS" 或 "YYYY-MM-DDTHH:MM" }
-    - 不传 after：删除该模块全部日志
+    Body: { module?: 模块key, after?: "YYYY-MM-DD HH:MM:SS" 或 "YYYY-MM-DDTHH:MM" }
+    - 不传 module：删除全部日志
+    - 不传 after：删除目标全部日志
     - 传 after：删除 created_at >= after 的日志
     """
     body = request.get_json(force=True) or {}
     module = (body.get("module") or "").strip()
-    if not module or module not in module_keys():
+    if module and module not in module_keys():
         return jsonify({"error": "请选择有效的模块"}), 400
     after = (body.get("after") or "").strip() or None
     if after:
@@ -88,12 +89,12 @@ def api_logs_delete():
         if len(after) == 16:
             after += ":00"
     db = get_db()
-    deleted = delete_logs(db, module=module, after=after)
-    label = (module_entry(module) or {}).get("label") or module
+    deleted = delete_logs(db, module=module or None, after=after)
+    label = (module_entry(module) or {}).get("label") if module else "全部日志"
     scope = f"「{label}」全部" if not after else f"「{label}」自 {after} 起"
     add_log(g.user, "delete",
             f"{g.user['display_name']} 清理了{scope}日志（{deleted} 条）",
-            module="op_logs")
+            module="op_logs", level=1)
     db.commit()
     return jsonify({"ok": True, "deleted": deleted, "module": module, "after": after})
 
@@ -134,6 +135,6 @@ def api_log_level_update(uid):
     db.execute("UPDATE users SET log_level=? WHERE id=?", (level, uid))
     add_log(g.user, "permission",
             f"{g.user['display_name']} 将「{user['display_name']}」的日志权限调整为 {level}",
-            module="op_logs")
+            module="op_logs", level=1)
     db.commit()
     return jsonify({"ok": True, "id": uid, "log_level": level})

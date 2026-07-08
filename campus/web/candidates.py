@@ -413,7 +413,7 @@ def api_candidate_stage_transition(cid):
         target = order[target_idx]
         if target in OFFER_STRATEGY_STAGES and not manager_interview_passed(data):
             return jsonify({
-                "error": "主管面未通过，不可进入 Offer 策略流程（报批/谈薪/Offer/签约）",
+                "error": "主管面未通过，不可进入 Offer 策略流程（报批/谈薪/Offer/签约/入职）",
                 "code": "manager_interview_required",
             }), 400
         field_set(data, MANUAL_STAGE_KEY, target)

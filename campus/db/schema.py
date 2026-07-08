@@ -191,10 +191,11 @@ def migrate(db):
         db.execute("ALTER TABLE logs ADD COLUMN module_key TEXT DEFAULT ''")
     if "level" not in log_cols:
         db.execute("ALTER TABLE logs ADD COLUMN level INTEGER NOT NULL DEFAULT 10")
-        # 存量日志按动作类型回填默认等级（与 audit.DEFAULT_ACTION_LEVELS 保持一致）
-        from campus.core.log_levels import DEFAULT_ACTION_LEVELS
-        for action, lv in DEFAULT_ACTION_LEVELS.items():
-            db.execute("UPDATE logs SET level=? WHERE action=?", (lv, action))
+    # 存量日志按动作类型回填默认等级（与 audit.DEFAULT_ACTION_LEVELS 保持一致）。
+    # 早期代码可能已把敏感操作按默认 L10 写入，这里幂等修正。
+    from campus.core.log_levels import DEFAULT_ACTION_LEVELS
+    for action, lv in DEFAULT_ACTION_LEVELS.items():
+        db.execute("UPDATE logs SET level=? WHERE action=? AND (level IS NULL OR level=10)", (lv, action))
     db.execute("CREATE INDEX IF NOT EXISTS idx_logs_module ON logs(module_key, id)")
 
     # ---- 模块细粒度特性权限列（JSON，{feature_key: 0|1}，缺省=允许） ----

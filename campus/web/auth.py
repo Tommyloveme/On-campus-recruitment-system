@@ -17,6 +17,7 @@ from campus.services.users import (
     parse_extra,
     parse_user_profile_body,
     persist_user_columns,
+    sync_registration_employee_snapshots,
     user_dict,
 )
 from campus.web.guards import login_required
@@ -84,7 +85,8 @@ def api_profile_update():
         return jsonify({"error": err}), 400
 
     persist_user_columns(db, user["id"], fields, user["role"], password=body.get("password"))
-    add_log(user, "user", f"{fields['builtin'].get('display_name')} 更新了个人账户信息")
+    sync_registration_employee_snapshots(db, user["username"])
+    add_log(user, "user", f"{fields['builtin'].get('display_name')} 更新了个人账户信息", level=1)
     db.commit()
     updated = db.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
     log.info("个人资料更新 %s", who(updated))

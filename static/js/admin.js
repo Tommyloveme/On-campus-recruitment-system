@@ -67,9 +67,16 @@ async function renderLogPurgePanel(rootEl) {
         </div>
       </div>
       <div class="log-purge-form">
+        <div class="log-purge-field log-purge-field-wide">
+          <label>清理目标</label>
+          <div class="log-purge-modes">
+            <label><input type="radio" name="log-purge-target" value="all" checked> 全部日志</label>
+            <label><input type="radio" name="log-purge-target" value="module"> 指定模块</label>
+          </div>
+        </div>
         <div class="log-purge-field">
           <label>目标模块</label>
-          <select id="log-purge-module"><option value="">请选择模块</option>${opts}</select>
+          <select id="log-purge-module" disabled><option value="">全部日志</option>${opts}</select>
         </div>
         <div class="log-purge-field">
           <label>清理范围</label>
@@ -92,25 +99,35 @@ async function renderLogPurgePanel(rootEl) {
     const mode = rootEl.querySelector('input[name="log-purge-mode"]:checked')?.value;
     $("#log-purge-after-wrap").style.display = mode === "after" ? "" : "none";
   };
+  const syncTarget = () => {
+    const target = rootEl.querySelector('input[name="log-purge-target"]:checked')?.value;
+    const moduleSel = $("#log-purge-module");
+    moduleSel.disabled = target !== "module";
+    if (target !== "module") moduleSel.value = "";
+  };
+  rootEl.querySelectorAll('input[name="log-purge-target"]').forEach(r =>
+    r.addEventListener("change", syncTarget));
   rootEl.querySelectorAll('input[name="log-purge-mode"]').forEach(r =>
     r.addEventListener("change", syncMode));
 
   $("#log-purge-run").addEventListener("click", async () => {
-    const module = $("#log-purge-module").value;
-    if (!module) { toast("请选择模块", true); return; }
+    const target = rootEl.querySelector('input[name="log-purge-target"]:checked')?.value;
+    const module = target === "module" ? $("#log-purge-module").value : "";
+    if (target === "module" && !module) { toast("请选择模块", true); return; }
     const mode = rootEl.querySelector('input[name="log-purge-mode"]:checked')?.value;
     let after = null;
     if (mode === "after") {
       after = ($("#log-purge-after").value || "").trim();
       if (!after) { toast("请选择起始时间", true); return; }
     }
-    const modLabel = $("#log-purge-module").selectedOptions[0]?.textContent || module;
+    const modLabel = module ? ($("#log-purge-module").selectedOptions[0]?.textContent || module) : "全部日志";
     const tip = after
       ? `确定删除模块「${modLabel}」自 ${after.replace("T", " ")} 起的全部日志？`
       : `确定删除模块「${modLabel}」的全部日志？`;
     if (!confirm(tip + "\n此操作不可恢复。")) return;
     try {
-      const body = { module };
+      const body = {};
+      if (module) body.module = module;
       if (after) body.after = after;
       const r = await api("/api/logs", { method: "DELETE", json: body });
       toast(`已清理 ${r.deleted} 条日志`);

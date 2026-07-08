@@ -1,0 +1,44 @@
+{
+  "comment": "候选人商业秘密签署阶段字段配置",
+  "fields": [
+    {
+      "key": "commercial_secret_status",
+      "label": "商业秘密签署状态",
+      "excel_column": "商业秘密签署状态",
+      "type": "select",
+      "options": ["待签署", "已签署", "无需签署", "异常"],
+      "colors": { "待签署": "yellow", "已签署": "green", "无需签署": "gray", "异常": "red" },
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "commercial_secret_time",
+      "label": "签署时间",
+      "excel_column": "商业秘密签署时间",
+      "type": "date",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "commercial_secret_handler",
+      "label": "经办人",
+      "excel_column": "商业秘密经办人",
+      "type": "text",
+      "visible": true,
+      "editable": true,
+      "importable": true
+    },
+    {
+      "key": "commercial_secret_remark",
+      "label": "签署备注",
+      "excel_column": "商业秘密签署备注",
+      "type": "text",
+      "multiline": true,
+      "visible": false,
+      "editable": true,
+      "importable": true
+    }
+  ]
+}

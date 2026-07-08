@@ -29,15 +29,23 @@
       "key": "written_test",
       "label": "笔试预约",
       "short_label": "笔试",
-      "order": 4,
+      "order": 5,
       "can_create": false,
       "description": "笔试时间与地点预约安排"
+    },
+    {
+      "key": "commercial_secret",
+      "label": "商业秘密签署",
+      "short_label": "商业秘密签署",
+      "order": 4,
+      "can_create": false,
+      "description": "商业秘密协议签署状态跟踪"
     },
     {
       "key": "personality_test",
       "label": "性格测评",
       "short_label": "性格测评",
-      "order": 5,
+      "order": 6,
       "can_create": false,
       "description": "性格测评安排与结果记录"
     },
@@ -45,7 +53,7 @@
       "key": "qualification_interview",
       "label": "资格面试",
       "short_label": "资格面",
-      "order": 6,
+      "order": 7,
       "can_create": false,
       "description": "资格面试预约与结果记录"
     },
@@ -53,7 +61,7 @@
       "key": "tech_interview",
       "label": "技术面试预约",
       "short_label": "技术面",
-      "order": 7,
+      "order": 8,
       "can_create": false,
       "has_interview_calendar": true,
       "description": "技术面试预约与结果记录（支持面试官日程）"
@@ -62,7 +70,7 @@
       "key": "manager_interview",
       "label": "主管面试预约",
       "short_label": "主管面",
-      "order": 8,
+      "order": 9,
       "can_create": false,
       "has_interview_calendar": true,
       "description": "主管面试预约与结果记录（支持面试官日程）"
@@ -71,7 +79,7 @@
       "key": "approval",
       "label": "报批",
       "short_label": "报批",
-      "order": 9,
+      "order": 10,
       "can_create": false,
       "description": "录用报批流程跟踪"
     },
@@ -79,7 +87,7 @@
       "key": "salary",
       "label": "谈薪",
       "short_label": "谈薪",
-      "order": 10,
+      "order": 11,
       "can_create": false,
       "description": "薪资谈判与意向确认"
     },
@@ -87,7 +95,7 @@
       "key": "offer",
       "label": "Offer发放",
       "short_label": "Offer",
-      "order": 11,
+      "order": 12,
       "can_create": false,
       "description": "Offer 发放与接受状态跟踪"
     },
@@ -95,7 +103,7 @@
       "key": "contract_signing",
       "label": "签约情况",
       "short_label": "签约",
-      "order": 12,
+      "order": 13,
       "can_create": false,
       "description": "三方签约与签约状态跟踪"
     },
@@ -103,7 +111,7 @@
       "key": "onboarding",
       "label": "入职管理",
       "short_label": "入职",
-      "order": 13,
+      "order": 14,
       "can_create": false,
       "description": "体检、入职预约到正式入职"
     }

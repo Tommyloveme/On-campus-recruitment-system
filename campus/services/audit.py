@@ -40,20 +40,26 @@ def query_logs(db, page, size, module=None, viewer_level=1):
     return total, [dict(r) for r in rows]
 
 
-def delete_logs(db, module, after=None):
-    """删除指定模块日志。after 为空则删该模块全部；否则删 created_at >= after 的记录。
+def delete_logs(db, module=None, after=None):
+    """删除日志。module 为空则删全量；after 为空则删目标全部；
+    否则删 created_at >= after 的记录。
     返回删除条数。"""
     module = (module or "").strip()
-    if not module:
-        raise ValueError("必须指定模块")
     after = (after or "").strip() or None
+    conds, args = [], []
+    if module:
+        conds.append("module_key=?")
+        args.append(module)
     if after:
+        conds.append("created_at>=?")
+        args.append(after)
+    if conds:
         cur = db.execute(
-            "DELETE FROM logs WHERE module_key=? AND created_at>=?",
-            (module, after),
+            "DELETE FROM logs WHERE " + " AND ".join(conds),
+            args,
         )
     else:
-        cur = db.execute("DELETE FROM logs WHERE module_key=?", (module,))
+        cur = db.execute("DELETE FROM logs")
     return cur.rowcount or 0
 
 

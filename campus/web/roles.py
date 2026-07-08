@@ -37,7 +37,7 @@ def api_role_create():
                         interview_positions=b.get("interview_positions"))
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    add_log(g.user, "permission", f"{g.user['display_name']} 新增了角色「{label}」（{key}）", module="permissions")
+    add_log(g.user, "permission", f"{g.user['display_name']} 新增了角色「{label}」（{key}）", module="permissions", level=1)
     return jsonify({"ok": True, "role": r})
 
 
@@ -55,7 +55,7 @@ def api_role_update(key):
         )
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    add_log(g.user, "permission", f"{g.user['display_name']} 编辑了角色「{r['label']}」（{key}）", module="permissions")
+    add_log(g.user, "permission", f"{g.user['display_name']} 编辑了角色「{r['label']}」（{key}）", module="permissions", level=1)
     return jsonify({"ok": True, "role": r})
 
 
@@ -68,5 +68,5 @@ def api_role_delete(key):
         delete_role(key)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    add_log(g.user, "permission", f"{g.user['display_name']} 删除了角色（{key}）", module="permissions")
+    add_log(g.user, "permission", f"{g.user['display_name']} 删除了角色（{key}）", module="permissions", level=1)
     return jsonify({"ok": True})
