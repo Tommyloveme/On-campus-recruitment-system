@@ -328,7 +328,8 @@ s, r = call("POST", "/api/master-import/upload", raw=body_m.getvalue(),
              ctype=f"multipart/form-data; boundary={boundary_m}")
 check("主数据表双文件上传成功", s == 200 and r.get("both_ready"))
 s, cfg_mi = call("GET", "/api/master-import/config?page=registration")
-check("主数据表配置含双数据源", len(cfg_mi.get("sources", [])) == 2 and cfg_mi.get("join_key") == "resume_id")
+check("主数据表配置含三数据源", len(cfg_mi.get("sources", [])) == 3
+      and cfg_mi.get("join_key") == "application_archive_id")
 check("主数据匹配键为档案编号→简历编号→手机号",
       cfg_mi.get("match_keys") == ["application_archive_id", "resume_id", "phone"])
 boundary_r = uuid.uuid4().hex
@@ -467,7 +468,8 @@ s, content, headers = call_raw("POST", "/api/candidates/export",
                                ctype="application/json")
 check("选中数据导出Excel", s == 200 and content[:2] == b"PK" and headers.get("X-Export-Count") == "6")
 exp_headers = [c.value for c in load_workbook(io.BytesIO(content)).active[1]]
-check("导出Excel首列为简历编号", exp_headers[0] == "简历编号")
+check("导出Excel前两列为应聘档案编号+简历编号",
+      exp_headers[0] == "应聘档案编号" and exp_headers[1] == "简历编号")
 
 s, _ = call("DELETE", f"/api/candidates/{cid}/resume")
 check("删除简历", s == 200)

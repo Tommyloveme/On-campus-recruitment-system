@@ -257,8 +257,8 @@ def api_master_import_upload():
                 errors.append(str(e))
         else:
             errors.append(
-                f"无法识别文件「{f.filename}」，请使用 application*.xlsx、"
-                f"applicationProcessList*.xlsx 或 候选人管理*.xlsx"
+                f"无法识别文件「{f.filename}」，请使用 applicationProcessList*.xlsx、"
+                f"候选人面试安排管理列表*.xlsx 或 候选人管理*.xlsx"
             )
 
     if not uploaded and errors:

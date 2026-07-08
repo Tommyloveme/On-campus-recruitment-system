@@ -1,11 +1,11 @@
 {
-  "comment": "候选人登记页主数据导入。字段与 Excel 映射见 field_mappings.json；候选人唯一化按 match_keys 优先级匹配（应聘档案编号 → 简历编号 → 手机号）。",
+  "comment": "候选人登记页主数据导入。真实业务表 applicationProcessList*.xlsx 与 候选人面试安排管理列表*.xlsx 按应聘档案编号关联；字段与 Excel 映射见 field_mappings.json（隔离层，外部表头变化只需改映射）；候选人唯一化按 match_keys 优先级匹配（应聘档案编号 → 简历编号 → 手机号），与手动登记数据合并为 candidates 预处理表，后续所有操作基于该表。",
   "page": "registration",
   "import_mode": "dual_file",
   "current_stage_field": "current_stage",
   "global_import": true,
-  "join_key": "resume_id",
-  "source_keys": ["application", "candidate_mgmt"],
+  "join_key": "application_archive_id",
+  "source_keys": ["application", "interview_mgmt", "candidate_mgmt"],
   "match_keys": ["application_archive_id", "resume_id", "phone"],
   "field_mappings_file": "field_mappings.json"
 }

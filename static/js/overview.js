@@ -18,12 +18,11 @@ const ovState = {
 };
 
 function ovFields() {
+  // 组合筛选字段以「候选人登记」页字段为准
   const seen = new Set();
   const out = [];
-  for (const s of state.stages) {
-    for (const f of fieldsForStage(s.key)) {
-      if (!seen.has(f.key)) { seen.add(f.key); out.push(f); }
-    }
+  for (const f of fieldsForStage("registration")) {
+    if (!seen.has(f.key)) { seen.add(f.key); out.push(f); }
   }
   return out;
 }

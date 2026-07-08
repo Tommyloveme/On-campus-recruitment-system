@@ -71,7 +71,8 @@ body {
   background: #fff; text-align: left; font-size: 13px; cursor: pointer;
 }
 .emp-suggest-item:last-child { border-bottom: none; }
-.emp-suggest-item:hover { background: #eff6ff; }
+.emp-suggest-item:hover, .emp-suggest-item.active { background: #eff6ff; }
+.emp-suggest-item.active { box-shadow: inset 2px 0 0 var(--primary); }
 .emp-suggest-id { color: #475569; font-size: 12px; }
 .emp-suggest-name { color: #0f172a; font-weight: 500; }
 .emp-suggest-dept { color: #64748b; font-size: 12px; white-space: nowrap; }

@@ -631,8 +631,8 @@ const REGISTRATION_CREATE_FIELD_ORDER = [
 ];
 
 function registrationDeptFieldHtml(deptKey, value) {
-  const f = fieldsForStage("registration").find(x => x.key === deptKey);
-  const label = f ? f.label : deptKey;
+  const f = fieldsForStage("registration").find(x => x.key === deptKey || x.legacy_key === deptKey);
+  const label = f ? f.label : (deptKey === "sourcer_dept" ? "拓源人部门" : "接口人部门");
   const v = (value || "").trim();
   return `
     <div class="emp-dept-row">
@@ -749,10 +749,18 @@ function bindRegistrationEmployeeLookup() {
 
     let lastItems = [];
     let searchSeq = 0;
-    const hideList = () => listEl.classList.add("hidden");
+    let activeIdx = -1;
+    const hideList = () => { listEl.classList.add("hidden"); activeIdx = -1; };
+
+    const updateActive = () => {
+      listEl.querySelectorAll(".emp-suggest-item").forEach(btn =>
+        btn.classList.toggle("active", +btn.dataset.idx === activeIdx));
+      listEl.querySelector(".emp-suggest-item.active")?.scrollIntoView({ block: "nearest" });
+    };
 
     const bindSuggestItem = (btn, idx) => {
       btn.addEventListener("mousedown", e => e.preventDefault());
+      btn.addEventListener("mouseenter", () => { activeIdx = idx; updateActive(); });
       btn.addEventListener("click", () => {
         const u = lastItems[idx];
         if (u) applyRegistrationEmployeeSelection(modal, emp, dept, u);
@@ -761,6 +769,7 @@ function bindRegistrationEmployeeLookup() {
 
     const renderList = (body) => {
       lastItems = body.items || [];
+      activeIdx = lastItems.length ? 0 : -1;
       if (body.too_many && lastItems.length) {
         listEl.innerHTML = `<div class="emp-suggest-hint">共 ${body.total || lastItems.length} 条匹配，仅显示前 ${lastItems.length} 条</div>` +
           lastItems.map((u, i) => `
@@ -771,6 +780,7 @@ function bindRegistrationEmployeeLookup() {
         </button>`).join("");
         listEl.querySelectorAll(".emp-suggest-item").forEach(btn => bindSuggestItem(btn, +btn.dataset.idx));
         listEl.classList.remove("hidden");
+        updateActive();
         return;
       }
       if (body.too_many) {
@@ -792,6 +802,7 @@ function bindRegistrationEmployeeLookup() {
         </button>`).join("");
       listEl.querySelectorAll(".emp-suggest-item").forEach(btn => bindSuggestItem(btn, +btn.dataset.idx));
       listEl.classList.remove("hidden");
+      updateActive();
     };
 
     const runSearch = debounce(async () => {
@@ -816,6 +827,25 @@ function bindRegistrationEmployeeLookup() {
       if (e.isComposing) return;
       runSearch();
     };
+    // 键盘导航：↑↓ 移动高亮，Enter 选中，Esc 关闭
+    input.addEventListener("keydown", e => {
+      if (e.isComposing) return;
+      const open = !listEl.classList.contains("hidden") && lastItems.length > 0;
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        if (!open) { if (input.value.trim()) runSearch(); return; }
+        const step = e.key === "ArrowDown" ? 1 : -1;
+        activeIdx = (activeIdx + step + lastItems.length) % lastItems.length;
+        updateActive();
+      } else if (e.key === "Enter") {
+        if (open && activeIdx >= 0 && lastItems[activeIdx]) {
+          e.preventDefault();
+          applyRegistrationEmployeeSelection(modal, emp, dept, lastItems[activeIdx]);
+        }
+      } else if (e.key === "Escape") {
+        hideList();
+      }
+    });
     input.addEventListener("input", onInput);
     input.addEventListener("compositionend", () => runSearch());
     input.addEventListener("focus", () => {
@@ -832,15 +862,22 @@ function bindRegistrationEmployeeLookup() {
 
 const REGISTRATION_CREATE_OPTIONAL = new Set(["registration_remark"]);
 
+/** 表单层字段视图：key 用英文 legacy_key（表单逻辑/提交用），storage_key 保留中文库内键。
+ *  提交英文键后端会统一 normalize 为中文存储键。 */
+function legacyFieldView(fields) {
+  return fields.map(f => ({ ...f, key: f.legacy_key || f.key, storage_key: f.key }));
+}
+
 function registrationCreateFields(stageKey) {
   const hide = registrationCreateHiddenKeys();
-  return visibleFields(stageKey).filter(f => f.editable && !hide.has(f.key));
+  return legacyFieldView(visibleFields(stageKey)).filter(f => f.editable && !hide.has(f.key));
 }
 
 const REGISTRATION_EDIT_INTERNAL_KEYS = new Set(["registration_source_custom"]);
 
 function registrationEditFields(stageKey) {
-  const fields = visibleFields(stageKey).filter(f => !REGISTRATION_EDIT_INTERNAL_KEYS.has(f.key));
+  const fields = legacyFieldView(visibleFields(stageKey))
+    .filter(f => !REGISTRATION_EDIT_INTERNAL_KEYS.has(f.key));
   const hasSourcer = fields.some(f => f.key === "sourcer");
   const hasIface = fields.some(f => f.key === "interface_person");
   return fields.filter(f => {
@@ -851,7 +888,9 @@ function registrationEditFields(stageKey) {
 }
 
 function registrationFormFieldHtml(f, cand, stageKey, isRegCreate, lockedFields) {
-  const locked = lockedFields.has(f.key) || (!isRegCreate && !f.editable);
+  // 锁定字段列表存中文 storage_key，也兼容英文 legacy_key
+  const locked = lockedFields.has(f.key) || (f.storage_key && lockedFields.has(f.storage_key))
+    || (!isRegCreate && !f.editable);
   if (stageKey === "registration" && (f.key === "sourcer" || f.key === "interface_person")) {
     return registrationEmployeeFieldHtml(f, cand, locked);
   }

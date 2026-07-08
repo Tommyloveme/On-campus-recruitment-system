@@ -58,9 +58,9 @@ async function openMasterImportModal() {
 
   openModal("主数据表导入", `
     <p style="font-size:12px;color:#64748b;line-height:1.7;margin-bottom:12px">
-      支持 <strong>application*.xlsx / applicationProcessList*.xlsx</strong> 与 <strong>候选人管理*.xlsx</strong>，
-      可只上传其中一个表；系统按文件名或表头自动识别，两表按简历编号关联，
-      候选人按 <strong>应聘档案编号 → 简历编号 → 手机号</strong> 唯一化合并。
+      支持 <strong>applicationProcessList*.xlsx</strong> 与 <strong>候选人面试安排管理列表*.xlsx</strong> 等业务表，
+      可只上传其中一个；系统按文件名或表头自动识别，两表按<strong>应聘档案编号</strong>关联，
+      并与界面手动登记的数据按 <strong>应聘档案编号 → 简历编号 → 手机号</strong> 唯一化合并为同一候选人。
     </p>
     <div class="form-item">
       <label>选择 Excel 文件（可多选）</label>

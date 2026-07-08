@@ -1185,6 +1185,45 @@
         "registration"
       ]
     },
+    "interview_progress": {
+      "legacy_key": "interview_progress",
+      "storage_key": "面试进展",
+      "label": "面试进展",
+      "path": [
+        "候选人",
+        "面试测评",
+        "面试进展"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "interview_assess_status": {
+      "legacy_key": "interview_assess_status",
+      "storage_key": "面试考核状态",
+      "label": "面试考核状态",
+      "path": [
+        "候选人",
+        "流程状态",
+        "面试考核状态"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "interview_conclusion": {
+      "legacy_key": "interview_conclusion",
+      "storage_key": "面试结论",
+      "label": "面试结论",
+      "path": [
+        "候选人",
+        "面试测评",
+        "面试结论"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
     "application_status": {
       "legacy_key": "application_status",
       "storage_key": "应聘状态",
@@ -1317,6 +1356,9 @@
     "候选人.扩展.拟录取工作地": "拟录取工作地",
     "候选人.扩展.当前环节": "当前环节",
     "候选人.流程状态.当前环节状态": "当前环节状态",
+    "候选人.面试测评.面试进展": "面试进展",
+    "候选人.流程状态.面试考核状态": "面试考核状态",
+    "候选人.面试测评.面试结论": "面试结论",
     "候选人.流程状态.应聘状态": "应聘状态",
     "候选人.登记拓源.拓源人姓名": "拓源人姓名",
     "候选人.登记拓源.接口人姓名": "接口人姓名"
@@ -1413,6 +1455,9 @@
     "拟录取工作地": "work_location",
     "当前环节": "current_step",
     "当前环节状态": "current_step_status",
+    "面试进展": "interview_progress",
+    "面试考核状态": "interview_assess_status",
+    "面试结论": "interview_conclusion",
     "应聘状态": "application_status",
     "拓源人姓名": "sourcer_name",
     "接口人姓名": "interface_person_name"

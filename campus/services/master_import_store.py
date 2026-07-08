@@ -57,6 +57,10 @@ def detect_source_key_by_headers(header_row, cfg):
     headers = {str(h or "").strip() for h in (header_row or []) if str(h or "").strip()}
     if not headers:
         return None
+    keys = set(cfg.get("source_keys") or [])
+    if "interview_mgmt" in keys and (
+            {"应聘档案编号", "候选人姓名"} <= headers or {"应聘档案编号", "面试进展"} <= headers):
+        return "interview_mgmt"
     if {"简历编号", "姓名", "联系电话"} <= headers or {"简历编号", "应聘档案编号"} <= headers:
         return "application"
     if {"简历编号", "测评结果"} <= headers or {"简历编号", "当前进展"} <= headers:

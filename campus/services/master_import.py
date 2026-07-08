@@ -30,6 +30,17 @@ def _cell_str(v):
     return normalize_date_value(str(v).strip())
 
 
+#: 表头归一化：真实业务表为手输入，全/半角括号、冒号、横线与空白经常不一致
+_HEADER_TRANS = str.maketrans({
+    "（": "(", "）": ")", "：": ":", "－": "-", "—": "-", "　": "",
+    " ": "", "\t": "", "\u00a0": "",
+})
+
+
+def _norm_header(s):
+    return str(s or "").strip().translate(_HEADER_TRANS)
+
+
 def _text_match(pattern, text):
     if not pattern or text is None:
         return False
@@ -38,8 +49,18 @@ def _text_match(pattern, text):
         return False
     if "*" in pattern or "?" in pattern:
         return (fnmatch.fnmatch(text, pattern)
-                or fnmatch.fnmatch(text.lower(), pattern.lower()))
-    return pattern == text or pattern.lower() == text.lower()
+                or fnmatch.fnmatch(text.lower(), pattern.lower())
+                or fnmatch.fnmatch(_norm_header(text).lower(), _norm_header(pattern).lower()))
+    if pattern == text or pattern.lower() == text.lower():
+        return True
+    # 手输表头容错：忽略全/半角与空白差异
+    return _norm_header(pattern).lower() == _norm_header(text).lower()
+
+
+def phone_looks_valid(phone):
+    """真实号码判定：剔除掩码（如 +86 XXXXXXXXXXX）与占位符。"""
+    v = re.sub(r"[+\s\-()]", "", str(phone or ""))
+    return v.isdigit() and len(v) >= 6
 
 
 def _column_patterns(col_cfg):
@@ -130,8 +151,12 @@ def parse_master_header(source_cfg, header_row, import_all_columns=True):
 def row_to_data(source_cfg, col_map, raw_row):
     data = {}
     for idx, key in col_map.items():
-        if idx < len(raw_row):
-            data[key] = _cell_str(raw_row[idx])
+        if idx >= len(raw_row):
+            continue
+        v = _cell_str(raw_row[idx])
+        # 同一字段可能映射多列（主列 + 别名列），空列不覆盖已取到的值
+        if v or key not in data:
+            data[key] = v
     return data
 
 
@@ -185,6 +210,9 @@ def row_identity(data, match_keys=None):
         v = str(field_get(data, k) or "").strip()
         if k == "phone":
             v = normalize_candidate_phone(v)
+            # 掩码/无效号码（如 +86 XXXXXXXXXXX）不能作为唯一化身份键
+            if v and not phone_looks_valid(v):
+                v = ""
         if v:
             out.append((k, v))
     return out
@@ -404,7 +432,11 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn):
     for data in rows_data:
         data = normalize_record(dict(data))
         phone = normalize_candidate_phone(field_get(data, "phone"))
-        if phone:
+        if phone and not phone_looks_valid(phone):
+            # 掩码号码（+86 XXXXXXXXXXX 等）不写入电话字段，避免撞唯一约束
+            phone = ""
+            field_set(data, "phone", "")
+        elif phone:
             field_set(data, "phone", phone)
         # 需要姓名 + 至少一个身份键（应聘档案编号/简历编号/电话）才能唯一化建档
         if not field_get(data, "name") or not row_identity(data, match_keys):
@@ -445,6 +477,11 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn):
 
 
 def run_dual_master_refresh(db, cfg, can_edit_fn, user, compute_stage_fn=None):
+    """读取全部已上传数据源，按唯一键（应聘档案编号→简历编号→手机号）合并后刷新候选人。
+
+    数据源顺序（index.json 的 source_keys）即合并优先级：靠前的表先入底，
+    后续表只补空值，不覆盖冲突值。任一数据源就绪即可单独刷新。
+    """
     from campus.domain.stage_routing import compute_current_stage
     from campus.services.master_import_store import both_files_ready, get_stored_files, load_meta, save_meta
 
@@ -452,23 +489,21 @@ def run_dual_master_refresh(db, cfg, can_edit_fn, user, compute_stage_fn=None):
 
     page = cfg.get("page", "registration")
     if not both_files_ready(page, cfg):
-        raise ValueError("请先上传主数据表（application*.xlsx / applicationProcessList*.xlsx / 候选人管理*.xlsx 任一）")
+        raise ValueError("请先上传主数据表（applicationProcessList*.xlsx / 候选人面试安排管理列表*.xlsx 等任一）")
 
     files = get_stored_files(page, cfg)
-    join_key = cfg.get("join_key", "resume_id")
     source_map = {s["key"]: s for s in cfg["sources"]}
+    match_keys = cfg.get("match_keys") or MATCH_KEYS_DEFAULT
 
-    app_rows = []
-    app_info = files.get("application") or {}
-    if app_info.get("ready") and app_info.get("path"):
-        app_rows = parse_excel_file(app_info["path"], source_map["application"])
-
-    mgmt_rows = []
-    mgmt_info = files.get("candidate_mgmt") or {}
-    if mgmt_info.get("ready") and mgmt_info.get("path"):
-        mgmt_rows = parse_excel_file(mgmt_info["path"], source_map["candidate_mgmt"])
-    rows_data = join_master_rows(app_rows, mgmt_rows, join_key,
-                                 cfg.get("match_keys") or MATCH_KEYS_DEFAULT)
+    all_rows = []
+    per_source = {}
+    for key in cfg.get("source_keys", []):
+        info = files.get(key) or {}
+        if info.get("ready") and info.get("path") and key in source_map:
+            rows = parse_excel_file(info["path"], source_map[key])
+            per_source[f"{key}_rows"] = len(rows)
+            all_rows.extend(rows)
+    rows_data = merge_rows_by_identity(all_rows, match_keys)
 
     created, updated, skipped = apply_master_rows(
         rows_data, db, cfg, can_edit_fn, user, compute_stage_fn)
@@ -477,8 +512,7 @@ def run_dual_master_refresh(db, cfg, can_edit_fn, user, compute_stage_fn=None):
     meta["last_refresh"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     meta["last_refresh_stats"] = {
         "created": created, "updated": updated, "skipped": skipped,
-        "application_rows": len(app_rows), "candidate_mgmt_rows": len(mgmt_rows),
-        "merged_rows": len(rows_data),
+        "merged_rows": len(rows_data), **per_source,
     }
     save_meta(page, meta)
     return created, updated, skipped, meta["last_refresh_stats"]
