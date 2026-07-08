@@ -67,6 +67,19 @@
         "registration"
       ]
     },
+    "sourcer_pl_group": {
+      "legacy_key": "sourcer_pl_group",
+      "storage_key": "拓源人PL组",
+      "label": "拓源人PL组",
+      "path": [
+        "候选人",
+        "登记拓源",
+        "拓源人PL组"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
     "interface_person": {
       "legacy_key": "interface_person",
       "storage_key": "接口人",
@@ -88,6 +101,19 @@
         "候选人",
         "登记拓源",
         "接口人部门"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "interface_person_pl_group": {
+      "legacy_key": "interface_person_pl_group",
+      "storage_key": "接口人PL组",
+      "label": "接口人PL组",
+      "path": [
+        "候选人",
+        "登记拓源",
+        "接口人PL组"
       ],
       "stages": [
         "registration"
@@ -1348,8 +1374,10 @@
     "候选人.基本信息.电话": "电话",
     "候选人.登记拓源.拓源人": "拓源人",
     "候选人.登记拓源.拓源人部门": "拓源人部门",
+    "候选人.登记拓源.拓源人PL组": "拓源人PL组",
     "候选人.登记拓源.接口人": "接口人",
     "候选人.登记拓源.接口人部门": "接口人部门",
+    "候选人.登记拓源.接口人PL组": "接口人PL组",
     "候选人.基本信息.学历": "学历",
     "候选人.基本信息.毕业院校": "毕业院校",
     "候选人.基本信息.专业": "专业",
@@ -1453,8 +1481,10 @@
     "电话": "phone",
     "拓源人": "sourcer",
     "拓源人部门": "sourcer_dept",
+    "拓源人PL组": "sourcer_pl_group",
     "接口人": "interface_person",
     "接口人部门": "interface_dept",
+    "接口人PL组": "interface_person_pl_group",
     "学历": "education",
     "毕业院校": "school",
     "专业": "major",

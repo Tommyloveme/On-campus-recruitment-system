@@ -36,6 +36,13 @@
       "type": "text",
       "required": false,
       "builtin": true
+    },
+    {
+      "key": "pl_group",
+      "label": "PL组",
+      "type": "text",
+      "required": false,
+      "builtin": true
     }
   ]
 }

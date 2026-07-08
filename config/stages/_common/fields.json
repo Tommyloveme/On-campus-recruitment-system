@@ -53,6 +53,15 @@
       "importable": true
     },
     {
+      "key": "sourcer_pl_group",
+      "label": "拓源人PL组",
+      "excel_column": "拓源人PL组",
+      "type": "text",
+      "visible": true,
+      "editable": false,
+      "importable": false
+    },
+    {
       "key": "interface_person",
       "label": "接口人",
       "excel_column": "接口人",
@@ -70,6 +79,15 @@
       "visible": true,
       "editable": false,
       "importable": true
+    },
+    {
+      "key": "interface_person_pl_group",
+      "label": "接口人PL组",
+      "excel_column": "接口人PL组",
+      "type": "text",
+      "visible": true,
+      "editable": false,
+      "importable": false
     },
     {
       "key": "education",

@@ -928,7 +928,9 @@ function registrationEditFields(stageKey) {
   const hasIface = fields.some(f => f.key === "interface_person");
   return fields.filter(f => {
     if (f.key === "sourcer_dept" && hasSourcer) return false;
+    if (f.key === "sourcer_pl_group" && hasSourcer) return false;
     if (f.key === "interface_dept" && hasIface) return false;
+    if (f.key === "interface_person_pl_group" && hasIface) return false;
     return true;
   });
 }

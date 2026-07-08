@@ -75,21 +75,23 @@ def persist_user_columns(db, uid, fields, role, password=None, is_create=False, 
         log_level = role_log_level(role)
         db.execute(
             "INSERT INTO users (username, display_name, password_hash, role, "
-            "supervisor, department, dept_level2, dept_level3, job_roles, extra, log_level, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "supervisor, department, dept_level2, dept_level3, pl_group, job_roles, extra, log_level, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (username, b.get("display_name", ""), generate_password_hash(password),
              role, b.get("supervisor", ""), b.get("department", ""),
-             b.get("dept_level2", ""), b.get("dept_level3", ""), jr, extra, log_level, now_str()),
+             b.get("dept_level2", ""), b.get("dept_level3", ""), b.get("pl_group", ""),
+             jr, extra, log_level, now_str()),
         )
     else:
         from campus.core.roles_store import role_log_level
         log_level = role_log_level(role)
         sql = (
             "UPDATE users SET display_name=?, role=?, supervisor=?, department=?, "
-            "dept_level2=?, dept_level3=?, extra=?, log_level=?"
+            "dept_level2=?, dept_level3=?, pl_group=?, extra=?, log_level=?"
         )
         params = [b.get("display_name", ""), role, b.get("supervisor", ""), b.get("department", ""),
-                  b.get("dept_level2", ""), b.get("dept_level3", ""), extra, log_level]
+                  b.get("dept_level2", ""), b.get("dept_level3", ""), b.get("pl_group", ""),
+                  extra, log_level]
         if job_roles is not None:
             sql += ", job_roles=?"
             params.append(jr)
@@ -304,9 +306,11 @@ def apply_registration_employee_fields(db, data):
             field_set(data, "sourcer", row["username"])
             field_set(data, "sourcer_name", row["display_name"] or "")
             field_set(data, "sourcer_dept", user_dept_display(row))
+            field_set(data, "sourcer_pl_group", row["pl_group"] if "pl_group" in row.keys() else "")
     else:
         data.pop(resolve_path("sourcer_name"), None)
         data.pop(resolve_path("sourcer_dept"), None)
+        data.pop(resolve_path("sourcer_pl_group"), None)
     iface = str(field_get(data, "interface_person") or "").strip()
     if iface:
         row = lookup_employee_for_registration(db, iface)
@@ -314,9 +318,11 @@ def apply_registration_employee_fields(db, data):
             field_set(data, "interface_person", row["username"])
             field_set(data, "interface_person_name", row["display_name"] or "")
             field_set(data, "interface_dept", user_dept_display(row))
+            field_set(data, "interface_person_pl_group", row["pl_group"] if "pl_group" in row.keys() else "")
     else:
         data.pop(resolve_path("interface_person_name"), None)
         data.pop(resolve_path("interface_dept"), None)
+        data.pop(resolve_path("interface_person_pl_group"), None)
     return data
 
 
@@ -337,6 +343,7 @@ def sync_registration_employee_snapshots(db, username):
 
     display_name = user["display_name"] or ""
     dept = user_dept_display(user)
+    pl_group = user["pl_group"] if "pl_group" in user.keys() else ""
     updated = 0
     for row in db.execute("SELECT * FROM candidates").fetchall():
         data = json.loads(row["data"])
@@ -348,12 +355,18 @@ def sync_registration_employee_snapshots(db, username):
             if field_get(data, "sourcer_dept") != dept:
                 field_set(data, "sourcer_dept", dept)
                 changed = True
+            if field_get(data, "sourcer_pl_group") != pl_group:
+                field_set(data, "sourcer_pl_group", pl_group)
+                changed = True
         if str(field_get(data, "interface_person") or "").strip() == username:
             if field_get(data, "interface_person_name") != display_name:
                 field_set(data, "interface_person_name", display_name)
                 changed = True
             if field_get(data, "interface_dept") != dept:
                 field_set(data, "interface_dept", dept)
+                changed = True
+            if field_get(data, "interface_person_pl_group") != pl_group:
+                field_set(data, "interface_person_pl_group", pl_group)
                 changed = True
         if changed:
             update_candidate_row(db, row["id"], data)
@@ -364,7 +377,8 @@ def sync_registration_employee_snapshots(db, username):
 def apply_registration_candidate_defaults(data, user):
     """登记阶段新增：隐藏主数据/手填项，部门由工号在保存时解析。"""
     from campus.db.field_store import resolve_path
-    for k in ("resume_id", "delivery_time", "work_location", "sourcer_dept", "interface_dept"):
+    for k in ("resume_id", "delivery_time", "work_location", "sourcer_dept", "interface_dept",
+              "sourcer_pl_group", "interface_person_pl_group"):
         data.pop(resolve_path(k), None)
         data.pop(k, None)
     return data

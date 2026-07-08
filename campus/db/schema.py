@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS users (
     department TEXT DEFAULT '',
     dept_level2 TEXT DEFAULT '',
     dept_level3 TEXT DEFAULT '',
+    pl_group TEXT DEFAULT '',
     job_roles TEXT DEFAULT '[]',
     extra TEXT DEFAULT '{}',
     log_level INTEGER NOT NULL DEFAULT 10,
@@ -248,6 +249,8 @@ def migrate(db):
                 "UPDATE users SET dept_level2=?, dept_level3=? WHERE id=?",
                 (l2, l3, row["id"]),
             )
+    if "pl_group" not in user_cols:
+        db.execute("ALTER TABLE users ADD COLUMN pl_group TEXT DEFAULT ''")
 
     # 老库 candidates.group_id 曾为 NOT NULL：重建为可空
     cand_cols = {r["name"]: r for r in db.execute("PRAGMA table_info(candidates)").fetchall()}

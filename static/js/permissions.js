@@ -1399,22 +1399,18 @@ function openRoleModal(role) {
         <input id="rf-label" value="${role ? esc(role.label) : ""}"></div>
       <div class="form-item"><label>角色key ${isNew ? "（唯一，英文/数字/下划线）" : "（不可修改）"}</label>
         <input id="rf-key" value="${role ? esc(role.key) : ""}" ${isNew ? "" : "disabled"}></div>
-      <div class="form-item"><label>默认日志等级</label>
-        <select id="rf-log-level" ${role?.bypass ? "disabled" : ""}>
-          ${LOG_LEVELS.map(l => `<option value="${l}" ${String(role?.log_level ?? 10) === String(l) ? "selected" : ""}>L${l}</option>`).join("")}
-        </select></div>
     </div>
     <label class="perm-flag-toggle" style="margin:6px 0 4px"><input type="checkbox" id="rf-bypass" ${role?.bypass ? "checked" : ""}>
       <span>全权角色（绕过所有模块权限，如系统管理员）</span></label>
     ${roleInterviewPositionsHtml(role)}
-    <p style="font-size:12px;color:#64748b;margin:0">模块权限请在下方表格中勾选；勾选即保存。</p>`,
+    <p style="font-size:12px;color:#64748b;margin:0">模块权限与日志等级请在下方角色/组权限矩阵中配置；勾选或选择即保存。</p>`,
     `<button class="btn" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="rf-save">保存</button>`);
 
   $("#rf-save").addEventListener("click", async () => {
     const label = $("#rf-label").value.trim();
     const bypass = $("#rf-bypass").checked;
-    const body = { label, bypass, log_level: +$("#rf-log-level").value };
+    const body = { label, bypass };
     const roleKey = isNew ? $("#rf-key").value.trim() : role.key;
     if (roleKey === "interviewer") {
       body.interview_positions = [...document.querySelectorAll(".rf-interview-pos:checked")].map(cb => cb.value);
