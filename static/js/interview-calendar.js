@@ -225,10 +225,15 @@ async function renderInterviewCalendar(stageKey) {
       b.classList.toggle("active", b.dataset.view === "calendar"));
   } else {
     $("#main").innerHTML = `
-      <div class="stage-header">
-        <h2>${meta.icon || ""} ${esc(meta.label)} · 面试日程</h2>
-        <p class="stage-desc">面试官 × 日期矩阵，支持岗位、部门筛选</p>
-      </div>${html}`;
+      <div class="page-wrap">
+        <div class="card pagehead">
+          <div class="pagehead-text">
+            <div class="pagehead-title">${esc(meta.label)} · 面试日程</div>
+            <div class="pagehead-sub">面试官 × 日期矩阵，支持岗位、部门筛选</div>
+          </div>
+        </div>
+        <div>${html}</div>
+      </div>`;
   }
 
   bindInterviewCalendarEvents(stageKey, defaultSlotMin);

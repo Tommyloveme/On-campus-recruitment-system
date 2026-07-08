@@ -88,17 +88,22 @@ function ovRenderShell() {
     </div>`;
 
   const funnel = `
-    <div class="card">
-      <div class="section-title">流程漏斗（点击流程可筛选下方明细）</div>
-      <div class="ov-funnel">
-        ${stageCounts.map(s => `
-          <div class="ov-funnel-row${ovState.stageFilter === s.key ? " active" : ""}" data-ov-stage="${esc(s.key)}" title="点击筛选「${esc(s.label)}」">
-            <span class="ov-funnel-label">${esc(s.short_label || s.label)}</span>
-            <div class="ov-funnel-track">
-              <div class="ov-funnel-bar" style="width:${Math.max(2, s.count * 100 / maxCount)}%"></div>
-            </div>
-            <span class="ov-funnel-count">${s.count}</span>
-          </div>`).join("")}
+    <div class="card page-section">
+      <div class="page-section-head">
+        <div class="page-section-title">流程漏斗
+          <span class="page-section-sub">点击流程可筛选下方明细</span></div>
+      </div>
+      <div class="page-section-body">
+        <div class="ov-funnel">
+          ${stageCounts.map(s => `
+            <div class="ov-funnel-row${ovState.stageFilter === s.key ? " active" : ""}" data-ov-stage="${esc(s.key)}" title="点击筛选「${esc(s.label)}」">
+              <span class="ov-funnel-label">${esc(s.short_label || s.label)}</span>
+              <div class="ov-funnel-track">
+                <div class="ov-funnel-bar" style="width:${Math.max(2, s.count * 100 / maxCount)}%"></div>
+              </div>
+              <span class="ov-funnel-count">${s.count}</span>
+            </div>`).join("")}
+        </div>
       </div>
     </div>`;
 
@@ -120,15 +125,18 @@ function ovRenderShell() {
   }).join("");
 
   const slaSection = `
-    <div class="card">
-      <div class="section-title" title="停留时长 = 候选人进入当前流程至今的天数；SLA 目标见 config/sla.json">
-        各流程停留时长与 SLA <span class="muted" style="font-weight:400;font-size:12px;cursor:help">ⓘ</span>
+    <div class="card page-section">
+      <div class="page-section-head" title="停留时长 = 候选人进入当前流程至今的天数；SLA 目标见 config/sla.json">
+        <div class="page-section-title">各流程停留时长与 SLA
+          <span class="page-section-sub">点击「超期 / 预警」徽标可筛选明细</span></div>
       </div>
-      <div class="table-wrap">
-        <table class="overview-mini-table">
-          <thead><tr><th>流程</th><th>人数</th><th>平均停留(天)</th><th>最长停留(天)</th><th>SLA 目标</th><th>状态</th></tr></thead>
-          <tbody>${slaRows}</tbody>
-        </table>
+      <div class="page-section-body">
+        <div class="table-wrap">
+          <table class="overview-mini-table">
+            <thead><tr><th>流程</th><th>人数</th><th>平均停留(天)</th><th>最长停留(天)</th><th>SLA 目标</th><th>状态</th></tr></thead>
+            <tbody>${slaRows}</tbody>
+          </table>
+        </div>
       </div>
     </div>`;
 
@@ -143,35 +151,49 @@ function ovRenderShell() {
   }).join("");
 
   const passRateSection = `
-    <div class="card">
-      <div class="section-title" title="通过率 = 已通过 ÷（已通过 + 未通过），不含进行中/未开始">各流程通过率 <span class="muted" style="font-weight:400;font-size:12px;cursor:help">ⓘ</span></div>
+    <div class="card page-section">
+      <div class="page-section-head" title="通过率 = 已通过 ÷（已通过 + 未通过），不含进行中/未开始">
+        <div class="page-section-title">各流程通过率
+          <span class="page-section-sub">不含进行中 / 未开始</span></div>
+      </div>
+      <div class="page-section-body">
       ${passRates.length ? `
-      <div class="table-wrap">
-        <table class="overview-mini-table">
-          <thead><tr><th>流程</th><th>通过率</th><th>明细</th></tr></thead>
-          <tbody>${passRateRows}</tbody>
-        </table>
-      </div>` : `<div class="empty">暂无数据</div>`}
+        <div class="table-wrap">
+          <table class="overview-mini-table">
+            <thead><tr><th>流程</th><th>通过率</th><th>明细</th></tr></thead>
+            <tbody>${passRateRows}</tbody>
+          </table>
+        </div>` : `<div class="empty">暂无数据</div>`}
+      </div>
     </div>`;
 
   $("#main").innerHTML = `
+    <div class="page-wrap">
+    <div class="card pagehead">
+      <div class="pagehead-text">
+        <div class="pagehead-title">全局总览</div>
+        <div class="pagehead-sub">跨流程的候选人分布、SLA 停留时长与通过率概览，支持漏斗 / SLA / 多条件组合筛选</div>
+      </div>
+    </div>
     ${kpis}
     ${funnel}
     <div class="overview-dashboard-grid">${slaSection}${passRateSection}</div>
-    <div class="card">
-      <div class="section-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        候选人明细
-        <span class="badge badge-blue" data-ov-listcount></span>
-        <span data-ov-activefilters class="muted" style="font-weight:400;font-size:12px"></span>
-        <div class="spacer"></div>
+    <div class="card page-section">
+      <div class="page-section-head">
+        <div class="page-section-title">候选人明细
+          <span class="badge badge-blue" data-ov-listcount></span>
+          <span data-ov-activefilters class="page-section-sub"></span></div>
         <button class="btn btn-sm" data-ov-clear>清空筛选</button>
       </div>
-      <div class="pv-filters" style="margin-bottom:10px">
-        <span class="pv-cap">筛选</span>
-        <div class="pv-filter-list" data-ov-filterlist></div>
-        <button class="btn btn-sm" data-ov-addfilter>+ 条件</button>
+      <div class="page-section-body">
+        <div class="pv-filters" style="margin:0 0 10px;padding-top:0;border-top:none">
+          <span class="pv-cap">筛选</span>
+          <div class="pv-filter-list" data-ov-filterlist></div>
+          <button class="btn btn-sm" data-ov-addfilter>+ 条件</button>
+        </div>
+        <div data-ov-table></div>
       </div>
-      <div data-ov-table></div>
+    </div>
     </div>`;
 
   document.querySelectorAll("[data-ov-stage]").forEach(el =>

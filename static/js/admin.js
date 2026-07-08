@@ -9,15 +9,21 @@ async function renderLogs() {
     return;
   }
   $("#main").innerHTML = `
-    <div class="card log-card">
-      <div class="log-head">
-        <div class="iv-subnav" style="margin:0">
+    <div class="page-wrap">
+      <div class="card pagehead">
+        <div class="pagehead-text">
+          <div class="pagehead-title">操作日志</div>
+          <div class="pagehead-sub">系统全量操作留痕，支持按模块 / 用户 / 类型检索；日志可见级别可按用户配置</div>
+        </div>
+        <div class="iv-subnav pagehead-tabs">
           <button class="btn btn-sm iv-view-btn active" data-lg-view="list">日志列表</button>
           <button class="btn btn-sm iv-view-btn" data-lg-view="levels">日志权限</button>
         </div>
       </div>
-      <div id="log-view-list"><div id="log-panel-root"></div></div>
-      <div id="log-view-levels" class="hidden"></div>
+      <div class="card log-card">
+        <div id="log-view-list"><div id="log-panel-root"></div></div>
+        <div id="log-view-levels" class="hidden"></div>
+      </div>
     </div>`;
   renderLogPanel($("#log-panel-root"), { pageSize: state.app?.logs_page_size || 30 });
 
@@ -78,25 +84,33 @@ async function renderBackups() {
     return;
   }
   $("#main").innerHTML = `
-    <div class="card bk-card">
-      <div class="bk-head">
-        <div class="iv-subnav" style="margin:0">
-          <button class="btn btn-sm iv-view-btn active" data-bk-view="list">备份列表</button>
-          <button class="btn btn-sm iv-view-btn" data-bk-view="logs">日志</button>
+    <div class="page-wrap">
+      <div class="card pagehead">
+        <div class="pagehead-text">
+          <div class="pagehead-title">数据备份</div>
+          <div class="pagehead-sub">数据库定期自动备份与手动备份管理；恢复前会自动保存当前状态</div>
         </div>
-        <button class="btn btn-primary btn-sm" id="bk-now" title="恢复前会自动保存当前状态">立即备份</button>
-      </div>
-      <div id="bk-view-list">
-        <div class="bk-table-wrap">
-          <table class="bk-table">
-            <thead><tr>
-              <th>备份文件</th><th>时间</th><th>大小</th><th>类型</th><th></th>
-            </tr></thead>
-            <tbody id="bk-list"><tr><td colspan="5" class="bk-empty">加载中…</td></tr></tbody>
-          </table>
+        <div class="pagehead-side">
+          <div class="iv-subnav pagehead-tabs">
+            <button class="btn btn-sm iv-view-btn active" data-bk-view="list">备份列表</button>
+            <button class="btn btn-sm iv-view-btn" data-bk-view="logs">日志</button>
+          </div>
+          <button class="btn btn-primary btn-sm" id="bk-now" title="恢复前会自动保存当前状态">立即备份</button>
         </div>
       </div>
-      <div id="bk-view-logs" class="hidden"></div>
+      <div class="card bk-card">
+        <div id="bk-view-list">
+          <div class="bk-table-wrap">
+            <table class="bk-table">
+              <thead><tr>
+                <th>备份文件</th><th>时间</th><th>大小</th><th>类型</th><th></th>
+              </tr></thead>
+              <tbody id="bk-list"><tr><td colspan="5" class="bk-empty">加载中…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div id="bk-view-logs" class="hidden"></div>
+      </div>
     </div>`;
   let bkLogsInit = false;
   document.querySelectorAll("[data-bk-view]").forEach(btn =>

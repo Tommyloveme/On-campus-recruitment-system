@@ -16,37 +16,48 @@ async function renderCharts() {
   const serOpts = `<option value="">（无）</option>` + fieldOpts("");
 
   $("#main").innerHTML = `
-    <div class="card">
-      <div class="toolbar" style="margin-bottom:0">
-        <div class="chart-ctrl"><label>维度（横轴）</label><select id="ch-dim">${dimOpts}</select></div>
-        <div class="chart-ctrl hidden" id="ch-gran-wrap"><label>日期粒度</label>
-          <select id="ch-gran">
-            <option value="ym" selected>按年月</option>
-            <option value="ymd">按年月日</option>
-            <option value="m">按月份</option>
-          </select></div>
-        <div class="chart-ctrl"><label>系列（图例）</label><select id="ch-ser">${serOpts}</select></div>
-        <div class="chart-ctrl"><label>图表类型</label>
-          <select id="ch-type">
-            <option value="bar">柱状图</option>
-            <option value="stacked">堆叠柱状图</option>
-            <option value="hbar">条形图</option>
-            <option value="doughnut">环形图</option>
-            <option value="pie">饼图</option>
-          </select></div>
-        <div class="spacer"></div>
-        <span id="ch-count" class="badge badge-blue"></span>
+    <div class="page-wrap">
+    <div class="card pagehead">
+      <div class="pagehead-text">
+        <div class="pagehead-title">数据图表</div>
+        <div class="pagehead-sub">按任意维度与系列组合生成分布图表，支持柱状 / 堆叠 / 条形 / 环形 / 饼图与数据透视表</div>
+      </div>
+      <div class="pagehead-side"><span id="ch-count" class="badge badge-blue"></span></div>
+    </div>
+    <div class="card page-section">
+      <div class="page-section-body">
+        <div class="toolbar" style="margin-bottom:0">
+          <div class="chart-ctrl"><label>维度（横轴）</label><select id="ch-dim">${dimOpts}</select></div>
+          <div class="chart-ctrl hidden" id="ch-gran-wrap"><label>日期粒度</label>
+            <select id="ch-gran">
+              <option value="ym" selected>按年月</option>
+              <option value="ymd">按年月日</option>
+              <option value="m">按月份</option>
+            </select></div>
+          <div class="chart-ctrl"><label>系列（图例）</label><select id="ch-ser">${serOpts}</select></div>
+          <div class="chart-ctrl"><label>图表类型</label>
+            <select id="ch-type">
+              <option value="bar">柱状图</option>
+              <option value="stacked">堆叠柱状图</option>
+              <option value="hbar">条形图</option>
+              <option value="doughnut">环形图</option>
+              <option value="pie">饼图</option>
+            </select></div>
+        </div>
       </div>
     </div>
     <div class="chart-grid">
-      <div class="card chart-card">
-        <div class="section-title" id="ch-title"></div>
-        <div class="chart-canvas-wrap"><canvas id="ch-canvas"></canvas></div>
+      <div class="card page-section chart-card">
+        <div class="page-section-head"><div class="page-section-title" id="ch-title"></div></div>
+        <div class="page-section-body">
+          <div class="chart-canvas-wrap"><canvas id="ch-canvas"></canvas></div>
+        </div>
       </div>
-      <div class="card">
-        <div class="section-title">数据透视表</div>
-        <div id="ch-pivot"></div>
+      <div class="card page-section">
+        <div class="page-section-head"><div class="page-section-title">数据透视表</div></div>
+        <div class="page-section-body"><div id="ch-pivot"></div></div>
       </div>
+    </div>
     </div>`;
 
   charts.list = await api("/api/candidates");

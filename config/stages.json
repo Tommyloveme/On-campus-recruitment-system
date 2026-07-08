@@ -6,7 +6,6 @@
       "label": "候选人登记",
       "short_label": "登记",
       "order": 1,
-      "icon": "📝",
       "can_create": true,
       "description": "校招候选人信息登记与简历收集"
     },
@@ -15,7 +14,6 @@
       "label": "简历筛选",
       "short_label": "简历筛选",
       "order": 2,
-      "icon": "🔍",
       "can_create": false,
       "description": "简历初筛与筛选结果记录"
     },
@@ -24,7 +22,6 @@
       "label": "资格审查",
       "short_label": "资审",
       "order": 3,
-      "icon": "✅",
       "can_create": false,
       "description": "候选人学历、院校等资格审查"
     },
@@ -33,7 +30,6 @@
       "label": "笔试预约",
       "short_label": "笔试",
       "order": 4,
-      "icon": "📋",
       "can_create": false,
       "description": "笔试时间与地点预约安排"
     },
@@ -42,7 +38,6 @@
       "label": "性格测评",
       "short_label": "性格测评",
       "order": 5,
-      "icon": "🧠",
       "can_create": false,
       "description": "性格测评安排与结果记录"
     },
@@ -51,7 +46,6 @@
       "label": "资格面试",
       "short_label": "资格面",
       "order": 6,
-      "icon": "🎯",
       "can_create": false,
       "description": "资格面试预约与结果记录"
     },
@@ -60,7 +54,6 @@
       "label": "技术面试预约",
       "short_label": "技术面",
       "order": 7,
-      "icon": "💻",
       "can_create": false,
       "has_interview_calendar": true,
       "description": "技术面试预约与结果记录（支持面试官日程）"
@@ -70,7 +63,6 @@
       "label": "主管面试预约",
       "short_label": "主管面",
       "order": 8,
-      "icon": "👔",
       "can_create": false,
       "has_interview_calendar": true,
       "description": "主管面试预约与结果记录（支持面试官日程）"
@@ -80,7 +72,6 @@
       "label": "报批",
       "short_label": "报批",
       "order": 9,
-      "icon": "📑",
       "can_create": false,
       "description": "录用报批流程跟踪"
     },
@@ -89,7 +80,6 @@
       "label": "谈薪",
       "short_label": "谈薪",
       "order": 10,
-      "icon": "💰",
       "can_create": false,
       "description": "薪资谈判与意向确认"
     },
@@ -98,7 +88,6 @@
       "label": "Offer发放",
       "short_label": "Offer",
       "order": 11,
-      "icon": "📧",
       "can_create": false,
       "description": "Offer 发放与接受状态跟踪"
     },
@@ -107,7 +96,6 @@
       "label": "签约情况",
       "short_label": "签约",
       "order": 12,
-      "icon": "✍️",
       "can_create": false,
       "description": "三方签约与签约状态跟踪"
     },
@@ -116,7 +104,6 @@
       "label": "入职管理",
       "short_label": "入职",
       "order": 13,
-      "icon": "🎓",
       "can_create": false,
       "description": "体检、入职预约到正式入职"
     }

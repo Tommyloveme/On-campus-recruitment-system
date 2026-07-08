@@ -37,16 +37,21 @@ async function renderStageView(stageKey) {
   const showLogs = featureAllowed(stageKey, "tab_logs");
 
   $("#main").innerHTML = `
-    <div class="stage-header">
-      <h2 title="${esc(meta.description || "")}">${meta.icon || ""} ${esc(meta.label)}</h2>
-    </div>
-    <div class="iv-subnav" style="margin-bottom:12px">
-      <button class="btn btn-sm iv-view-btn active" data-view="list">候选人列表</button>
-      ${showCalendar ? `<button class="btn btn-sm iv-view-btn" data-view="calendar">面试日程表</button>` : ""}
-      ${showDashboard ? `<button class="btn btn-sm iv-view-btn" data-view="dashboard">数据看板</button>` : ""}
-      ${showLogs ? `<button class="btn btn-sm iv-view-btn" data-view="logs">日志</button>` : ""}
-    </div>
-    <div id="stage-content"></div>`;
+    <div class="page-wrap">
+      <div class="card pagehead">
+        <div class="pagehead-text">
+          <div class="pagehead-title">${esc(meta.label)}</div>
+          ${meta.description ? `<div class="pagehead-sub">${esc(meta.description)}</div>` : ""}
+        </div>
+        <div class="iv-subnav pagehead-tabs">
+          <button class="btn btn-sm iv-view-btn active" data-view="list">候选人列表</button>
+          ${showCalendar ? `<button class="btn btn-sm iv-view-btn" data-view="calendar">面试日程表</button>` : ""}
+          ${showDashboard ? `<button class="btn btn-sm iv-view-btn" data-view="dashboard">数据看板</button>` : ""}
+          ${showLogs ? `<button class="btn btn-sm iv-view-btn" data-view="logs">日志</button>` : ""}
+        </div>
+      </div>
+      <div id="stage-content"></div>
+    </div>`;
 
   document.querySelectorAll(".iv-view-btn").forEach(btn =>
     btn.addEventListener("click", () => {

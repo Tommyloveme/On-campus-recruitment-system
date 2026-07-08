@@ -43,7 +43,7 @@ function renderLogPanel(rootEl, opts = {}) {
       <div class="log-panel-bar">
         ${logPanelLegendHtml()}
         <span class="spacer"></span>
-        <button class="btn btn-sm" data-lp-refresh title="刷新">↻</button>
+        <button class="btn btn-sm" data-lp-refresh title="重新加载日志">刷新</button>
       </div>
       <div class="log-table-wrap">
         <table class="log-table">

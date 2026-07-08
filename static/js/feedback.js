@@ -79,7 +79,7 @@ function openFeedbackModal(item = null) {
       <button type="button" class="btn btn-sm" data-fb-cmd="bold" title="加粗"><b>B</b></button>
       <button type="button" class="btn btn-sm" data-fb-cmd="italic" title="斜体"><i>I</i></button>
       <label class="btn btn-sm feedback-img-btn" id="feedback-img-label" title="插入图片（也可直接粘贴）">
-        🖼 插图
+        插图
         <input type="file" id="feedback-img-input" accept="image/*" hidden>
       </label>
     </div>
@@ -305,17 +305,22 @@ async function renderFeedback() {
     return;
   }
   $("#main").innerHTML = `
-    <div class="card fb-card">
-      <div class="fb-head">
-        <div class="iv-subnav" style="margin:0">
-          <button class="btn btn-sm iv-view-btn active" data-fb-view-tab="list">反馈列表</button>
-          <button class="btn btn-sm iv-view-btn" data-fb-view-tab="logs">日志</button>
+    <div class="page-wrap">
+      <div class="card pagehead">
+        <div class="pagehead-text">
+          <div class="pagehead-title">问题反馈</div>
+          <div class="pagehead-sub">提交使用中遇到的问题与改进建议，管理员回复后可在列表中查看处理进展</div>
         </div>
-        <div class="fb-toolbar">
+        <div class="pagehead-side">
+          <div class="iv-subnav pagehead-tabs">
+            <button class="btn btn-sm iv-view-btn active" data-fb-view-tab="list">反馈列表</button>
+            <button class="btn btn-sm iv-view-btn" data-fb-view-tab="logs">日志</button>
+          </div>
           <span id="fb-count" class="muted" style="font-size:12px"></span>
           <button type="button" class="btn btn-primary btn-sm" id="fb-add-btn">+ 新增反馈</button>
         </div>
       </div>
+      <div class="card fb-card">
       <div id="fb-view-list">
         <div class="table-wrap fb-table-wrap">
           <table class="fb-table" id="fb-table">
@@ -349,6 +354,7 @@ async function renderFeedback() {
         </div>
       </div>
       <div id="fb-view-logs" class="hidden"></div>
+      </div>
     </div>`;
 
   let fbLogsInit = false;

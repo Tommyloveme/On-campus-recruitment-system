@@ -22,6 +22,9 @@ const MOD_FILTERS = [
   ["any", "全部"], ["v", "可见"], ["r", "读"], ["w", "写"], ["m", "管理"], ["none", "无权限"],
 ];
 
+/* 细粒度权限入口按钮的图标（内联 SVG 齿轮，替代 emoji） */
+const PERM_GEAR_SVG = `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.7M8 12.5v1.7M1.8 8h1.7M12.5 8h1.7M3.6 3.6l1.2 1.2M11.2 11.2l1.2 1.2M12.4 3.6l-1.2 1.2M4.8 11.2l-1.2 1.2"/></svg>`;
+
 function aclKey(uid, mk) { return `${uid}|${mk}`; }
 function aclOf(uid, mk) { return permAclMap[aclKey(uid, mk)] || {v:0,r:0,w:0,m:0,feats:{}}; }
 
@@ -64,7 +67,7 @@ async function renderPermissions() {
       <section class="card perm-section">
         <div class="perm-section-head">
           <div class="perm-section-title">用户 × 模块权限矩阵
-            <span class="perm-section-sub">勾选即时保存；⚙ 配置页面内细粒度权限</span></div>
+            <span class="perm-section-sub">勾选即时保存；点击齿轮按钮配置页面内细粒度权限</span></div>
           <div class="perm-head-actions">
             <button class="btn btn-primary btn-sm" id="perm-add-user">+ 新增用户</button>
             <button class="btn btn-sm" id="perm-batch-edit" disabled>批量修改附属信息</button>
@@ -283,10 +286,10 @@ function permMeasureModuleCell() {
     _permModCellEl = document.createElement("div");
     _permModCellEl.className = "perm-mod-cell";
     _permModCellEl.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap;";
-    // 四个权限勾选 + 细粒度 ⚙ 按钮（有 features 的模块会渲染，宽度按最大情况预留）
+    // 四个权限勾选 + 细粒度齿轮按钮（有 features 的模块会渲染，宽度按最大情况预留）
     _permModCellEl.innerHTML = PERM_FLAGS.map(([, , , color]) =>
       `<label class="perm-flag" style="--flag-color:${color}"><input type="checkbox" style="width:13px;height:13px;margin:0"></label>`).join("")
-      + `<button class="perm-feat-btn">⚙</button>`;
+      + `<button class="perm-feat-btn">${PERM_GEAR_SVG}</button>`;
     document.body.appendChild(_permModCellEl);
   }
   return _permModCellEl.offsetWidth;
@@ -508,7 +511,7 @@ function permRowCells(u, cols) {
       const hasCustom = feats && Object.values(a.feats || {}).some(v => v === 0);
       const gear = feats
         ? `<button class="perm-feat-btn${hasCustom ? " has-custom" : ""}" data-feat-uid="${u.id}"
-             data-feat-mk="${c.module.key}" title="细粒度权限（子标签/按钮可见性）">⚙</button>`
+             data-feat-mk="${c.module.key}" title="细粒度权限（子标签/按钮可见性）">${PERM_GEAR_SVG}</button>`
         : "";
       return `<td class="col-module perm-mod-cell">${PERM_FLAGS.map(([s, , label, color]) =>
         `<label class="perm-flag" title="${label}"><input type="checkbox" class="perm-flag-cb"
@@ -1109,7 +1112,7 @@ function roleRowCells(role, cols) {
       const hasCustom = feats && Object.values(a.feats || {}).some(v => v === 0);
       const gear = feats
         ? `<button class="perm-feat-btn${hasCustom ? " has-custom" : ""}" data-role-feat="${esc(role.key)}"
-             data-feat-mk="${c.module.key}" title="细粒度权限（子标签/按钮可见性）">⚙</button>`
+             data-feat-mk="${c.module.key}" title="细粒度权限（子标签/按钮可见性）">${PERM_GEAR_SVG}</button>`
         : "";
       return `<td class="col-module perm-mod-cell">${PERM_FLAGS.map(([s, , label, color]) =>
         `<label class="perm-flag" title="${label}"><input type="checkbox" class="role-flag-cb"
