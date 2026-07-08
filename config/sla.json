@@ -1,0 +1,19 @@
+{
+  "comment": "各流程阶段 SLA（候选人在该阶段的目标停留天数上限）。超过 warn_days 标黄、超过 max_days 标红并计入超期。",
+  "default": { "warn_days": 5, "max_days": 10 },
+  "stages": {
+    "registration": { "warn_days": 3, "max_days": 7 },
+    "resume_screening": { "warn_days": 2, "max_days": 5 },
+    "qualification": { "warn_days": 2, "max_days": 5 },
+    "written_test": { "warn_days": 5, "max_days": 10 },
+    "personality_test": { "warn_days": 3, "max_days": 7 },
+    "qualification_interview": { "warn_days": 5, "max_days": 10 },
+    "tech_interview": { "warn_days": 5, "max_days": 10 },
+    "manager_interview": { "warn_days": 5, "max_days": 10 },
+    "approval": { "warn_days": 3, "max_days": 7 },
+    "salary": { "warn_days": 5, "max_days": 10 },
+    "offer": { "warn_days": 7, "max_days": 14 },
+    "contract_signing": { "warn_days": 7, "max_days": 14 },
+    "onboarding": { "warn_days": 15, "max_days": 30 }
+  }
+}

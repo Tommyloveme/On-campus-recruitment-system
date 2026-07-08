@@ -47,45 +47,55 @@ async function renderPermissions() {
   roleFilters = {};
   permLoadColWidths();
   $("#main").innerHTML = `
-    <div class="card perm-card">
-      <div class="perm-head">
-        <div class="iv-subnav" style="margin:0">
-          <button class="btn btn-sm iv-view-btn active" data-perm-view="main">权限矩阵</button>
-          <button class="btn btn-sm iv-view-btn" data-perm-view="logs">日志</button>
+    <div class="perm-page">
+      <div class="card perm-pagehead">
+        <div class="perm-pagehead-text">
+          <div class="perm-pagetitle">权限管理</div>
+          <div class="perm-pagesub">统一管理用户账号、角色模板与各业务模块的访问权限，支持页面内子标签 / 按钮级细粒度管控</div>
         </div>
-        <div class="perm-head-actions">
-          <button class="btn btn-primary btn-sm" id="perm-add-user">+ 新增用户</button>
-          <button class="btn btn-sm" id="perm-batch-edit" disabled>批量修改附属信息</button>
-          <button class="btn btn-sm" id="perm-export">导出矩阵</button>
+        <div class="iv-subnav perm-pagetabs">
+          <button class="btn btn-sm iv-view-btn active" data-perm-view="main">权限矩阵</button>
+          <button class="btn btn-sm iv-view-btn" data-perm-view="logs">操作日志</button>
         </div>
       </div>
       <div id="perm-view-logs" class="hidden"></div>
       <div id="perm-view-main">
 
-      <div id="perm-field-config" class="perm-embed perm-embed-top"></div>
+      <section class="card perm-section">
+        <div class="perm-section-head">
+          <div class="perm-section-title">用户 × 模块权限矩阵
+            <span class="perm-section-sub">勾选即时保存；⚙ 配置页面内细粒度权限</span></div>
+          <div class="perm-head-actions">
+            <button class="btn btn-primary btn-sm" id="perm-add-user">+ 新增用户</button>
+            <button class="btn btn-sm" id="perm-batch-edit" disabled>批量修改附属信息</button>
+            <button class="btn btn-sm" id="perm-export">导出矩阵</button>
+          </div>
+        </div>
+        <div class="perm-batch-bar">
+          <span class="perm-batch-label">批量授权</span>
+          <span class="perm-batch-field"><label class="perm-batch-cap">模块</label><select id="perm-batch-module" class="perm-select"></select></span>
+          <span class="perm-batch-flags">
+            ${PERM_FLAGS.map(([s, , label, color]) =>
+              `<label class="perm-flag-toggle" style="--flag-color:${color}"><input type="checkbox" id="perm-batch-${s}"><span>${label}</span></label>`).join("")}
+          </span>
+          <button class="btn btn-primary btn-sm" id="perm-batch-apply">应用到所选用户</button>
+          <button class="btn btn-sm" id="perm-batch-revoke">清空所选用户该模块</button>
+          <span class="perm-flex"></span>
+          <span id="perm-row-count" class="muted"></span>
+        </div>
+        <div class="perm-grid-shell">
+          <div class="perm-grid-left-wrap"><table id="perm-grid-left" class="perm-grid perm-grid-left"></table></div>
+          <div class="perm-grid-right-wrap"><table id="perm-grid-right" class="perm-grid perm-grid-right"></table></div>
+        </div>
+      </section>
 
-      <div class="perm-batch-bar">
-        <span class="perm-batch-label">批量授权</span>
-        <span class="perm-batch-field"><label class="perm-batch-cap">模块</label><select id="perm-batch-module" class="perm-select"></select></span>
-        <span class="perm-batch-flags">
-          ${PERM_FLAGS.map(([s, , label, color]) =>
-            `<label class="perm-flag-toggle" style="--flag-color:${color}"><input type="checkbox" id="perm-batch-${s}"><span>${label}</span></label>`).join("")}
-        </span>
-        <button class="btn btn-primary btn-sm" id="perm-batch-apply">应用到所选用户</button>
-        <button class="btn btn-sm" id="perm-batch-revoke">清空所选用户该模块</button>
-        <span class="perm-flex"></span>
-        <span id="perm-row-count" class="muted"></span>
-      </div>
-
-      <div class="perm-grid-shell">
-        <div class="perm-grid-left-wrap"><table id="perm-grid-left" class="perm-grid perm-grid-left"></table></div>
-        <div class="perm-grid-right-wrap"><table id="perm-grid-right" class="perm-grid perm-grid-right"></table></div>
-      </div>
-
-      <div id="perm-roles" class="perm-embed">
-        <div class="perm-embed-title">角色管理 <span class="muted" style="font-weight:400;font-size:12px">（角色=权限模板，应用后写入用户模块权限）</span></div>
-        <div class="perm-head-actions" style="margin-bottom:10px">
-          <button class="btn btn-primary btn-sm" id="role-add">+ 新增角色</button>
+      <section class="card perm-section" id="perm-roles">
+        <div class="perm-section-head">
+          <div class="perm-section-title">角色管理
+            <span class="perm-section-sub">角色 = 权限模板，应用后写入用户模块权限</span></div>
+          <div class="perm-head-actions">
+            <button class="btn btn-primary btn-sm" id="role-add">+ 新增角色</button>
+          </div>
         </div>
         <div class="perm-batch-bar">
           <span class="perm-batch-label">批量授权</span>
@@ -103,7 +113,15 @@ async function renderPermissions() {
           <div class="perm-grid-left-wrap"><table id="role-grid-left" class="perm-grid perm-grid-left"></table></div>
           <div class="perm-grid-right-wrap"><table id="role-grid-right" class="perm-grid perm-grid-right"></table></div>
         </div>
-      </div>
+      </section>
+
+      <section class="card perm-section">
+        <div class="perm-section-head">
+          <div class="perm-section-title">附属信息字段配置
+            <span class="perm-section-sub">用户表格中显示的附属信息列，由此配置驱动</span></div>
+        </div>
+        <div id="perm-field-config"></div>
+      </section>
       </div>
     </div>`;
 
@@ -201,7 +219,7 @@ function rowPassesFilter(u, cols) {
 
 /* ---------- 渲染（左表冻结：勾选/工号/姓名；右表横向滚动） ---------- */
 const PERM_FROZEN_COUNT = 3;
-const PERM_COL_WIDTH_KEY = "perm_col_widths_v1";
+const PERM_COL_WIDTH_KEY = "perm_col_widths_v2";
 let permColWidths = {};
 let permComputedDefaults = {};
 let _permMeasureEl;
@@ -220,7 +238,7 @@ function permSaveColWidths() {
   try { localStorage.setItem(PERM_COL_WIDTH_KEY, JSON.stringify(permColWidths)); } catch (_) {}
 }
 
-function permMeasureText(text, mono, fontSize) {
+function permMeasureText(text, mono, fontSize, bold) {
   if (!_permMeasureEl) {
     _permMeasureEl = document.createElement("span");
     _permMeasureEl.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap;padding:0;";
@@ -228,8 +246,14 @@ function permMeasureText(text, mono, fontSize) {
   }
   _permMeasureEl.className = mono ? "mono" : "";
   _permMeasureEl.style.fontSize = (fontSize || 12) + "px";
+  _permMeasureEl.style.fontWeight = bold ? "600" : "400";
   _permMeasureEl.textContent = text || "";
   return _permMeasureEl.offsetWidth;
+}
+
+function permMeasureHeader(text) {
+  // 表头为粗体，另预留拖拽手柄 + 排序空间
+  return permMeasureText(text, false, 12, true) + 10;
 }
 
 function permMeasureBadge(text) {
@@ -258,9 +282,11 @@ function permMeasureModuleCell() {
   if (!_permModCellEl) {
     _permModCellEl = document.createElement("div");
     _permModCellEl.className = "perm-mod-cell";
-    _permModCellEl.style.cssText = "position:absolute;visibility:hidden;";
+    _permModCellEl.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap;";
+    // 四个权限勾选 + 细粒度 ⚙ 按钮（有 features 的模块会渲染，宽度按最大情况预留）
     _permModCellEl.innerHTML = PERM_FLAGS.map(([, , , color]) =>
-      `<label class="perm-flag" style="--flag-color:${color}"><input type="checkbox" style="width:13px;height:13px;margin:0"></label>`).join("");
+      `<label class="perm-flag" style="--flag-color:${color}"><input type="checkbox" style="width:13px;height:13px;margin:0"></label>`).join("")
+      + `<button class="perm-feat-btn">⚙</button>`;
     document.body.appendChild(_permModCellEl);
   }
   return _permModCellEl.offsetWidth;
@@ -278,8 +304,8 @@ function permFilterOptionTexts(col) {
 }
 
 function permRecomputeDefaultColWidths(cols) {
-  const cellPad = 8;
-  const filterPad = 22;
+  const cellPad = 24;
+  const filterPad = 30;
   permComputedDefaults = {};
 
   for (const col of cols) {
@@ -292,7 +318,7 @@ function permRecomputeDefaultColWidths(cols) {
     }
 
     if (col.id === "username") {
-      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
       maxW = Math.max(maxW, permMeasureText("0123456789", true) + cellPad);
       for (const u of permUsersCache) {
         const v = String(u.username ?? "");
@@ -300,7 +326,7 @@ function permRecomputeDefaultColWidths(cols) {
       }
       maxW = Math.max(maxW, permMeasureText("筛选", false, 10) + filterPad);
     } else if (col.id === "display_name") {
-      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
       maxW = Math.max(maxW, permMeasureText("一二三四", false) + cellPad);
       for (const u of permUsersCache) {
         const v = String(u.display_name ?? "");
@@ -308,29 +334,29 @@ function permRecomputeDefaultColWidths(cols) {
       }
       maxW = Math.max(maxW, permMeasureText("筛选", false, 10) + filterPad);
     } else if (col.kind === "field") {
-      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
       for (const u of permUsersCache) {
         const v = String(u[col.field.key] ?? "");
         if (v) maxW = Math.max(maxW, permMeasureText(v, false) + cellPad);
       }
       maxW = Math.max(maxW, permMeasureText("筛选", false, 11) + filterPad);
     } else if (col.kind === "role") {
-      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
       for (const u of permUsersCache) maxW = Math.max(maxW, permMeasureBadge(permRoleLabel(u)) + cellPad);
       for (const r of (permOptions.roles || [])) maxW = Math.max(maxW, permMeasureBadge(r.label) + cellPad);
       for (const t of permFilterOptionTexts(col)) maxW = Math.max(maxW, permMeasureText(t, false, 11) + filterPad);
     } else if (col.kind === "actions") {
-      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
       maxW = Math.max(maxW, permMeasureActions() + cellPad);
     } else if (col.kind === "module") {
-      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
       maxW = Math.max(maxW, permMeasureModuleCell() + cellPad);
       for (const t of permFilterOptionTexts(col)) maxW = Math.max(maxW, permMeasureText(t, false, 10) + filterPad);
     } else {
-      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
     }
 
-    permComputedDefaults[col.id] = Math.max(32, Math.ceil(maxW));
+    permComputedDefaults[col.id] = Math.max(40, Math.ceil(maxW));
   }
 }
 
@@ -832,7 +858,7 @@ function openBatchEditModal() {
 /* ---------- 角色管理（与用户矩阵同构：Excel 式表格 + 内联勾选 + 批量授权） ---------- */
 
 const ROLE_FROZEN_COUNT = 3;
-const ROLE_COL_WIDTH_KEY = "role_col_widths_v1";
+const ROLE_COL_WIDTH_KEY = "role_col_widths_v2";
 let roleFilters = {};
 let roleColWidths = {};
 let roleComputedDefaults = {};
@@ -907,8 +933,8 @@ function roleSaveColWidths() {
 }
 
 function roleRecomputeDefaultColWidths(cols) {
-  const cellPad = 8;
-  const filterPad = 22;
+  const cellPad = 24;
+  const filterPad = 30;
   const roles = rolesCache();
   roleComputedDefaults = {};
 
@@ -922,30 +948,30 @@ function roleRecomputeDefaultColWidths(cols) {
     }
 
     if (col.id === "r_label") {
-      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
       maxW = Math.max(maxW, permMeasureText("一二三四", false) + cellPad);
       for (const r of roles) maxW = Math.max(maxW, permMeasureText(r.label || "", false) + cellPad);
       maxW = Math.max(maxW, permMeasureText("筛选", false, 10) + filterPad);
     } else if (col.id === "r_key") {
-      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
       for (const r of roles) maxW = Math.max(maxW, permMeasureText(r.key || "", true) + cellPad);
       maxW = Math.max(maxW, permMeasureText("筛选", false, 10) + filterPad);
     } else if (col.kind === "bool") {
-      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
       maxW = Math.max(maxW, permMeasureBadge(col.id === "r_bypass" ? "全权" : "内置") + cellPad);
       maxW = Math.max(maxW, permMeasureText("普通", false, 11) + filterPad);
     } else if (col.kind === "actions") {
-      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
       maxW = Math.max(maxW, permMeasureActions() + cellPad);
     } else if (col.kind === "module") {
-      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
       maxW = Math.max(maxW, permMeasureModuleCell() + cellPad);
       for (const t of MOD_FILTERS.map(([, label]) => label)) maxW = Math.max(maxW, permMeasureText(t, false, 10) + filterPad);
     } else {
-      maxW = Math.max(maxW, permMeasureText(header, false) + cellPad);
+      maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
     }
 
-    roleComputedDefaults[col.id] = Math.max(32, Math.ceil(maxW));
+    roleComputedDefaults[col.id] = Math.max(40, Math.ceil(maxW));
   }
 }
 

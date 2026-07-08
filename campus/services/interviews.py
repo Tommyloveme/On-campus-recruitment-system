@@ -10,6 +10,7 @@ import sqlite3
 from campus.core.settings import load_app_config
 from campus.core.stage_config import get_stage_meta
 from campus.db.connection import now_str
+from campus.db.field_store import field_get, field_set
 from campus.domain.employees import interviewer_matches_position, parse_job_roles
 from campus.domain.interview_slots import (
     expand_availability_windows,
@@ -20,6 +21,7 @@ from campus.domain.interview_slots import (
 )
 from campus.domain.stage_routing import compute_current_stage
 from campus.services.audit import add_log
+from campus.services.candidates import update_candidate_row
 
 INTERVIEW_TYPES = ("tech_interview", "manager_interview")
 
@@ -188,9 +190,9 @@ def calendar_payload(db, itype, date_from, date_to, position, department, slot_m
     for b in bookings:
         bd = dict(b)
         cdata = json.loads(bd["candidate_data"])
-        bd["candidate_name"] = cdata.get("name", "")
-        bd["candidate_phone"] = cdata.get("phone", "")
-        bd["interview_position"] = cdata.get("interview_position", "")
+        bd["candidate_name"] = field_get(cdata, "name")
+        bd["candidate_phone"] = field_get(cdata, "phone")
+        bd["interview_position"] = field_get(cdata, "interview_position")
         del bd["candidate_data"]
         if position and bd.get("interview_position") and bd["interview_position"] != position:
             continue
@@ -261,16 +263,15 @@ def book_interview(db, user, itype, cand, interviewer_id, start_at, slot_minutes
         data = json.loads(cand["data"])
         status_key, time_key, interviewer_key = _stage_data_keys(itype)
         iv = db.execute("SELECT display_name FROM users WHERE id=?", (interviewer_id,)).fetchone()
-        data[status_key] = "已预约"
-        data[time_key] = start_at
-        data[interviewer_key] = iv["display_name"] if iv else ""
+        field_set(data, status_key, "已预约")
+        field_set(data, time_key, start_at)
+        field_set(data, interviewer_key, iv["display_name"] if iv else "")
         compute_current_stage(data)
-        db.execute("UPDATE candidates SET data=?, updated_at=? WHERE id=?",
-                   (json.dumps(data, ensure_ascii=False), now_str(), cand["id"]))
+        update_candidate_row(db, cand["id"], data)
 
-        cname = data.get("name", "")
+        cname = field_get(data, "name")
         add_log(user, "update",
-                f"{user['display_name']} 为「{cname}」（{data.get('phone', '')}）预约了 {start_at} 的"
+                f"{user['display_name']} 为「{cname}」（{field_get(data, 'phone')}）预约了 {start_at} 的"
                 f"{get_stage_meta(itype)['label']}（面试官 {iv['display_name'] if iv else ''}）",
                 cand["id"], cname, cand["group_id"], module=itype)
         db.commit()
@@ -284,15 +285,14 @@ def cancel_booking(db, user, booking, cand):
     itype = booking["interview_type"]
     data = json.loads(cand["data"])
     status_key, time_key, interviewer_key = _stage_data_keys(itype)
-    cname = data.get("name", "")
+    cname = field_get(data, "name")
 
     db.execute("DELETE FROM interview_bookings WHERE id=?", (booking["id"],))
-    data[status_key] = "待预约"
-    data[time_key] = ""
-    data[interviewer_key] = ""
+    field_set(data, status_key, "待预约")
+    field_set(data, time_key, "")
+    field_set(data, interviewer_key, "")
     compute_current_stage(data)
-    db.execute("UPDATE candidates SET data=?, updated_at=? WHERE id=?",
-               (json.dumps(data, ensure_ascii=False), now_str(), cand["id"]))
+    update_candidate_row(db, cand["id"], data)
     add_log(user, "update",
             f"{user['display_name']} 取消了「{cname}」的 {booking['start_at']} 面试预约（{get_stage_meta(itype)['label']}）",
             cand["id"], cname, cand["group_id"], module=itype)

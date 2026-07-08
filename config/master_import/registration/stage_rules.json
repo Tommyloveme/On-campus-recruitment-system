@@ -23,7 +23,10 @@
       {"field": "current_step", "op": "icontains", "value": "业务主管"}
     ]}},
     { "priority": 91, "stage": "qualification_interview", "label": "环节-资格面试", "when": {"field": "current_step", "op": "icontains", "value": "资格面试"}},
-    { "priority": 90, "stage": "offer", "label": "Offer已发放", "fields": ["offer_status"], "values": ["已发放"] },
+    { "priority": 90, "stage": "offer", "label": "Offer已发放", "when": { "all": [
+      { "field": "Offer状态", "op": "eq", "value": "已发放" },
+      { "field": "主管面结果", "op": "eq", "value": "通过" }
+    ] } },
     { "priority": 90, "stage": "offer", "label": "Offer已接受待签约", "fields": ["offer_status", "contract_signing_status"], "values": ["已接受", "签约中"] },
     { "priority": 88, "stage": "personality_test", "label": "环节-性格/综合测评", "when": {"any": [
       {"field": "current_step", "op": "icontains", "value": "性格"},
@@ -37,6 +40,23 @@
     { "priority": 82, "stage": "resume_screening", "label": "环节-简历筛选", "when": {"field": "current_step", "op": "icontains", "value": "简历筛选"}},
     { "priority": 80, "stage": "tech_interview", "label": "环节-面试评价", "when": {"field": "current_step", "op": "icontains", "value": "面试"}},
     { "priority": 78, "stage": "salary", "label": "谈薪中", "fields": ["salary_status", "offer_status"], "values": ["谈薪中", "未发放"] },
+    {
+      "priority": 74,
+      "stage": "manager_interview",
+      "label": "主管面未通过不进Offer策略",
+      "when": {
+        "all": [
+          {
+            "any": [
+              { "field": "报批状态", "op": "not_empty" },
+              { "field": "谈薪状态", "op": "not_empty" },
+              { "field": "Offer状态", "op": "not_empty" }
+            ]
+          },
+          { "not": { "field": "主管面结果", "op": "eq", "value": "通过" } }
+        ]
+      }
+    },
     { "priority": 70, "stage": "approval", "label": "报批中", "fields": ["approval_status", "salary_status"], "values": ["审批中", "*"] },
     { "priority": 65, "stage": "approval", "label": "报批已通过", "fields": ["approval_status", "salary_status"], "values": ["已通过", "待谈薪"] },
     { "priority": 60, "stage": "manager_interview", "label": "主管面进行中", "fields": ["manager_interview_status", "approval_status"], "values": ["已预约", "待提交"] },
@@ -51,6 +71,18 @@
     { "priority": 35, "stage": "written_test", "label": "笔试已完成", "fields": ["written_test_status", "personality_test_status"], "values": ["已完成", "待测评"] },
     { "priority": 30, "stage": "qualification", "label": "资审阶段", "fields": ["qualification_status", "written_test_status"], "values": ["待审查", "待预约"] },
     { "priority": 25, "stage": "qualification", "label": "资审通过待笔试", "fields": ["qualification_status", "written_test_status"], "values": ["通过", "待预约"] },
+    {
+      "priority": 22,
+      "stage": "resume_screening",
+      "label": "简历筛选通过(主数据院校模糊匹配示例)",
+      "when": {
+        "all": [
+          { "field": "登记状态", "op": "eq", "value": "已登记", "table": "预处理表" },
+          { "field": "毕业院校", "op": "icontains", "value": "大学", "table": "主数据原始表" },
+          { "field": "简历筛选状态", "op": "eq", "value": "通过" }
+        ]
+      }
+    },
     { "priority": 20, "stage": "resume_screening", "label": "简历筛选", "fields": ["registration_status", "resume_screening_status"], "values": ["已登记", "待筛选"] },
     { "priority": 15, "stage": "resume_screening", "label": "简历筛选通过", "fields": ["registration_status", "resume_screening_status"], "values": ["已登记", "通过"] },
     { "priority": 12, "stage": "registration", "label": "待投递", "fields": ["registration_status"], "values": ["待投递"] },

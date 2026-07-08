@@ -131,20 +131,22 @@ def build_context_resolver(tables, default_table, alias_map=None):
     """构建 resolver。
 
     tables: {表名: 记录dict}；default_table: 缺省表名；
-    alias_map: {中文名/别名: field_key}，字段名先按原名找，找不到再按别名映射。
-    表名也支持中英文别名（预处理表/candidates 等由调用方在 tables 中同名登记）。
+    alias_map: {中文名/别名: field_key}（兼容旧配置）；
+    取值统一经 field_store.field_get，支持 legacy 英文键与中文 storage_key。
     """
+    from campus.db.field_store import field_get
     alias_map = alias_map or {}
 
     def resolver(table, field):
         record = tables.get(table or default_table)
         if record is None:
             raise RuleConfigError(f"未知数据表「{table}」，可用：{'、'.join(tables)}")
-        if field in record:
-            return record[field]
+        val = field_get(record, field, "")
+        if val != "":
+            return val
         mapped = alias_map.get(field)
-        if mapped is not None and mapped in record:
-            return record[mapped]
+        if mapped is not None:
+            return field_get(record, mapped, "")
         return ""
 
     return resolver

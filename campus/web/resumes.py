@@ -11,6 +11,7 @@ from flask import Blueprint, g, jsonify, request, send_file
 from campus.core.logging_util import log, who
 from campus.core.settings import RESUME_DIR
 from campus.db.connection import get_db, now_str
+from campus.db.field_store import field_get
 from campus.services.acl import can_see_candidate
 from campus.services.audit import add_log
 from campus.services.resumes import (
@@ -44,7 +45,7 @@ def api_resume_upload(cid):
     db = get_db()
     db.execute("UPDATE candidates SET resume_file=?, resume_name=?, updated_at=? WHERE id=?",
                (stored, f.filename, now_str(), cid))
-    name = json.loads(row["data"]).get("name", "")
+    name = field_get(json.loads(row["data"]), "name")
     verb = "更新" if row["resume_file"] else "上传"
     add_log(g.user, "update", f"{g.user['display_name']} {verb}了「{name}」的简历（{f.filename}）",
             cid, name, row["group_id"], module="registration")
@@ -64,7 +65,7 @@ def api_resume_download(cid):
     path = os.path.join(RESUME_DIR, row["resume_file"])
     if not os.path.exists(path):
         return jsonify({"error": "简历文件丢失，请重新上传"}), 404
-    name = json.loads(row["data"]).get("name", "")
+    name = field_get(json.loads(row["data"]), "name")
     ext = os.path.splitext(row["resume_name"])[1]
     return send_file(path, as_attachment=True, download_name=f"{name}_{os.path.splitext(row['resume_name'])[0]}{ext}")
 
@@ -91,7 +92,7 @@ def api_resume_preview(cid):
             html = mammoth.convert_to_html(f).value
     except Exception:
         return jsonify({"error": "简历解析失败，请下载原文件查看"}), 500
-    name = json.loads(row["data"]).get("name", "")
+    name = field_get(json.loads(row["data"]), "name")
     return PREVIEW_PAGE.format(title=f"{name} - {row['resume_name']}", content=html)
 
 
@@ -107,7 +108,7 @@ def api_resume_delete(cid):
     db = get_db()
     db.execute("UPDATE candidates SET resume_file=NULL, resume_name=NULL, updated_at=? WHERE id=?",
                (now_str(), cid))
-    name = json.loads(row["data"]).get("name", "")
+    name = field_get(json.loads(row["data"]), "name")
     add_log(g.user, "delete", f"{g.user['display_name']} 删除了「{name}」的简历（{row['resume_name']}）",
             cid, name, row["group_id"], module="registration")
     db.commit()
@@ -134,7 +135,7 @@ def api_resumes_export():
             path = os.path.join(RESUME_DIR, row["resume_file"])
             if not os.path.exists(path):
                 continue
-            name = json.loads(row["data"]).get("name", "未命名")
+            name = field_get(json.loads(row["data"]), "name") or "未命名"
             arcname = f"{name}_{row['resume_name']}"
             if arcname in used_names:
                 arcname = f"{name}_{row['id']}_{row['resume_name']}"

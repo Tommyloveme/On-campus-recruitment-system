@@ -124,18 +124,21 @@ check("含新增流程阶段", {"personality_test", "qualification_interview", "
 check("界面配置下发(每页15条)", cfg["app"]["page_size"] == 15)
 check("含登记与入职阶段", "registration" in cfg["stage_fields"] and "onboarding" in cfg["stage_fields"])
 reg_fields = cfg["stage_fields"]["registration"]
+# 数据库键已中文化：字段 key 为中文 storage_key，legacy_key 保留英文
 check("登记阶段默认按登记时间倒序", cfg.get("stage_table", {}).get("registration", {}).get("default_sort")
-      == {"key": "registration_time", "dir": -1})
+      == {"key": "登记时间", "dir": -1})
 reg_keys = [f["key"] for f in reg_fields if f["visible"]]
-check("登记阶段不含三层部门至入职风险", "dept_level3" not in reg_keys and "onboard_risk" not in reg_keys
-      and "work_location" not in reg_keys and "offer_status" not in reg_keys)
+reg_leg_keys = [f.get("legacy_key") or f["key"] for f in reg_fields if f["visible"]]
+check("登记阶段不含三层部门至入职风险", "三层部门" not in reg_keys and "入职风险" not in reg_keys
+      and "dept_level3" not in reg_leg_keys and "onboard_risk" not in reg_leg_keys
+      and "work_location" not in reg_leg_keys and "offer_status" not in reg_leg_keys)
 check("登记阶段表格列顺序配置",
       cfg.get("stage_table", {}).get("registration", {}).get("column_order")[:2]
-      == ["registration_time", "delivery_time"])
+      == ["登记时间", "投递时间"])
 check("登记阶段默认冻结列数可配置",
       cfg.get("stage_table", {}).get("registration", {}).get("frozen_column_count") == 5)
 onb_fields = cfg["stage_fields"]["onboarding"]
-check("入职阶段含三层部门", any(f["key"] == "dept_level3" and f["visible"] for f in onb_fields))
+check("入职阶段含三层部门", any((f.get("legacy_key") or f["key"]) == "dept_level3" and f["visible"] for f in onb_fields))
 from openpyxl import load_workbook
 req = urllib.request.Request(BASE + "/api/import/template?stage=registration")
 with opener.open(req) as r:
@@ -338,7 +341,8 @@ check("主数据表刷新成功", s == 200 and (r.get("created", 0) + r.get("upd
 s, c_new = call("GET", "/api/candidates?q=" + quote("主表新人"))
 check("主表新人已导入且含简历编号", len(c_new) == 1 and c_new[0]["data"].get("resume_id") == "RS2026001")
 check("主表导入解析投递时间", c_new[0]["data"].get("delivery_time") == "2026-01-01")
-check("主表导入锁定登记字段", "name" in c_new[0]["data"].get("_master_locked_fields", []))
+_locked = c_new[0]["data"].get("_master_locked_fields", [])
+check("主表导入锁定登记字段", "候选人" in _locked or "name" in _locked)
 s, _ = call("PUT", f"/api/candidates/{c_new[0]['id']}", {
     "stage": "registration", "data": {"name": "改名测试"},
 }, expect_error=True)

@@ -8,6 +8,7 @@ from flask import Blueprint, g, jsonify, request
 from campus.core.logging_util import log, who
 from campus.core.stage_config import editable_fields, field_labels, get_stage_meta, validate_stage
 from campus.db.connection import get_db
+from campus.db.field_store import field_get, field_set
 from campus.domain.stage_routing import compute_current_stage
 from campus.services.acl import (
     can_delete_candidate,
@@ -56,7 +57,8 @@ def api_candidates():
     if q:
         result = [c for c in result if any(q in str(v) for v in c["data"].values())]
     if stage_filter:
-        result = [c for c in result if c["data"].get("current_stage") == stage_filter]
+        result = [c for c in result if (c.get("current_stage")
+                  or field_get(c["data"], "current_stage")) == stage_filter]
     log.debug("候选人列表 %s 返回%d条 q=%s stage=%s",
               who(g.user), len(result), q or "-", stage_filter or "-")
     return jsonify(result)
@@ -81,30 +83,35 @@ def api_candidate_create():
     # 共享池：候选人不再归属资源分组
     group_id = None
     fields = editable_fields(stage)
-    data = {f["key"]: str(b.get("data", {}).get(f["key"], "") or "").strip() for f in fields}
-    if not data.get("name"):
+    incoming = b.get("data", {})
+    data = {}
+    for f in fields:
+        raw = incoming.get(f["key"], incoming.get(f.get("legacy_key", ""), ""))
+        data[f["key"]] = str(raw or "").strip()
+    if not field_get(data, "name"):
         return jsonify({"error": "候选人姓名不能为空"}), 400
 
     db = get_db()
     today = datetime.now().strftime("%Y-%m-%d")
     if stage == "registration":
-        if not data.get("registration_time"):
-            data["registration_time"] = today
-        if not data.get("registration_status"):
-            data["registration_status"] = "待投递"
+        if not field_get(data, "registration_time"):
+            field_set(data, "registration_time", today)
+        if not field_get(data, "registration_status"):
+            field_set(data, "registration_status", "待投递")
         data = apply_registration_candidate_defaults(data, g.user)
         missing = validate_registration_manual_create(data)
         if missing:
             return jsonify({"error": f"请填写：{'、'.join(missing)}"}), 400
-        ref_err = validate_registration_user_refs(db, data.get("sourcer"), data.get("interface_person"))
+        ref_err = validate_registration_user_refs(
+            db, field_get(data, "sourcer"), field_get(data, "interface_person"))
         if ref_err:
             return jsonify({"error": ref_err, "code": "user_not_registered"}), 400
         data = apply_registration_employee_fields(db, data)
 
-    phone = normalize_candidate_phone(data.get("phone"))
+    phone = normalize_candidate_phone(field_get(data, "phone"))
     if not phone:
         return jsonify({"error": "电话不能为空，候选人以电话作为唯一标识"}), 400
-    data["phone"] = phone
+    field_set(data, "phone", phone)
     dup = find_candidate_by_phone(db, phone)
     if dup:
         return jsonify(phone_duplicate_payload(db, dup, phone)), 409
@@ -118,10 +125,11 @@ def api_candidate_create():
     record_hub_fields(db, SOURCE_MANUAL, stage, hub_resume_key(data),
                       {k: v for k, v in data.items() if v},
                       field_labels(stage), g.user["display_name"])
-    add_log(g.user, "create", f"{g.user['display_name']} 在{meta['label']}新增了候选人「{data['name']}」",
-            cid, data["name"], module=stage)
+    cand_name = field_get(data, "name")
+    add_log(g.user, "create", f"{g.user['display_name']} 在{meta['label']}新增了候选人「{cand_name}」",
+            cid, cand_name, module=stage)
     db.commit()
-    log.info("新增候选人 %s id=%d name=%s stage=%s phone=%s", who(g.user), cid, data["name"], stage, phone)
+    log.info("新增候选人 %s id=%d name=%s stage=%s phone=%s", who(g.user), cid, cand_name, stage, phone)
     return jsonify({"ok": True, "id": cid})
 
 
@@ -150,22 +158,27 @@ def api_candidate_update(cid):
     fields = editable_fields(stage)
     labels = field_labels(stage)
     new = dict(old)
-    locked = set(old.get("_master_locked_fields") or [])
+    locked = set(field_get(old, "_master_locked_fields") or [])
     changes = []
     changed_keys = []
     blocked = []
     for f in fields:
-        if f["key"] not in incoming:
-            continue
         k = f["key"]
-        nv = str(incoming[k] or "").strip()
-        ov = str(old.get(k, "") or "")
+        leg = f.get("legacy_key") or k
+        if k in incoming:
+            raw = incoming[k]
+        elif leg in incoming:
+            raw = incoming[leg]
+        else:
+            continue
+        nv = str(raw or "").strip()
+        ov = str(field_get(old, k, "") or "")
         if nv == ov:
             continue
-        if k in locked:
+        if k in locked or leg in locked:
             blocked.append(labels.get(k, k))
             continue
-        new[k] = nv
+        field_set(new, k, nv)
         changed_keys.append(k)
         changes.append(f"{labels[k]}：{ov or '空'} → {nv or '空'}")
     if blocked:
@@ -176,12 +189,12 @@ def api_candidate_update(cid):
         }), 400
     if not changes:
         return jsonify({"ok": True, "changed": 0})
-    if not new.get("name"):
+    if not field_get(new, "name"):
         return jsonify({"error": "候选人姓名不能为空"}), 400
-    phone = normalize_candidate_phone(new.get("phone"))
+    phone = normalize_candidate_phone(field_get(new, "phone"))
     if not phone:
         return jsonify({"error": "电话不能为空，候选人以电话作为唯一标识"}), 400
-    new["phone"] = phone
+    field_set(new, "phone", phone)
     dup = find_candidate_by_phone(db, phone, exclude_id=cid)
     if dup:
         if not b.get("merge_on_conflict"):
@@ -190,7 +203,7 @@ def api_candidate_update(cid):
             return jsonify(payload), 409
         # 双手机号同一人：确认合并（主数据侧数据优先，保留主数据侧行）
         merged_id, merged = merge_candidate_rows(db, row, new, dup)
-        name = merged.get("name", "")
+        name = field_get(merged, "name")
         add_log(g.user, "update",
                 f"{g.user['display_name']} 通过修改电话合并了候选人「{name}」的两条记录"
                 f"（保留 #{merged_id}，主数据优先）",
@@ -199,7 +212,8 @@ def api_candidate_update(cid):
         log.info("电话合并 %s keep=%d drop=%d phone=%s", who(g.user), merged_id, cid, phone)
         return jsonify({"ok": True, "merged": True, "id": merged_id})
     if stage == "registration":
-        ref_err = validate_registration_user_refs(db, new.get("sourcer"), new.get("interface_person"))
+        ref_err = validate_registration_user_refs(
+            db, field_get(new, "sourcer"), field_get(new, "interface_person"))
         if ref_err:
             return jsonify({"error": ref_err, "code": "user_not_registered"}), 400
         new = apply_registration_employee_fields(db, new)
@@ -211,14 +225,14 @@ def api_candidate_update(cid):
         update_candidate_row(db, cid, new)
     except PhoneDuplicateError as e:
         return jsonify(e.payload), 409
-    old_phone = normalize_candidate_phone(old.get("phone"))
+    old_phone = normalize_candidate_phone(field_get(old, "phone"))
     if old_phone and old_phone != phone:
         delete_raw_records(db, old_phone)
     record_manual(db, phone, new)
     record_hub_fields(db, SOURCE_MANUAL, stage, hub_resume_key(new),
                       {k: new[k] for k in changed_keys},
                       labels, g.user["display_name"])
-    name = new.get("name") or old.get("name", "")
+    name = field_get(new, "name") or field_get(old, "name")
     add_log(g.user, "update",
             f"{g.user['display_name']} 修改了「{name}」：" + "；".join(changes),
             cid, name, row["group_id"], module=stage)
@@ -238,7 +252,7 @@ def api_candidate_delete(cid):
     if not can_delete_candidate(db, g.user, row):
         log.warning("删除候选人权限拒绝 %s cid=%d", who(g.user), cid)
         return jsonify({"error": "无删除权限（需对候选人当前阶段模块具备写权限）"}), 403
-    name = json.loads(row["data"]).get("name", "")
+    name = field_get(json.loads(row["data"]), "name")
     delete_candidate_row(db, row)
     add_log(g.user, "delete", f"{g.user['display_name']} 删除了候选人「{name}」", cid, name, row["group_id"],
             module=request.args.get("stage") or "registration")
@@ -265,7 +279,7 @@ def api_candidates_batch_delete():
         if not can_delete_candidate(db, g.user, row):
             continue
         delete_candidate_row(db, row)
-        deleted_names.append(json.loads(row["data"]).get("name", ""))
+        deleted_names.append(field_get(json.loads(row["data"]), "name"))
     if not deleted_names:
         return jsonify({"error": "选中的候选人均无删除权限"}), 403
 
@@ -288,7 +302,13 @@ def api_candidate_stage_transition(cid):
     须处于配置的阶段范围内。切换写入 manual_stage，优先于自动判定。
     """
     from campus.core.stage_flow import load_stage_flow
-    from campus.domain.stage_routing import MANUAL_STAGE_KEY, ordered_stage_keys, stage_label_map
+    from campus.domain.stage_routing import (
+        MANUAL_STAGE_KEY,
+        OFFER_STRATEGY_STAGES,
+        manager_interview_passed,
+        ordered_stage_keys,
+        stage_label_map,
+    )
     from campus.services.acl import manual_transition_allowed
 
     if not manual_transition_allowed(g.user):
@@ -306,13 +326,14 @@ def api_candidate_stage_transition(cid):
 
     data = json.loads(row["data"])
     flow = load_stage_flow()
-    current = data.get("current_stage") or "registration"
+    current = field_get(data, "current_stage") or "registration"
     if current not in flow["stages"]:
         return jsonify({"error": f"当前阶段「{current}」不支持手动流转（配置见 config/stage_flow.json）"}), 400
 
     labels = stage_label_map()
     if direction == "auto":
         data.pop(MANUAL_STAGE_KEY, None)
+        data.pop("_手动流程阶段", None)
         detail = "恢复自动判定"
     else:
         order = ordered_stage_keys()
@@ -321,20 +342,25 @@ def api_candidate_stage_transition(cid):
         if idx < 0 or not 0 <= target_idx < len(order):
             return jsonify({"error": "已到流程边界，无法继续流转"}), 400
         target = order[target_idx]
-        data[MANUAL_STAGE_KEY] = target
+        if target in OFFER_STRATEGY_STAGES and not manager_interview_passed(data):
+            return jsonify({
+                "error": "主管面未通过，不可进入 Offer 策略流程（报批/谈薪/Offer/签约）",
+                "code": "manager_interview_required",
+            }), 400
+        field_set(data, MANUAL_STAGE_KEY, target)
         detail = f"{labels.get(current, current)} → {labels.get(target, target)}"
 
     compute_current_stage(data)
     update_candidate_row(db, cid, data)
-    record_manual(db, normalize_candidate_phone(data.get("phone")), data)
-    name = data.get("name", "")
+    record_manual(db, normalize_candidate_phone(field_get(data, "phone")), data)
+    name = field_get(data, "name")
     add_log(g.user, "update",
             f"{g.user['display_name']} 手动流转候选人「{name}」：{detail}",
             cid, name, module=current)
     db.commit()
     log.info("手动流转 %s cid=%d %s", who(g.user), cid, detail)
-    return jsonify({"ok": True, "current_stage": data.get("current_stage"),
-                    "manual_stage": data.get(MANUAL_STAGE_KEY, "")})
+    return jsonify({"ok": True, "current_stage": field_get(data, "current_stage"),
+                    "manual_stage": field_get(data, MANUAL_STAGE_KEY, "")})
 
 
 @bp.post("/api/candidates/recompute-stages")
@@ -347,9 +373,9 @@ def api_recompute_stages():
     n = 0
     for row in rows:
         data = json.loads(row["data"])
-        old = data.get("current_stage")
+        old = field_get(data, "current_stage")
         compute_current_stage(data)
-        if data.get("current_stage") != old:
+        if field_get(data, "current_stage") != old:
             update_candidate_row(db, row["id"], data)
             n += 1
     add_log(g.user, "config", f"{g.user['display_name']} 重算了 {n} 名候选人的当前流程阶段")

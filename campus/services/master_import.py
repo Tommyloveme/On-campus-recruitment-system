@@ -13,6 +13,7 @@ from campus.core.master_import_config import (
     load_master_import_config,
     registration_locked_fields,
 )
+from campus.db.field_store import field_get, field_set, legacy_to_storage, normalize_record
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +69,23 @@ def match_column(col_cfg, header):
 
 
 def excel_header_to_field_key(header, used_keys):
-    """未在映射中配置的 Excel 列：按表头中文转拼音生成 field_key。"""
+    """未在映射中配置的 Excel 列：直接使用表头原文作为字段键。
+
+    中文表头 → 中文键；英文表头保持英文（不做转换）。仅压缩空白并去重。
+    """
+    key = re.sub(r"\s+", "", str(header or "").strip())
+    if not key:
+        key = "未命名列"
+    base, n = key, 1
+    while key in used_keys:
+        key = f"{base}_{n}"
+        n += 1
+    used_keys.add(key)
+    return key
+
+
+def header_to_pinyin_key(header):
+    """历史拼音键算法（仅存量数据迁移用，勿再用于新导入）。"""
     header = (header or "").strip()
     try:
         from pypinyin import lazy_pinyin, Style
@@ -81,11 +98,6 @@ def excel_header_to_field_key(header, used_keys):
         key = "col"
     if key[0].isdigit():
         key = f"col_{key}"
-    base, n = key, 1
-    while key in used_keys:
-        key = f"{base}_{n}"
-        n += 1
-    used_keys.add(key)
     return key
 
 
@@ -208,11 +220,17 @@ def merge_candidate_data(old, incoming, overwrite_empty_only=False):
 
 
 def merge_master_import_data(old, incoming, cfg=None):
-    """主数据写入 DB：锁定字段以导入为准；其余字段可合并不冲突的值。"""
+    """主数据写入 DB：锁定字段以导入为准；其余字段可合并不冲突的值。
+
+    old / incoming 一律先规范化为中文 storage_key；锁定字段列表也以
+    中文键存储（_主数据锁定字段）。
+    """
     cfg = cfg or load_master_import_config()
-    reg_locked = registration_locked_fields(cfg)
-    merged = dict(old)
-    locked = list(old.get("_master_locked_fields") or [])
+    reg_locked = [legacy_to_storage(k) for k in registration_locked_fields(cfg)]
+    merged = normalize_record(dict(old or {}))
+    incoming = normalize_record(dict(incoming or {}))
+    locked = [legacy_to_storage(k)
+              for k in (field_get(merged, "_master_locked_fields") or [])]
 
     for k in reg_locked:
         val = incoming.get(k)
@@ -234,15 +252,16 @@ def merge_master_import_data(old, incoming, cfg=None):
             continue
 
     if locked:
-        merged["_master_locked_fields"] = locked
-        merged["_master_imported"] = True
+        field_set(merged, "_master_locked_fields", locked)
+        field_set(merged, "_master_imported", True)
 
     from campus.services.candidates import delivery_date_from_resume_id
 
-    delivery = delivery_date_from_resume_id(merged.get("resume_id") or incoming.get("resume_id"))
+    delivery = delivery_date_from_resume_id(
+        field_get(merged, "resume_id") or field_get(incoming, "resume_id"))
     if delivery:
-        merged["delivery_time"] = delivery
-    merged["registration_status"] = "已投递"
+        field_set(merged, "delivery_time", delivery)
+    field_set(merged, "registration_status", "已投递")
     return merged
 
 
@@ -319,12 +338,13 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn):
     user_name = user["display_name"] if user else ""
 
     for data in rows_data:
-        phone = normalize_candidate_phone(data.get("phone"))
+        data = normalize_record(dict(data))
+        phone = normalize_candidate_phone(field_get(data, "phone"))
         if not phone:
             skipped += 1
             continue
-        data["phone"] = phone
-        if not data.get("name"):
+        field_set(data, "phone", phone)
+        if not field_get(data, "name"):
             skipped += 1
             continue
 

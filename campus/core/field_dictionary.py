@@ -13,15 +13,20 @@ from campus.core.stage_config import load_stage_fields, load_stages_meta
 
 
 def field_dictionary():
-    """全量字段字典：[{key, label, type, stages:[出现的阶段key], options}]。"""
+    """全量字段字典：[{key, label, type, path, legacy_key, stages, options}]。"""
+    from campus.db.field_store import load_field_registry
+    reg = load_field_registry()
     entries = {}
     order = []
     for stage in load_stages_meta():
         for f in load_stage_fields(stage["key"]):
             key = f["key"]
             if key not in entries:
+                meta = (reg.get("fields") or {}).get(f.get("legacy_key", key), {})
                 entries[key] = {
                     "key": key,
+                    "legacy_key": f.get("legacy_key", key),
+                    "path": f.get("path") or ".".join(meta.get("path") or []),
                     "label": f.get("label", key),
                     "type": f.get("type", "text"),
                     "options": f.get("options") or [],

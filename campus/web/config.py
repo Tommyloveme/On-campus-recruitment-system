@@ -13,8 +13,26 @@ bp = Blueprint("config", __name__)
 @bp.get("/api/field-dictionary")
 @login_required
 def api_field_dictionary():
-    """原始数据预处理表字段字典（键→中文描述，自动汇总自阶段/主数据配置）。"""
+    """原始数据预处理表字段字典（中文 storage_key + 嵌套 path + legacy_key）。"""
     return jsonify({"fields": field_dictionary()})
+
+
+@bp.get("/api/db/schema")
+@login_required
+def api_db_schema():
+    """数据库表结构说明 + 字段嵌套注册表（外部配置用）。"""
+    from campus.db.field_store import load_field_registry, load_table_registry, nested_view
+    reg = load_field_registry()
+    return jsonify({
+        "tables": load_table_registry(),
+        "field_registry": {
+            "version": reg.get("version"),
+            "paths": reg.get("paths"),
+            "fields": reg.get("fields"),
+            "internal_keys": reg.get("internal_keys"),
+        },
+        "nested_example": nested_view({"姓名": "示例", "电话": "13800000000"}),
+    })
 
 
 @bp.get("/api/config")

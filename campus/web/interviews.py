@@ -64,13 +64,14 @@ def api_interview_candidate_by_phone():
     row = find_candidate_by_phone(get_db(), phone)
     if not row:
         return jsonify({"error": f"电话「{phone}」未找到对应候选人", "found": False}), 404
+    from campus.db.field_store import field_get
     data = json.loads(row["data"])
     return jsonify({
         "found": True,
         "id": row["id"],
-        "name": data.get("name") or "",
+        "name": field_get(data, "name") or "",
         "phone": phone,
-        "interview_position": data.get("interview_position") or "",
+        "interview_position": field_get(data, "interview_position") or "",
     })
 
 

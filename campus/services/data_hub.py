@@ -9,6 +9,7 @@
   特殊键「无编号-<手机号>」，待主数据导入补齐简历编号后自然并轨。
 """
 from campus.db.connection import now_str
+from campus.db.field_store import legacy_to_storage
 
 SOURCE_MASTER = "master_import"
 SOURCE_MANUAL = "manual"
@@ -19,10 +20,11 @@ NO_RESUME_PREFIX = "无编号-"
 
 def hub_resume_key(data):
     """总表关联键：优先简历编号；无简历编号的手动候选人 → 无编号-<手机号>。"""
-    rid = str((data or {}).get("resume_id") or "").strip()
+    from campus.db.field_store import field_get
+    rid = str(field_get(data, "resume_id") or "").strip()
     if rid:
         return rid
-    phone = str((data or {}).get("phone") or "").strip()
+    phone = str(field_get(data, "phone") or "").strip()
     return f"{NO_RESUME_PREFIX}{phone}" if phone else ""
 
 
@@ -37,13 +39,14 @@ def record_hub_fields(db, source, tab_key, resume_key, fields,
     for key, value in (fields or {}).items():
         if key.startswith("_"):
             continue
+        sk = legacy_to_storage(key)
         db.execute(
             "INSERT INTO data_hub (source, tab_key, resume_id, field_key, field_label, "
             "value, updated_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?) "
             "ON CONFLICT(source, tab_key, resume_id, field_key) DO UPDATE SET "
             "value=excluded.value, field_label=excluded.field_label, "
             "updated_by=excluded.updated_by, updated_at=excluded.updated_at",
-            (source, tab_key or "", resume_key, key, label_map.get(key, key),
+            (source, tab_key or "", resume_key, sk, label_map.get(key, label_map.get(sk, sk)),
              str(value if value is not None else ""), user_name, now, now),
         )
         n += 1

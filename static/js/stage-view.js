@@ -29,7 +29,9 @@ async function renderStageView(stageKey) {
   const meta = state.stages.find(s => s.key === stageKey);
   const showCalendar = meta.has_interview_calendar;
   const ss = getStageState(stageKey);
-  ss.stageFilter = ss.stageFilter !== false; // 默认仅显示当前流程候选人
+  if (ss.stageFilter === undefined) {
+    ss.stageFilter = stageKey !== "registration";
+  }
 
   const showDashboard = featureAllowed(stageKey, "tab_dashboard");
   const showLogs = featureAllowed(stageKey, "tab_logs");
@@ -100,7 +102,7 @@ async function renderStageList(stageKey) {
       <input type="text" id="cand-search" placeholder="全局搜索：姓名 / 电话 / 部门 / 任意字段…">
       <button class="btn btn-sm" id="btn-clear-filter">清空筛选</button>
       <label class="chk-inline"><input type="checkbox" id="stage-filter-only" ${ss.stageFilter ? "checked" : ""}>
-        仅当前流程</label>
+        ${stageKey === "registration" ? "仅登记阶段" : "仅当前流程"}</label>
       <div class="spacer"></div>
       ${showBatchDelete ? `<button class="btn btn-danger" id="btn-batch-del" disabled>删除选中 (0)</button>` : ""}
       ${showExportExcel ? `<button class="btn" id="btn-export-excel" disabled>导出选中Excel (0)</button>` : ""}

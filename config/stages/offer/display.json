@@ -5,6 +5,7 @@
     { "key": "ui_follow_date", "label": "下次跟进", "format": "date" }
   ],
   "column_order": [
+    "resume_id",
     "name",
     "phone",
     "offer_status",
@@ -15,7 +16,7 @@
   "visible": {
     "name": true,
     "phone": true,
-    "resume_id": false,
+    "resume_id": true,
     "offer_status": true,
     "offer_send_time": true,
     "offer_accept_deadline": true

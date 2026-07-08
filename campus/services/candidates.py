@@ -1,15 +1,60 @@
 # -*- coding: utf-8 -*-
-"""候选人存取：电话唯一性、序列化与展示补充（SQL 收敛于此）。"""
+"""候选人存取：电话唯一性、序列化与展示补充（SQL 收敛于此）。
+
+业务 JSON 使用中文 storage_key（见 campus.db.field_store）；读写统一经 normalize。
+"""
 import json
 import re
 import sqlite3
 from datetime import datetime, timedelta
 
 from campus.db.connection import get_db, now_str
+from campus.db.field_store import (
+    denormalize_record,
+    field_get,
+    field_set,
+    nested_view,
+    normalize_record,
+)
 
 
 def normalize_candidate_phone(phone):
     return str(phone or "").strip()
+
+
+def _prepare_candidate_data(data):
+    """规范化中文键并同步索引字段到 data。"""
+    data = normalize_record(dict(data or {}))
+    phone = normalize_candidate_phone(field_get(data, "phone"))
+    if phone:
+        field_set(data, "phone", phone)
+    rid = str(field_get(data, "resume_id") or "").strip()
+    stage = str(field_get(data, "current_stage") or "registration").strip()
+    if rid:
+        field_set(data, "resume_id", rid)
+    field_set(data, "current_stage", stage or "registration")
+    return data, phone, rid, stage or "registration"
+
+
+def _sync_pipeline(db, cid, stage, manual="", ts=None):
+    ts = ts or now_str()
+    stage = stage or "registration"
+    prev = db.execute(
+        "SELECT current_stage FROM candidate_pipeline WHERE candidate_id=?", (cid,)
+    ).fetchone()
+    db.execute(
+        "INSERT INTO candidate_pipeline (candidate_id, current_stage, manual_stage, updated_at) "
+        "VALUES (?,?,?,?) ON CONFLICT(candidate_id) DO UPDATE SET "
+        "current_stage=excluded.current_stage, manual_stage=excluded.manual_stage, "
+        "updated_at=excluded.updated_at",
+        (cid, stage, manual or "", ts),
+    )
+    # 阶段变化 → 记录进入时间（SLA/停留时长统计依据）
+    if prev is None or prev["current_stage"] != stage:
+        db.execute(
+            "INSERT INTO candidate_stage_history (candidate_id, stage, entered_at) VALUES (?,?,?)",
+            (cid, stage, ts),
+        )
 
 
 def delivery_date_from_resume_id(resume_id):
@@ -59,21 +104,21 @@ def find_candidate_by_phone(db, phone, exclude_id=None):
 
 def phone_duplicate_payload(db, row, phone):
     """电话冲突时的 API 响应体。"""
-    old = json.loads(row["data"])
-    sourcer = (old.get("sourcer") or "").strip()
-    iface = (old.get("interface_person") or "").strip()
-    name = old.get("name") or "—"
+    old = normalize_record(json.loads(row["data"]))
+    sourcer = str(field_get(old, "sourcer") or "").strip()
+    iface = str(field_get(old, "interface_person") or "").strip()
+    name = field_get(old, "name") or "—"
     return {
         "error": f"电话「{phone}」已被候选人「{name}」使用，请使用其他号码",
         "code": "phone_duplicate",
         "existing": {
             "id": row["id"],
-            "name": old.get("name") or "",
+            "name": field_get(old, "name") or "",
             "phone": phone,
             "sourcer": sourcer,
             "interface_person": iface,
-            "sourcer_display": old.get("sourcer_name") or sourcer,
-            "interface_person_display": old.get("interface_person_name") or iface,
+            "sourcer_display": field_get(old, "sourcer_name") or sourcer,
+            "interface_person_display": field_get(old, "interface_person_name") or iface,
         },
     }
 
@@ -85,31 +130,38 @@ class PhoneDuplicateError(Exception):
 
 
 def insert_candidate_row(db, data, group_id=None, ts=None):
-    """写入候选人并同步 phone 列（须保证电话唯一）。"""
+    """写入候选人并同步 phone/resume_id/current_stage 与 pipeline 表。"""
     ts = ts or now_str()
-    phone = normalize_candidate_phone(data.get("phone"))
+    data, phone, rid, stage = _prepare_candidate_data(data)
+    manual = str(field_get(data, "manual_stage") or field_get(data, "_手动流程阶段") or "").strip()
     try:
         cur = db.execute(
-            "INSERT INTO candidates (group_id, data, phone, created_at, updated_at) VALUES (?,?,?,?,?)",
-            (group_id, json.dumps(data, ensure_ascii=False), phone or None, ts, ts),
+            "INSERT INTO candidates (group_id, data, phone, resume_id, current_stage, "
+            "created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
+            (group_id, json.dumps(data, ensure_ascii=False), phone or None, rid or None,
+             stage, ts, ts),
         )
+        cid = cur.lastrowid
+        _sync_pipeline(db, cid, stage, manual, ts)
+        return cid
     except sqlite3.IntegrityError:
         row = find_candidate_by_phone(db, phone)
         if row:
             raise PhoneDuplicateError(phone_duplicate_payload(db, row, phone))
         raise
-    return cur.lastrowid
 
 
 def update_candidate_row(db, cid, data, ts=None):
-    """更新候选人并同步 phone 列（须保证电话唯一）。"""
+    """更新候选人并同步索引列与 pipeline 表。"""
     ts = ts or now_str()
-    phone = normalize_candidate_phone(data.get("phone"))
+    data, phone, rid, stage = _prepare_candidate_data(data)
+    manual = str(field_get(data, "manual_stage") or field_get(data, "_手动流程阶段") or "").strip()
     try:
         db.execute(
-            "UPDATE candidates SET data=?, phone=?, updated_at=? WHERE id=?",
-            (json.dumps(data, ensure_ascii=False), phone or None, ts, cid),
+            "UPDATE candidates SET data=?, phone=?, resume_id=?, current_stage=?, updated_at=? WHERE id=?",
+            (json.dumps(data, ensure_ascii=False), phone or None, rid or None, stage, ts, cid),
         )
+        _sync_pipeline(db, cid, stage, manual, ts)
     except sqlite3.IntegrityError:
         row = find_candidate_by_phone(db, phone, exclude_id=cid)
         if row:
@@ -123,10 +175,11 @@ def delete_candidate_row(db, row):
     from campus.services.resumes import remove_resume_file
     remove_resume_file(row["resume_file"])
     db.execute("DELETE FROM interview_bookings WHERE candidate_id=?", (row["id"],))
+    db.execute("DELETE FROM candidate_pipeline WHERE candidate_id=?", (row["id"],))
     db.execute("DELETE FROM candidates WHERE id=?", (row["id"],))
     phone = row["phone"] if "phone" in row.keys() else None
     if not phone:
-        phone = json.loads(row["data"]).get("phone")
+        phone = field_get(json.loads(row["data"]), "phone")
     delete_raw_records(db, normalize_candidate_phone(phone))
 
 
@@ -142,9 +195,10 @@ def merge_candidate_rows(db, edited_row, edited_data, target_row):
     from campus.services.candidate_pipeline import delete_raw_records, record_manual
     from campus.domain.stage_routing import compute_current_stage
 
-    target_data = json.loads(target_row["data"])
-    edited_master = bool(edited_data.get("_master_imported"))
-    target_master = bool(target_data.get("_master_imported"))
+    target_data = normalize_record(json.loads(target_row["data"]))
+    edited_data = normalize_record(edited_data)
+    edited_master = bool(field_get(edited_data, "_master_imported"))
+    target_master = bool(field_get(target_data, "_master_imported"))
     if edited_master and not target_master:
         keep_row, keep_data = edited_row, edited_data
         drop_row, drop_data = target_row, target_data
@@ -157,8 +211,9 @@ def merge_candidate_rows(db, edited_row, edited_data, target_row):
     for k, v in keep_data.items():
         if k.startswith("_") or str(v or "").strip():
             merged[k] = v
-    final_phone = normalize_candidate_phone(target_row["phone"] or target_data.get("phone"))
-    merged["phone"] = final_phone
+    final_phone = normalize_candidate_phone(
+        target_row["phone"] or field_get(target_data, "phone"))
+    field_set(merged, "phone", final_phone)
     compute_current_stage(merged)
 
     # 简历转移：保留行没有简历而被删行有 → 挪过去
@@ -187,18 +242,24 @@ def merge_candidate_rows(db, edited_row, edited_data, target_row):
 
 
 def candidate_dict(row, group_names=None):
-    data = json.loads(row["data"])
+    data = normalize_record(json.loads(row["data"]))
     gname = (group_names or {}).get(row["group_id"])
-    if gname is None:
+    if gname is None and row["group_id"]:
         r = get_db().execute("SELECT name FROM groups WHERE id=?", (row["group_id"],)).fetchone()
         gname = r["name"] if r else ""
+    keys = row.keys() if hasattr(row, "keys") else []
     return {
         "id": row["id"],
         "group_id": row["group_id"],
-        "group_name": gname,
+        "group_name": gname or "",
         "updated_at": row["updated_at"],
         "resume_name": row["resume_name"],
-        "data": data,
+        "phone": row["phone"] if "phone" in keys else field_get(data, "phone"),
+        "resume_id": row["resume_id"] if "resume_id" in keys else field_get(data, "resume_id"),
+        "current_stage": row["current_stage"] if "current_stage" in keys else field_get(data, "current_stage"),
+        # 双键视图：中文 storage_key 为准，同时附带 legacy 英文键（API 兼容）
+        "data": denormalize_record(data),
+        "data_nested": nested_view(data),
     }
 
 
@@ -207,8 +268,8 @@ def enrich_candidate_employee_displays(db, items):
     usernames = set()
     for c in items:
         d = c["data"]
-        s = (d.get("sourcer") or "").strip()
-        i = (d.get("interface_person") or "").strip()
+        s = str(field_get(d, "sourcer") or "").strip()
+        i = str(field_get(d, "interface_person") or "").strip()
         if s:
             usernames.add(s)
         if i:
@@ -223,8 +284,8 @@ def enrich_candidate_employee_displays(db, items):
     name_map = {r["username"]: r["display_name"] for r in rows}
     for c in items:
         d = c["data"]
-        s = (d.get("sourcer") or "").strip()
-        i = (d.get("interface_person") or "").strip()
+        s = str(field_get(d, "sourcer") or "").strip()
+        i = str(field_get(d, "interface_person") or "").strip()
         c["sourcer_display"] = name_map.get(s, s) if s else ""
         c["interface_person_display"] = name_map.get(i, i) if i else ""
     return items

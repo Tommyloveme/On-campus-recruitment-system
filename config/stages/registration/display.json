@@ -15,6 +15,7 @@
     "major",
     "registration_source",
     "registration_status",
+    "current_stage",
     "registration_remark"
   ],
   "frozen_column_count": 5,
@@ -43,6 +44,7 @@
     "registration_source": true,
     "registration_status": true,
     "registration_remark": true,
+    "current_stage": true,
     "work_location": false,
     "graduation_time": false,
     "current_stage": false,

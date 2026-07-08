@@ -314,51 +314,51 @@ def search_employees_for_registration(db, query, limit=5):
 
 def apply_registration_employee_fields(db, data):
     """根据拓源人/接口人工号写入姓名、部门（保存时解析一次并落库，列表不再实时查用户表）。"""
-    sourcer = (data.get("sourcer") or "").strip()
+    from campus.db.field_store import field_get, field_set, resolve_path
+    sourcer = str(field_get(data, "sourcer") or "").strip()
     if sourcer:
         row = lookup_employee_for_registration(db, sourcer)
         if row:
-            data["sourcer"] = row["username"]
-            data["sourcer_name"] = row["display_name"] or ""
-            data["sourcer_dept"] = user_dept_display(row)
+            field_set(data, "sourcer", row["username"])
+            field_set(data, "sourcer_name", row["display_name"] or "")
+            field_set(data, "sourcer_dept", user_dept_display(row))
     else:
-        data.pop("sourcer_name", None)
-        data.pop("sourcer_dept", None)
-    iface = (data.get("interface_person") or "").strip()
+        data.pop(resolve_path("sourcer_name"), None)
+        data.pop(resolve_path("sourcer_dept"), None)
+    iface = str(field_get(data, "interface_person") or "").strip()
     if iface:
         row = lookup_employee_for_registration(db, iface)
         if row:
-            data["interface_person"] = row["username"]
-            data["interface_person_name"] = row["display_name"] or ""
-            data["interface_dept"] = user_dept_display(row)
+            field_set(data, "interface_person", row["username"])
+            field_set(data, "interface_person_name", row["display_name"] or "")
+            field_set(data, "interface_dept", user_dept_display(row))
     else:
-        data.pop("interface_person_name", None)
-        data.pop("interface_dept", None)
+        data.pop(resolve_path("interface_person_name"), None)
+        data.pop(resolve_path("interface_dept"), None)
     return data
 
 
 def apply_registration_candidate_defaults(data, user):
     """登记阶段新增：隐藏主数据/手填项，部门由工号在保存时解析。"""
-    data.pop("resume_id", None)
-    data.pop("delivery_time", None)
-    data.pop("work_location", None)
-    data.pop("sourcer_dept", None)
-    data.pop("interface_dept", None)
+    from campus.db.field_store import resolve_path
+    for k in ("resume_id", "delivery_time", "work_location", "sourcer_dept", "interface_dept"):
+        data.pop(resolve_path(k), None)
+        data.pop(k, None)
     return data
 
 
 def validate_registration_manual_create(data):
     """登记阶段手动新增：除登记备注外必填；来源为「其他」须填自定义来源。"""
+    from campus.db.field_store import field_get
     labels = {
         "name": "候选人", "phone": "电话", "sourcer": "拓源人（填写工号）",
         "interface_person": "接口人（填写工号）",
         "education": "学历", "school": "毕业院校", "major": "专业",
         "registration_source": "来源渠道",
     }
-    required_keys = list(labels.keys())
-    missing = [labels[k] for k in required_keys if not str(data.get(k) or "").strip()]
-    if data.get("registration_source") == "其他":
-        if not str(data.get("registration_source_custom") or "").strip():
+    missing = [v for k, v in labels.items() if not str(field_get(data, k) or "").strip()]
+    if field_get(data, "registration_source") == "其他":
+        if not str(field_get(data, "registration_source_custom") or "").strip():
             missing.append("自定义简历来源")
     return missing
 

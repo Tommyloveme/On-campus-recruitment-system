@@ -5,6 +5,7 @@ import unittest
 
 from campus.core.master_import_config import load_master_import_config
 from campus.domain.stage_routing import compute_current_stage
+from campus.db.field_store import field_get
 from campus.services.master_import import parse_excel_file
 from campus.services.master_import_store import detect_source_key, filename_matches
 
@@ -35,7 +36,8 @@ class TestMasterImportParse(unittest.TestCase):
         self.assertTrue(str(row.get("phone", "")).isdigit())
         self.assertTrue(str(row.get("current_step", "")).strip())
         compute_current_stage(row, cfg=self.cfg)
-        self.assertIn(row.get("current_stage"), {
+        stage = field_get(row, "current_stage")
+        self.assertIn(stage, {
             "registration", "resume_screening", "tech_interview", "qualification",
             "written_test", "personality_test", "qualification_interview",
             "manager_interview", "approval", "salary", "offer", "contract_signing", "onboarding",

@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "comment": "SQLite 表/列中文说明与解耦分层。SQL 标识符保持英文（工具链兼容），业务层通过 field_store 使用中文键。",
+  "layers": {
+    "identity": "身份与索引（candidates 主表列）",
+    "pipeline": "流程状态（candidate_pipeline 独立表）",
+    "profile": "业务字段（candidates.data JSON，中文键）",
+    "raw_manual": "手动原始快照（candidates_raw_manual）",
+    "raw_master": "主数据原始快照（candidates_raw_master，双命名空间）",
+    "hub": "汇总总表（data_hub，按来源+标签+简历编号+字段路径）",
+    "acl": "权限（module_acl）",
+    "system": "用户/日志/反馈/面试等系统表"
+  },
+  "tables": {
+    "candidates": {
+      "label": "候选人主表",
+      "layer": "identity",
+      "description": "候选人唯一实体。phone/resume_id/current_stage 为索引列；data 为中文键 JSON 业务字段。",
+      "columns": {
+        "id": { "label": "编号", "type": "integer", "description": "自增主键" },
+        "group_id": { "label": "分组编号", "type": "integer", "description": "历史字段，现统一共享池为 NULL" },
+        "phone": { "label": "电话", "type": "text", "description": "唯一标识，与原始表主键一致" },
+        "resume_id": { "label": "简历编号", "type": "text", "description": "从 data 提取的索引列，便于关联" },
+        "current_stage": { "label": "当前流程阶段", "type": "text", "description": "从 pipeline 同步的索引列" },
+        "data": { "label": "业务数据", "type": "json", "description": "中文键 JSON；未映射的导入列可保留英文键" },
+        "resume_file": { "label": "简历文件路径", "type": "text" },
+        "resume_name": { "label": "简历文件名", "type": "text" },
+        "created_at": { "label": "创建时间", "type": "datetime" },
+        "updated_at": { "label": "更新时间", "type": "datetime" }
+      }
+    },
+    "candidate_pipeline": {
+      "label": "候选人流程状态表",
+      "layer": "pipeline",
+      "description": "与业务字段解耦：仅存流程阶段与手动覆盖，避免在 JSON 中反复解析。",
+      "columns": {
+        "candidate_id": { "label": "候选人编号", "type": "integer", "description": "关联 candidates.id" },
+        "current_stage": { "label": "当前阶段", "type": "text", "description": "自动判定或手动流转后的有效阶段 key" },
+        "manual_stage": { "label": "手动指定阶段", "type": "text", "description": "Offer 策略页手动切换写入；非空时优先于规则" },
+        "updated_at": { "label": "更新时间", "type": "datetime" }
+      }
+    },
+    "candidate_stage_history": {
+      "label": "候选人阶段流转历史",
+      "layer": "pipeline",
+      "description": "候选人每次进入新阶段追加一条记录；SLA/停留时长统计（全局总览）以最后一条当前阶段记录的 entered_at 为起点。",
+      "columns": {
+        "id": { "label": "编号", "type": "integer" },
+        "candidate_id": { "label": "候选人编号", "type": "integer", "description": "关联 candidates.id" },
+        "stage": { "label": "阶段", "type": "text" },
+        "entered_at": { "label": "进入时间", "type": "datetime" }
+      }
+    },
+    "candidates_raw_manual": {
+      "label": "手动原始表",
+      "layer": "raw_manual",
+      "description": "页面编辑/手动录入的原始快照，按电话 UPSERT。",
+      "columns": {
+        "phone": { "label": "电话", "type": "text", "description": "主键" },
+        "data": { "label": "原始数据", "type": "json", "description": "中文键 JSON" },
+        "created_at": { "label": "创建时间", "type": "datetime" },
+        "updated_at": { "label": "更新时间", "type": "datetime" }
+      }
+    },
+    "candidates_raw_master": {
+      "label": "主数据原始表",
+      "layer": "raw_master",
+      "description": "主数据 Excel 导入快照。data 含 字段键（中文扁平）与 字段（Excel 中文列名）双命名空间。",
+      "columns": {
+        "phone": { "label": "电话", "type": "text", "description": "主键" },
+        "data": { "label": "原始数据", "type": "json", "description": "见 record_master 双命名空间结构" },
+        "created_at": { "label": "创建时间", "type": "datetime" },
+        "updated_at": { "label": "更新时间", "type": "datetime" }
+      }
+    },
+    "data_hub": {
+      "label": "数据汇总总表",
+      "layer": "hub",
+      "description": "按 来源×子标签×简历编号×字段路径 汇总各渠道字段值。",
+      "columns": {
+        "id": { "label": "编号", "type": "integer" },
+        "source": { "label": "数据来源", "type": "text", "description": "master_import / manual / ui" },
+        "tab_key": { "label": "子标签", "type": "text", "description": "阶段页面 key" },
+        "resume_id": { "label": "简历编号", "type": "text" },
+        "field_key": { "label": "字段路径", "type": "text", "description": "中文 storage_key 或嵌套路径" },
+        "field_label": { "label": "字段标签", "type": "text" },
+        "value": { "label": "字段值", "type": "text" },
+        "updated_by": { "label": "更新人", "type": "text" },
+        "created_at": { "label": "创建时间", "type": "datetime" },
+        "updated_at": { "label": "更新时间", "type": "datetime" }
+      }
+    },
+    "users": {
+      "label": "用户表",
+      "layer": "system",
+      "description": "登录账号与附属信息。",
+      "columns": {
+        "id": { "label": "编号", "type": "integer" },
+        "username": { "label": "工号", "type": "text" },
+        "display_name": { "label": "姓名", "type": "text" },
+        "password_hash": { "label": "密码哈希", "type": "text" },
+        "role": { "label": "角色", "type": "text" },
+        "department": { "label": "部门", "type": "text" },
+        "extra": { "label": "扩展信息", "type": "json" },
+        "created_at": { "label": "创建时间", "type": "datetime" }
+      }
+    },
+    "module_acl": {
+      "label": "模块权限表",
+      "layer": "acl",
+      "description": "用户×模块的 v/r/w/m 与细粒度 features。",
+      "columns": {
+        "subject_type": { "label": "主体类型", "type": "text" },
+        "subject_id": { "label": "主体编号", "type": "integer" },
+        "module_key": { "label": "模块键", "type": "text" },
+        "perm_visibility": { "label": "可见", "type": "integer" },
+        "perm_read": { "label": "读", "type": "integer" },
+        "perm_write": { "label": "写", "type": "integer" },
+        "perm_manage": { "label": "管理", "type": "integer" },
+        "perm_features": { "label": "细粒度特性", "type": "json" }
+      }
+    }
+  }
+}

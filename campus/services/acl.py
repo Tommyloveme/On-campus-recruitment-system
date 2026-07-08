@@ -66,9 +66,13 @@ def is_admin(user):
 # ---- 候选人共享池可见性 / 编辑 / 删除 -------------------------------------
 
 def _candidate_current_stage(row):
+    from campus.db.field_store import field_get
+    keys = row.keys() if hasattr(row, "keys") else []
+    if "current_stage" in keys and row["current_stage"]:
+        return row["current_stage"]
     try:
         data = json.loads(row["data"]) if isinstance(row["data"], str) else row["data"]
-        return (data or {}).get("current_stage")
+        return field_get(data or {}, "current_stage") or None
     except (TypeError, json.JSONDecodeError):
         return None
 

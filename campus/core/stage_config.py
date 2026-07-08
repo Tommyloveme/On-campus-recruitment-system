@@ -81,12 +81,13 @@ def load_stage_table_config(stage_key):
             "label": str(c.get("label") or c["key"]),
             "format": c.get("format", "text"),
         })
+    from campus.db.field_store import legacy_to_storage
     return {
-        "column_order": list(display.get("column_order") or []),
+        "column_order": [legacy_to_storage(k) for k in (display.get("column_order") or [])],
         "frozen_column_count": int(display.get("frozen_column_count") or 0),
         "ui_columns": ui_columns,
         "default_sort": {
-            "key": default_sort.get("key", ""),
+            "key": legacy_to_storage(default_sort.get("key", "")),
             "dir": -1 if str(sort_dir).lower() in ("desc", "descending", "-1") else 1,
         } if default_sort.get("key") else None,
     }
@@ -132,6 +133,7 @@ def _apply_registration_hidden_fields(fields, display=None):
 
 def _apply_display_policy(fields, display, stage_key):
     """按 display.json 的 visible/editable 白名单覆盖；未列出默认不可见、不可编辑。"""
+    from campus.db.field_store import legacy_to_storage
     visible_map = display.get("visible")
     editable_map = display.get("editable")
     has_policy = visible_map is not None or editable_map is not None
@@ -141,11 +143,15 @@ def _apply_display_policy(fields, display, stage_key):
             field["editable"] = False
         return fields
     for field in fields:
+        leg = field.get("legacy_key") or field["key"]
         k = field["key"]
+        sk = legacy_to_storage(leg)
         if visible_map is not None:
-            field["visible"] = bool(visible_map.get(k, False))
+            vis = visible_map.get(leg, visible_map.get(sk, visible_map.get(k, False)))
+            field["visible"] = bool(vis)
         if editable_map is not None:
-            field["editable"] = bool(editable_map.get(k, False))
+            ed = editable_map.get(leg, editable_map.get(sk, editable_map.get(k, False)))
+            field["editable"] = bool(ed)
         elif visible_map is not None:
             field["editable"] = False
     return fields
@@ -182,6 +188,19 @@ def load_stage_fields(stage_key, group_id=None):
 
     if stage_key == "registration":
         fields = _apply_registration_hidden_fields(fields, display)
+    return _apply_storage_keys(fields)
+
+
+def _apply_storage_keys(fields):
+    """字段 key 转为数据库中文 storage_key，并附带 legacy_key / path 供配置引用。"""
+    from campus.db.field_store import legacy_to_storage, load_field_registry
+    reg = load_field_registry()
+    for f in fields:
+        leg = f.get("key") or ""
+        f["legacy_key"] = leg
+        meta = (reg.get("fields") or {}).get(leg, {})
+        f["path"] = ".".join(meta.get("path") or [])
+        f["key"] = legacy_to_storage(leg)
     return fields
 
 

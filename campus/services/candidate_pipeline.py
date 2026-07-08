@@ -19,6 +19,7 @@
 import json
 
 from campus.db.connection import now_str
+from campus.db.field_store import normalize_record
 
 #: 内部簿记键（不属于原始数据，不进 raw 表）
 _INTERNAL_PREFIX = "_"
@@ -45,7 +46,7 @@ def _load_raw(db, table, phone):
 def record_manual(db, phone, data, ts=None):
     """记录一次手动录入/编辑的结果快照到手动原始表。"""
     if phone:
-        _upsert_raw(db, "candidates_raw_manual", phone, _clean(data), ts)
+        _upsert_raw(db, "candidates_raw_manual", phone, normalize_record(_clean(data)), ts)
 
 
 def record_master(db, phone, data, labels=None, ts=None):
@@ -57,7 +58,7 @@ def record_master(db, phone, data, labels=None, ts=None):
     """
     if not phone:
         return
-    fields = _clean(data)
+    fields = normalize_record(_clean(data))
     if labels is None:
         from campus.core.master_import_config import (
             load_master_import_config,
@@ -70,15 +71,16 @@ def record_master(db, phone, data, labels=None, ts=None):
             label_map = {}
         labels = {label_map.get(k, k): v for k, v in fields.items()}
     _upsert_raw(db, "candidates_raw_master", phone,
-                {"fields": fields, "字段": labels}, ts)
+                {"字段键": fields, "字段": labels}, ts)
 
 
 def _master_fields(master):
-    """主数据原始表行 → 英文键 dict（兼容双命名空间与历史扁平结构）。"""
+    """主数据原始表行 → 中文键 dict（兼容 字段键/fields/历史扁平结构）。"""
     if master is None:
         return None
-    if "fields" in master and isinstance(master["fields"], dict):
-        return master["fields"]
+    for ns in ("字段键", "fields"):
+        if ns in master and isinstance(master[ns], dict):
+            return master[ns]
     return master
 
 

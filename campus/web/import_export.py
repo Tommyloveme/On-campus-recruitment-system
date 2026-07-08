@@ -81,6 +81,8 @@ def api_import():
     if not rows:
         return jsonify({"error": "Excel内容为空"}), 400
 
+    from campus.db.field_store import field_get, field_set, resolve_path
+
     fields = importable_fields(stage)
     header = [str(h).strip() if h is not None else "" for h in rows[0]]
     col_map = {}
@@ -89,7 +91,8 @@ def api_import():
             if match_import_header(f, h):
                 col_map[idx] = f["key"]
                 break
-    if "name" not in col_map.values():
+    name_key = resolve_path("name")
+    if name_key not in col_map.values() and "name" not in col_map.values():
         return jsonify({"error": "Excel中未找到“候选人”列，请参考导入模板"}), 400
     log.debug("Excel导入列映射 %s stage=%s cols=%s", who(g.user), stage, col_map)
 
@@ -115,14 +118,14 @@ def api_import():
         for idx, key in col_map.items():
             if idx < len(raw):
                 data[key] = cell_str(raw[idx])
-        if not data.get("name"):
+        if not field_get(data, "name"):
             skipped += 1
             continue
-        phone = normalize_candidate_phone(data.get("phone"))
+        phone = normalize_candidate_phone(field_get(data, "phone"))
         if not phone:
             skipped += 1
             continue
-        data["phone"] = phone
+        field_set(data, "phone", phone)
         compute_current_stage(data)
         match = by_phone.get(phone)
         if match:

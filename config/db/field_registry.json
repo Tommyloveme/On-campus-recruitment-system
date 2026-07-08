@@ -1,0 +1,1321 @@
+{
+  "version": 1,
+  "comment": "字段注册表：legacy_key 为历史英文键，storage_key 为数据库 JSON 中文键，path 为嵌套配置路径。",
+  "fields": {
+    "resume_id": {
+      "legacy_key": "resume_id",
+      "storage_key": "简历编号",
+      "label": "简历编号",
+      "path": [
+        "候选人",
+        "基本信息",
+        "简历编号"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "name": {
+      "legacy_key": "name",
+      "storage_key": "候选人",
+      "label": "候选人",
+      "path": [
+        "候选人",
+        "基本信息",
+        "候选人"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "phone": {
+      "legacy_key": "phone",
+      "storage_key": "电话",
+      "label": "电话",
+      "path": [
+        "候选人",
+        "基本信息",
+        "电话"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "sourcer": {
+      "legacy_key": "sourcer",
+      "storage_key": "拓源人",
+      "label": "拓源人",
+      "path": [
+        "候选人",
+        "登记拓源",
+        "拓源人"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "sourcer_dept": {
+      "legacy_key": "sourcer_dept",
+      "storage_key": "拓源人部门",
+      "label": "拓源人部门",
+      "path": [
+        "候选人",
+        "登记拓源",
+        "拓源人部门"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "interface_person": {
+      "legacy_key": "interface_person",
+      "storage_key": "接口人",
+      "label": "接口人",
+      "path": [
+        "候选人",
+        "登记拓源",
+        "接口人"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "interface_dept": {
+      "legacy_key": "interface_dept",
+      "storage_key": "接口人部门",
+      "label": "接口人部门",
+      "path": [
+        "候选人",
+        "登记拓源",
+        "接口人部门"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "education": {
+      "legacy_key": "education",
+      "storage_key": "学历",
+      "label": "学历",
+      "path": [
+        "候选人",
+        "基本信息",
+        "学历"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "school": {
+      "legacy_key": "school",
+      "storage_key": "毕业院校",
+      "label": "毕业院校",
+      "path": [
+        "候选人",
+        "基本信息",
+        "毕业院校"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "major": {
+      "legacy_key": "major",
+      "storage_key": "专业",
+      "label": "专业",
+      "path": [
+        "候选人",
+        "基本信息",
+        "专业"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "current_stage": {
+      "legacy_key": "current_stage",
+      "storage_key": "当前流程",
+      "label": "当前流程",
+      "path": [
+        "候选人",
+        "流程状态",
+        "当前流程"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "registration_source": {
+      "legacy_key": "registration_source",
+      "storage_key": "来源渠道",
+      "label": "来源渠道",
+      "path": [
+        "候选人",
+        "登记拓源",
+        "来源渠道"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "registration_source_custom": {
+      "legacy_key": "registration_source_custom",
+      "storage_key": "自定义简历来源",
+      "label": "自定义简历来源",
+      "path": [
+        "候选人",
+        "登记拓源",
+        "自定义简历来源"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "registration_status": {
+      "legacy_key": "registration_status",
+      "storage_key": "登记状态",
+      "label": "登记状态",
+      "path": [
+        "候选人",
+        "流程状态",
+        "登记状态"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "registration_time": {
+      "legacy_key": "registration_time",
+      "storage_key": "登记时间",
+      "label": "登记时间",
+      "path": [
+        "候选人",
+        "登记拓源",
+        "登记时间"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "delivery_time": {
+      "legacy_key": "delivery_time",
+      "storage_key": "投递时间",
+      "label": "投递时间",
+      "path": [
+        "候选人",
+        "登记拓源",
+        "投递时间"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "registration_remark": {
+      "legacy_key": "registration_remark",
+      "storage_key": "登记备注",
+      "label": "登记备注",
+      "path": [
+        "候选人",
+        "登记拓源",
+        "登记备注"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "resume_screening_status": {
+      "legacy_key": "resume_screening_status",
+      "storage_key": "简历筛选状态",
+      "label": "简历筛选状态",
+      "path": [
+        "候选人",
+        "流程状态",
+        "简历筛选状态"
+      ],
+      "stages": [
+        "resume_screening"
+      ]
+    },
+    "resume_screening_reviewer": {
+      "legacy_key": "resume_screening_reviewer",
+      "storage_key": "筛选人",
+      "label": "筛选人",
+      "path": [
+        "候选人",
+        "扩展",
+        "筛选人"
+      ],
+      "stages": [
+        "resume_screening"
+      ]
+    },
+    "resume_screening_time": {
+      "legacy_key": "resume_screening_time",
+      "storage_key": "筛选时间",
+      "label": "筛选时间",
+      "path": [
+        "候选人",
+        "扩展",
+        "筛选时间"
+      ],
+      "stages": [
+        "resume_screening"
+      ]
+    },
+    "resume_screening_remark": {
+      "legacy_key": "resume_screening_remark",
+      "storage_key": "筛选备注",
+      "label": "筛选备注",
+      "path": [
+        "候选人",
+        "扩展",
+        "筛选备注"
+      ],
+      "stages": [
+        "resume_screening"
+      ]
+    },
+    "qualification_status": {
+      "legacy_key": "qualification_status",
+      "storage_key": "资审状态",
+      "label": "资审状态",
+      "path": [
+        "候选人",
+        "流程状态",
+        "资审状态"
+      ],
+      "stages": [
+        "qualification"
+      ]
+    },
+    "qualification_reviewer": {
+      "legacy_key": "qualification_reviewer",
+      "storage_key": "审查人",
+      "label": "审查人",
+      "path": [
+        "候选人",
+        "扩展",
+        "审查人"
+      ],
+      "stages": [
+        "qualification"
+      ]
+    },
+    "qualification_time": {
+      "legacy_key": "qualification_time",
+      "storage_key": "审查时间",
+      "label": "审查时间",
+      "path": [
+        "候选人",
+        "扩展",
+        "审查时间"
+      ],
+      "stages": [
+        "qualification"
+      ]
+    },
+    "qualification_remark": {
+      "legacy_key": "qualification_remark",
+      "storage_key": "资审备注",
+      "label": "资审备注",
+      "path": [
+        "候选人",
+        "扩展",
+        "资审备注"
+      ],
+      "stages": [
+        "qualification"
+      ]
+    },
+    "written_test_book_time": {
+      "legacy_key": "written_test_book_time",
+      "storage_key": "笔试预约时间",
+      "label": "笔试预约时间",
+      "path": [
+        "候选人",
+        "面试测评",
+        "笔试预约时间"
+      ],
+      "stages": [
+        "written_test"
+      ]
+    },
+    "written_test_time": {
+      "legacy_key": "written_test_time",
+      "storage_key": "笔试时间",
+      "label": "笔试时间",
+      "path": [
+        "候选人",
+        "面试测评",
+        "笔试时间"
+      ],
+      "stages": [
+        "written_test"
+      ]
+    },
+    "written_test_location": {
+      "legacy_key": "written_test_location",
+      "storage_key": "笔试地点",
+      "label": "笔试地点",
+      "path": [
+        "候选人",
+        "面试测评",
+        "笔试地点"
+      ],
+      "stages": [
+        "written_test"
+      ]
+    },
+    "written_test_status": {
+      "legacy_key": "written_test_status",
+      "storage_key": "笔试状态",
+      "label": "笔试状态",
+      "path": [
+        "候选人",
+        "流程状态",
+        "笔试状态"
+      ],
+      "stages": [
+        "written_test"
+      ]
+    },
+    "written_test_score": {
+      "legacy_key": "written_test_score",
+      "storage_key": "笔试成绩",
+      "label": "笔试成绩",
+      "path": [
+        "候选人",
+        "面试测评",
+        "笔试成绩"
+      ],
+      "stages": [
+        "written_test"
+      ]
+    },
+    "personality_test_book_time": {
+      "legacy_key": "personality_test_book_time",
+      "storage_key": "测评预约时间",
+      "label": "测评预约时间",
+      "path": [
+        "候选人",
+        "面试测评",
+        "测评预约时间"
+      ],
+      "stages": [
+        "personality_test"
+      ]
+    },
+    "personality_test_time": {
+      "legacy_key": "personality_test_time",
+      "storage_key": "测评完成时间",
+      "label": "测评完成时间",
+      "path": [
+        "候选人",
+        "面试测评",
+        "测评完成时间"
+      ],
+      "stages": [
+        "personality_test"
+      ]
+    },
+    "personality_test_status": {
+      "legacy_key": "personality_test_status",
+      "storage_key": "性格测评状态",
+      "label": "性格测评状态",
+      "path": [
+        "候选人",
+        "流程状态",
+        "性格测评状态"
+      ],
+      "stages": [
+        "personality_test"
+      ]
+    },
+    "personality_test_result": {
+      "legacy_key": "personality_test_result",
+      "storage_key": "测评结果",
+      "label": "测评结果",
+      "path": [
+        "候选人",
+        "流程状态",
+        "测评结果"
+      ],
+      "stages": [
+        "personality_test"
+      ]
+    },
+    "personality_test_remark": {
+      "legacy_key": "personality_test_remark",
+      "storage_key": "测评备注",
+      "label": "测评备注",
+      "path": [
+        "候选人",
+        "面试测评",
+        "测评备注"
+      ],
+      "stages": [
+        "personality_test"
+      ]
+    },
+    "qualification_interview_book_time": {
+      "legacy_key": "qualification_interview_book_time",
+      "storage_key": "资格面试预约时间",
+      "label": "资格面试预约时间",
+      "path": [
+        "候选人",
+        "面试测评",
+        "资格面试预约时间"
+      ],
+      "stages": [
+        "qualification_interview"
+      ]
+    },
+    "qualification_interview_time": {
+      "legacy_key": "qualification_interview_time",
+      "storage_key": "资格面试时间",
+      "label": "资格面试时间",
+      "path": [
+        "候选人",
+        "面试测评",
+        "资格面试时间"
+      ],
+      "stages": [
+        "qualification_interview"
+      ]
+    },
+    "qualification_interviewer": {
+      "legacy_key": "qualification_interviewer",
+      "storage_key": "资格面试官",
+      "label": "资格面试官",
+      "path": [
+        "候选人",
+        "面试测评",
+        "资格面试官"
+      ],
+      "stages": [
+        "qualification_interview"
+      ]
+    },
+    "qualification_interview_status": {
+      "legacy_key": "qualification_interview_status",
+      "storage_key": "资格面试状态",
+      "label": "资格面试状态",
+      "path": [
+        "候选人",
+        "流程状态",
+        "资格面试状态"
+      ],
+      "stages": [
+        "qualification_interview"
+      ]
+    },
+    "qualification_interview_result": {
+      "legacy_key": "qualification_interview_result",
+      "storage_key": "资格面试结果",
+      "label": "资格面试结果",
+      "path": [
+        "候选人",
+        "流程状态",
+        "资格面试结果"
+      ],
+      "stages": [
+        "qualification_interview"
+      ]
+    },
+    "qualification_interview_remark": {
+      "legacy_key": "qualification_interview_remark",
+      "storage_key": "资格面试备注",
+      "label": "资格面试备注",
+      "path": [
+        "候选人",
+        "面试测评",
+        "资格面试备注"
+      ],
+      "stages": [
+        "qualification_interview"
+      ]
+    },
+    "interview_position": {
+      "legacy_key": "interview_position",
+      "storage_key": "待面试岗位",
+      "label": "待面试岗位",
+      "path": [
+        "候选人",
+        "面试测评",
+        "待面试岗位"
+      ],
+      "stages": [
+        "tech_interview"
+      ]
+    },
+    "tech_interview_book_time": {
+      "legacy_key": "tech_interview_book_time",
+      "storage_key": "技术面预约时间",
+      "label": "技术面预约时间",
+      "path": [
+        "候选人",
+        "面试测评",
+        "技术面预约时间"
+      ],
+      "stages": [
+        "tech_interview"
+      ]
+    },
+    "tech_interview_time": {
+      "legacy_key": "tech_interview_time",
+      "storage_key": "技术面时间",
+      "label": "技术面时间",
+      "path": [
+        "候选人",
+        "面试测评",
+        "技术面时间"
+      ],
+      "stages": [
+        "tech_interview"
+      ]
+    },
+    "tech_interviewer": {
+      "legacy_key": "tech_interviewer",
+      "storage_key": "面试官",
+      "label": "面试官",
+      "path": [
+        "候选人",
+        "面试测评",
+        "面试官"
+      ],
+      "stages": [
+        "tech_interview"
+      ]
+    },
+    "tech_interview_status": {
+      "legacy_key": "tech_interview_status",
+      "storage_key": "技术面状态",
+      "label": "技术面状态",
+      "path": [
+        "候选人",
+        "流程状态",
+        "技术面状态"
+      ],
+      "stages": [
+        "tech_interview"
+      ]
+    },
+    "tech_interview_result": {
+      "legacy_key": "tech_interview_result",
+      "storage_key": "技术面结果",
+      "label": "技术面结果",
+      "path": [
+        "候选人",
+        "流程状态",
+        "技术面结果"
+      ],
+      "stages": [
+        "tech_interview"
+      ]
+    },
+    "tech_interview_score": {
+      "legacy_key": "tech_interview_score",
+      "storage_key": "技术面评分",
+      "label": "技术面评分",
+      "path": [
+        "候选人",
+        "面试测评",
+        "技术面评分"
+      ],
+      "stages": [
+        "tech_interview"
+      ]
+    },
+    "manager_interview_book_time": {
+      "legacy_key": "manager_interview_book_time",
+      "storage_key": "主管面预约时间",
+      "label": "主管面预约时间",
+      "path": [
+        "候选人",
+        "面试测评",
+        "主管面预约时间"
+      ],
+      "stages": [
+        "manager_interview"
+      ]
+    },
+    "manager_interview_time": {
+      "legacy_key": "manager_interview_time",
+      "storage_key": "主管面时间",
+      "label": "主管面时间",
+      "path": [
+        "候选人",
+        "面试测评",
+        "主管面时间"
+      ],
+      "stages": [
+        "manager_interview"
+      ]
+    },
+    "manager_interviewer": {
+      "legacy_key": "manager_interviewer",
+      "storage_key": "主管面试官",
+      "label": "主管面试官",
+      "path": [
+        "候选人",
+        "面试测评",
+        "主管面试官"
+      ],
+      "stages": [
+        "manager_interview"
+      ]
+    },
+    "manager_interview_status": {
+      "legacy_key": "manager_interview_status",
+      "storage_key": "主管面状态",
+      "label": "主管面状态",
+      "path": [
+        "候选人",
+        "流程状态",
+        "主管面状态"
+      ],
+      "stages": [
+        "manager_interview"
+      ]
+    },
+    "manager_interview_result": {
+      "legacy_key": "manager_interview_result",
+      "storage_key": "主管面结果",
+      "label": "主管面结果",
+      "path": [
+        "候选人",
+        "流程状态",
+        "主管面结果"
+      ],
+      "stages": [
+        "manager_interview"
+      ]
+    },
+    "approval_status": {
+      "legacy_key": "approval_status",
+      "storage_key": "报批状态",
+      "label": "报批状态",
+      "path": [
+        "候选人",
+        "流程状态",
+        "报批状态"
+      ],
+      "stages": [
+        "approval"
+      ]
+    },
+    "approval_submit_time": {
+      "legacy_key": "approval_submit_time",
+      "storage_key": "提交时间",
+      "label": "提交时间",
+      "path": [
+        "候选人",
+        "扩展",
+        "提交时间"
+      ],
+      "stages": [
+        "approval"
+      ]
+    },
+    "approval_pass_time": {
+      "legacy_key": "approval_pass_time",
+      "storage_key": "通过时间",
+      "label": "通过时间",
+      "path": [
+        "候选人",
+        "扩展",
+        "通过时间"
+      ],
+      "stages": [
+        "approval"
+      ]
+    },
+    "approval_remark": {
+      "legacy_key": "approval_remark",
+      "storage_key": "报批备注",
+      "label": "报批备注",
+      "path": [
+        "候选人",
+        "扩展",
+        "报批备注"
+      ],
+      "stages": [
+        "approval"
+      ]
+    },
+    "salary_status": {
+      "legacy_key": "salary_status",
+      "storage_key": "谈薪状态",
+      "label": "谈薪状态",
+      "path": [
+        "候选人",
+        "流程状态",
+        "谈薪状态"
+      ],
+      "stages": [
+        "salary"
+      ]
+    },
+    "expected_salary": {
+      "legacy_key": "expected_salary",
+      "storage_key": "期望薪资",
+      "label": "期望薪资",
+      "path": [
+        "候选人",
+        "扩展",
+        "期望薪资"
+      ],
+      "stages": [
+        "salary"
+      ]
+    },
+    "offered_salary": {
+      "legacy_key": "offered_salary",
+      "storage_key": "Offer薪资",
+      "label": "Offer薪资",
+      "path": [
+        "候选人",
+        "Offer签约",
+        "Offer薪资"
+      ],
+      "stages": [
+        "salary"
+      ]
+    },
+    "salary_negotiation_time": {
+      "legacy_key": "salary_negotiation_time",
+      "storage_key": "谈薪时间",
+      "label": "谈薪时间",
+      "path": [
+        "候选人",
+        "扩展",
+        "谈薪时间"
+      ],
+      "stages": [
+        "salary"
+      ]
+    },
+    "salary_remark": {
+      "legacy_key": "salary_remark",
+      "storage_key": "谈薪备注",
+      "label": "谈薪备注",
+      "path": [
+        "候选人",
+        "扩展",
+        "谈薪备注"
+      ],
+      "stages": [
+        "salary"
+      ]
+    },
+    "offer_status": {
+      "legacy_key": "offer_status",
+      "storage_key": "Offer状态",
+      "label": "Offer状态",
+      "path": [
+        "候选人",
+        "流程状态",
+        "Offer状态"
+      ],
+      "stages": [
+        "offer"
+      ]
+    },
+    "offer_send_time": {
+      "legacy_key": "offer_send_time",
+      "storage_key": "Offer发放时间",
+      "label": "Offer发放时间",
+      "path": [
+        "候选人",
+        "Offer签约",
+        "Offer发放时间"
+      ],
+      "stages": [
+        "offer"
+      ]
+    },
+    "offer_accept_deadline": {
+      "legacy_key": "offer_accept_deadline",
+      "storage_key": "接受截止",
+      "label": "接受截止",
+      "path": [
+        "候选人",
+        "Offer签约",
+        "接受截止"
+      ],
+      "stages": [
+        "offer"
+      ]
+    },
+    "offer_remark": {
+      "legacy_key": "offer_remark",
+      "storage_key": "Offer备注",
+      "label": "Offer备注",
+      "path": [
+        "候选人",
+        "Offer签约",
+        "Offer备注"
+      ],
+      "stages": [
+        "offer"
+      ]
+    },
+    "contract_signing_status": {
+      "legacy_key": "contract_signing_status",
+      "storage_key": "签约情况状态",
+      "label": "签约情况状态",
+      "path": [
+        "候选人",
+        "流程状态",
+        "签约情况状态"
+      ],
+      "stages": [
+        "contract_signing"
+      ]
+    },
+    "contract_signing_time": {
+      "legacy_key": "contract_signing_time",
+      "storage_key": "签约时间",
+      "label": "签约时间",
+      "path": [
+        "候选人",
+        "扩展",
+        "签约时间"
+      ],
+      "stages": [
+        "contract_signing"
+      ]
+    },
+    "contract_signing_remark": {
+      "legacy_key": "contract_signing_remark",
+      "storage_key": "签约备注",
+      "label": "签约备注",
+      "path": [
+        "候选人",
+        "扩展",
+        "签约备注"
+      ],
+      "stages": [
+        "contract_signing"
+      ]
+    },
+    "dept_level3": {
+      "legacy_key": "dept_level3",
+      "storage_key": "三层部门",
+      "label": "三层部门",
+      "path": [
+        "候选人",
+        "入职",
+        "三层部门"
+      ],
+      "stages": [
+        "onboarding"
+      ]
+    },
+    "sign_status": {
+      "legacy_key": "sign_status",
+      "storage_key": "签约状态",
+      "label": "签约状态",
+      "path": [
+        "候选人",
+        "流程状态",
+        "签约状态"
+      ],
+      "stages": [
+        "onboarding"
+      ]
+    },
+    "expected_onboard_time": {
+      "legacy_key": "expected_onboard_time",
+      "storage_key": "预计入职时间",
+      "label": "预计入职时间",
+      "path": [
+        "候选人",
+        "入职",
+        "预计入职时间"
+      ],
+      "stages": [
+        "onboarding"
+      ]
+    },
+    "physical_exam_time": {
+      "legacy_key": "physical_exam_time",
+      "storage_key": "预约体检时间",
+      "label": "预约体检时间",
+      "path": [
+        "候选人",
+        "扩展",
+        "预约体检时间"
+      ],
+      "stages": [
+        "onboarding"
+      ]
+    },
+    "physical_exam_done": {
+      "legacy_key": "physical_exam_done",
+      "storage_key": "是否体检",
+      "label": "是否体检",
+      "path": [
+        "候选人",
+        "扩展",
+        "是否体检"
+      ],
+      "stages": [
+        "onboarding"
+      ]
+    },
+    "onboard_booked": {
+      "legacy_key": "onboard_booked",
+      "storage_key": "是否预约入职",
+      "label": "是否预约入职",
+      "path": [
+        "候选人",
+        "入职",
+        "是否预约入职"
+      ],
+      "stages": [
+        "onboarding"
+      ]
+    },
+    "onboard_booked_time": {
+      "legacy_key": "onboard_booked_time",
+      "storage_key": "预约入职时间",
+      "label": "预约入职时间",
+      "path": [
+        "候选人",
+        "入职",
+        "预约入职时间"
+      ],
+      "stages": [
+        "onboarding"
+      ]
+    },
+    "onboarded": {
+      "legacy_key": "onboarded",
+      "storage_key": "是否入职",
+      "label": "是否入职",
+      "path": [
+        "候选人",
+        "入职",
+        "是否入职"
+      ],
+      "stages": [
+        "onboarding"
+      ]
+    },
+    "onboard_risk": {
+      "legacy_key": "onboard_risk",
+      "storage_key": "入职风险",
+      "label": "入职风险",
+      "path": [
+        "候选人",
+        "入职",
+        "入职风险"
+      ],
+      "stages": [
+        "onboarding"
+      ]
+    },
+    "progress": {
+      "legacy_key": "progress",
+      "storage_key": "当前进展",
+      "label": "当前进展",
+      "path": [
+        "候选人",
+        "扩展",
+        "当前进展"
+      ],
+      "stages": [
+        "onboarding"
+      ]
+    },
+    "application_archive_id": {
+      "legacy_key": "application_archive_id",
+      "storage_key": "应聘档案编号",
+      "label": "应聘档案编号",
+      "path": [
+        "候选人",
+        "扩展",
+        "应聘档案编号"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "email": {
+      "legacy_key": "email",
+      "storage_key": "电子邮箱",
+      "label": "电子邮箱",
+      "path": [
+        "候选人",
+        "基本信息",
+        "电子邮箱"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "work_location": {
+      "legacy_key": "work_location",
+      "storage_key": "拟录取工作地",
+      "label": "拟录取工作地",
+      "path": [
+        "候选人",
+        "扩展",
+        "拟录取工作地"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "current_step": {
+      "legacy_key": "current_step",
+      "storage_key": "当前环节",
+      "label": "当前环节",
+      "path": [
+        "候选人",
+        "扩展",
+        "当前环节"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "current_step_status": {
+      "legacy_key": "current_step_status",
+      "storage_key": "当前环节状态",
+      "label": "当前环节状态",
+      "path": [
+        "候选人",
+        "流程状态",
+        "当前环节状态"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "application_status": {
+      "legacy_key": "application_status",
+      "storage_key": "应聘状态",
+      "label": "应聘状态",
+      "path": [
+        "候选人",
+        "流程状态",
+        "应聘状态"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "sourcer_name": {
+      "legacy_key": "sourcer_name",
+      "storage_key": "拓源人姓名",
+      "label": "拓源人姓名",
+      "path": [
+        "候选人",
+        "登记拓源",
+        "拓源人姓名"
+      ],
+      "stages": [
+        "registration"
+      ]
+    },
+    "interface_person_name": {
+      "legacy_key": "interface_person_name",
+      "storage_key": "接口人姓名",
+      "label": "接口人姓名",
+      "path": [
+        "候选人",
+        "登记拓源",
+        "接口人姓名"
+      ],
+      "stages": [
+        "registration"
+      ]
+    }
+  },
+  "paths": {
+    "候选人.基本信息.简历编号": "简历编号",
+    "候选人.基本信息.候选人": "候选人",
+    "候选人.基本信息.电话": "电话",
+    "候选人.登记拓源.拓源人": "拓源人",
+    "候选人.登记拓源.拓源人部门": "拓源人部门",
+    "候选人.登记拓源.接口人": "接口人",
+    "候选人.登记拓源.接口人部门": "接口人部门",
+    "候选人.基本信息.学历": "学历",
+    "候选人.基本信息.毕业院校": "毕业院校",
+    "候选人.基本信息.专业": "专业",
+    "候选人.流程状态.当前流程": "当前流程",
+    "候选人.登记拓源.来源渠道": "来源渠道",
+    "候选人.登记拓源.自定义简历来源": "自定义简历来源",
+    "候选人.流程状态.登记状态": "登记状态",
+    "候选人.登记拓源.登记时间": "登记时间",
+    "候选人.登记拓源.投递时间": "投递时间",
+    "候选人.登记拓源.登记备注": "登记备注",
+    "候选人.流程状态.简历筛选状态": "简历筛选状态",
+    "候选人.扩展.筛选人": "筛选人",
+    "候选人.扩展.筛选时间": "筛选时间",
+    "候选人.扩展.筛选备注": "筛选备注",
+    "候选人.流程状态.资审状态": "资审状态",
+    "候选人.扩展.审查人": "审查人",
+    "候选人.扩展.审查时间": "审查时间",
+    "候选人.扩展.资审备注": "资审备注",
+    "候选人.面试测评.笔试预约时间": "笔试预约时间",
+    "候选人.面试测评.笔试时间": "笔试时间",
+    "候选人.面试测评.笔试地点": "笔试地点",
+    "候选人.流程状态.笔试状态": "笔试状态",
+    "候选人.面试测评.笔试成绩": "笔试成绩",
+    "候选人.面试测评.测评预约时间": "测评预约时间",
+    "候选人.面试测评.测评完成时间": "测评完成时间",
+    "候选人.流程状态.性格测评状态": "性格测评状态",
+    "候选人.流程状态.测评结果": "测评结果",
+    "候选人.面试测评.测评备注": "测评备注",
+    "候选人.面试测评.资格面试预约时间": "资格面试预约时间",
+    "候选人.面试测评.资格面试时间": "资格面试时间",
+    "候选人.面试测评.资格面试官": "资格面试官",
+    "候选人.流程状态.资格面试状态": "资格面试状态",
+    "候选人.流程状态.资格面试结果": "资格面试结果",
+    "候选人.面试测评.资格面试备注": "资格面试备注",
+    "候选人.面试测评.待面试岗位": "待面试岗位",
+    "候选人.面试测评.技术面预约时间": "技术面预约时间",
+    "候选人.面试测评.技术面时间": "技术面时间",
+    "候选人.面试测评.面试官": "面试官",
+    "候选人.流程状态.技术面状态": "技术面状态",
+    "候选人.流程状态.技术面结果": "技术面结果",
+    "候选人.面试测评.技术面评分": "技术面评分",
+    "候选人.面试测评.主管面预约时间": "主管面预约时间",
+    "候选人.面试测评.主管面时间": "主管面时间",
+    "候选人.面试测评.主管面试官": "主管面试官",
+    "候选人.流程状态.主管面状态": "主管面状态",
+    "候选人.流程状态.主管面结果": "主管面结果",
+    "候选人.流程状态.报批状态": "报批状态",
+    "候选人.扩展.提交时间": "提交时间",
+    "候选人.扩展.通过时间": "通过时间",
+    "候选人.扩展.报批备注": "报批备注",
+    "候选人.流程状态.谈薪状态": "谈薪状态",
+    "候选人.扩展.期望薪资": "期望薪资",
+    "候选人.Offer签约.Offer薪资": "Offer薪资",
+    "候选人.扩展.谈薪时间": "谈薪时间",
+    "候选人.扩展.谈薪备注": "谈薪备注",
+    "候选人.流程状态.Offer状态": "Offer状态",
+    "候选人.Offer签约.Offer发放时间": "Offer发放时间",
+    "候选人.Offer签约.接受截止": "接受截止",
+    "候选人.Offer签约.Offer备注": "Offer备注",
+    "候选人.流程状态.签约情况状态": "签约情况状态",
+    "候选人.扩展.签约时间": "签约时间",
+    "候选人.扩展.签约备注": "签约备注",
+    "候选人.入职.三层部门": "三层部门",
+    "候选人.流程状态.签约状态": "签约状态",
+    "候选人.入职.预计入职时间": "预计入职时间",
+    "候选人.扩展.预约体检时间": "预约体检时间",
+    "候选人.扩展.是否体检": "是否体检",
+    "候选人.入职.是否预约入职": "是否预约入职",
+    "候选人.入职.预约入职时间": "预约入职时间",
+    "候选人.入职.是否入职": "是否入职",
+    "候选人.入职.入职风险": "入职风险",
+    "候选人.扩展.当前进展": "当前进展",
+    "候选人.扩展.应聘档案编号": "应聘档案编号",
+    "候选人.基本信息.电子邮箱": "电子邮箱",
+    "候选人.扩展.拟录取工作地": "拟录取工作地",
+    "候选人.扩展.当前环节": "当前环节",
+    "候选人.流程状态.当前环节状态": "当前环节状态",
+    "候选人.流程状态.应聘状态": "应聘状态",
+    "候选人.登记拓源.拓源人姓名": "拓源人姓名",
+    "候选人.登记拓源.接口人姓名": "接口人姓名"
+  },
+  "legacy_index": {
+    "简历编号": "resume_id",
+    "候选人": "name",
+    "电话": "phone",
+    "拓源人": "sourcer",
+    "拓源人部门": "sourcer_dept",
+    "接口人": "interface_person",
+    "接口人部门": "interface_dept",
+    "学历": "education",
+    "毕业院校": "school",
+    "专业": "major",
+    "当前流程": "current_stage",
+    "来源渠道": "registration_source",
+    "自定义简历来源": "registration_source_custom",
+    "登记状态": "registration_status",
+    "登记时间": "registration_time",
+    "投递时间": "delivery_time",
+    "登记备注": "registration_remark",
+    "简历筛选状态": "resume_screening_status",
+    "筛选人": "resume_screening_reviewer",
+    "筛选时间": "resume_screening_time",
+    "筛选备注": "resume_screening_remark",
+    "资审状态": "qualification_status",
+    "审查人": "qualification_reviewer",
+    "审查时间": "qualification_time",
+    "资审备注": "qualification_remark",
+    "笔试预约时间": "written_test_book_time",
+    "笔试时间": "written_test_time",
+    "笔试地点": "written_test_location",
+    "笔试状态": "written_test_status",
+    "笔试成绩": "written_test_score",
+    "测评预约时间": "personality_test_book_time",
+    "测评完成时间": "personality_test_time",
+    "性格测评状态": "personality_test_status",
+    "测评结果": "personality_test_result",
+    "测评备注": "personality_test_remark",
+    "资格面试预约时间": "qualification_interview_book_time",
+    "资格面试时间": "qualification_interview_time",
+    "资格面试官": "qualification_interviewer",
+    "资格面试状态": "qualification_interview_status",
+    "资格面试结果": "qualification_interview_result",
+    "资格面试备注": "qualification_interview_remark",
+    "待面试岗位": "interview_position",
+    "技术面预约时间": "tech_interview_book_time",
+    "技术面时间": "tech_interview_time",
+    "面试官": "tech_interviewer",
+    "技术面状态": "tech_interview_status",
+    "技术面结果": "tech_interview_result",
+    "技术面评分": "tech_interview_score",
+    "主管面预约时间": "manager_interview_book_time",
+    "主管面时间": "manager_interview_time",
+    "主管面试官": "manager_interviewer",
+    "主管面状态": "manager_interview_status",
+    "主管面结果": "manager_interview_result",
+    "报批状态": "approval_status",
+    "提交时间": "approval_submit_time",
+    "通过时间": "approval_pass_time",
+    "报批备注": "approval_remark",
+    "谈薪状态": "salary_status",
+    "期望薪资": "expected_salary",
+    "Offer薪资": "offered_salary",
+    "谈薪时间": "salary_negotiation_time",
+    "谈薪备注": "salary_remark",
+    "Offer状态": "offer_status",
+    "Offer发放时间": "offer_send_time",
+    "接受截止": "offer_accept_deadline",
+    "Offer备注": "offer_remark",
+    "签约情况状态": "contract_signing_status",
+    "签约时间": "contract_signing_time",
+    "签约备注": "contract_signing_remark",
+    "三层部门": "dept_level3",
+    "签约状态": "sign_status",
+    "预计入职时间": "expected_onboard_time",
+    "预约体检时间": "physical_exam_time",
+    "是否体检": "physical_exam_done",
+    "是否预约入职": "onboard_booked",
+    "预约入职时间": "onboard_booked_time",
+    "是否入职": "onboarded",
+    "入职风险": "onboard_risk",
+    "当前进展": "progress",
+    "应聘档案编号": "application_archive_id",
+    "电子邮箱": "email",
+    "拟录取工作地": "work_location",
+    "当前环节": "current_step",
+    "当前环节状态": "current_step_status",
+    "应聘状态": "application_status",
+    "拓源人姓名": "sourcer_name",
+    "接口人姓名": "interface_person_name"
+  },
+  "extras_bucket": "扩展字段",
+  "internal_keys": {
+    "_master_imported": "_主数据已导入",
+    "_master_locked_fields": "_主数据锁定字段",
+    "manual_stage": "_手动流程阶段"
+  }
+}

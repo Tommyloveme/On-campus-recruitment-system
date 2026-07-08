@@ -138,7 +138,9 @@ class TestStageRoutingIntegration(unittest.TestCase):
 
     def _stage(self, data):
         from campus.domain.stage_routing import compute_current_stage
-        return compute_current_stage(dict(data))
+        base = {"manager_interview_result": "通过"}
+        base.update(data)
+        return compute_current_stage(dict(base))
 
     def test_offer_stage(self):
         self.assertEqual(self._stage({"offer_status": "已发放"}), "offer")
@@ -170,9 +172,9 @@ class TestStageRoutingIntegration(unittest.TestCase):
                  {"not": {"field": "学历", "op": "eq", "value": "大专"}},
              ]}},
         ]}
-        data = {"offer_status": "已接受", "education": "硕士"}
+        data = {"offer_status": "已接受", "education": "硕士", "manager_interview_result": "通过"}
         self.assertEqual(compute_current_stage(data, cfg=cfg), "offer")
-        data2 = {"offer_status": "已接受", "education": "大专"}
+        data2 = {"offer_status": "已接受", "education": "大专", "manager_interview_result": "通过"}
         self.assertEqual(compute_current_stage(data2, cfg=cfg), "registration")
 
     def test_stage_rules_config_valid(self):

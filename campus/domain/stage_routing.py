@@ -31,6 +31,7 @@ from campus.core.master_import_config import (
     master_field_alias_map,
 )
 from campus.core.stage_config import load_stages_meta
+from campus.db.field_store import field_get, field_set, legacy_to_storage, normalize_record
 from campus.domain.rule_engine import build_context_resolver, evaluate, validate_condition
 
 # 判定规则中允许出现的字段 = 主数据 Excel 映射字段（不含内部 _ 前缀）
@@ -38,6 +39,21 @@ _ROUTING_FIELD_CACHE = None
 _ALIAS_CACHE = None
 
 MANUAL_STAGE_KEY = "manual_stage"
+
+# Offer 策略各子阶段：须主管面通过后方可进入（自动判定与手动流转均校验）
+OFFER_STRATEGY_STAGES = frozenset({"approval", "salary", "offer", "contract_signing"})
+
+
+def manager_interview_passed(data):
+    """主管面是否已通过（预处理表字段 manager_interview_result）。"""
+    return str(field_get(data, "manager_interview_result") or "").strip() == "通过"
+
+
+def apply_offer_strategy_gate(stage, data):
+    """Offer 策略门禁：主管面未通过时不得处于 Offer 策略任一子阶段。"""
+    if stage in OFFER_STRATEGY_STAGES and not manager_interview_passed(data):
+        return "manager_interview"
+    return stage
 
 
 def _routing_allowed_fields(cfg=None):
@@ -98,7 +114,7 @@ def _legacy_rule_matches(data, rule):
     if len(fields) != len(values):
         return False
     for fk, expected in zip(fields, values):
-        if not _value_matches(expected, data.get(fk, "")):
+        if not _value_matches(expected, field_get(data, fk, "")):
             return False
     return True
 
@@ -118,14 +134,23 @@ def compute_current_stage(data, cfg=None, tables=None):
     """
     cfg = cfg or load_master_import_config()
     field_key = cfg.get("current_stage_field", "current_stage")
+    payload = normalize_record(data or {})
+    if isinstance(data, dict):
+        data.clear()
+        data.update(payload)
+    else:
+        data = payload
 
     known_stages = {s["key"] for s in load_stages_meta()}
-    manual = str(data.get(MANUAL_STAGE_KEY) or "").strip()
+    manual = str(field_get(data, MANUAL_STAGE_KEY) or field_get(data, "_手动流程阶段") or "").strip()
     if manual in known_stages:
-        data[field_key] = manual
+        field_set(data, field_key, manual)
         return manual
 
-    ctx_tables = {"预处理表": data, "candidates": data}
+    ctx_tables = {
+        "预处理表": data, "candidates": data,
+        "主数据原始表": data, "手动原始表": data,
+    }
     for name, record in (tables or {}).items():
         if record is not None:
             ctx_tables[name] = record
@@ -138,10 +163,10 @@ def compute_current_stage(data, cfg=None, tables=None):
     )
     for rule in rules:
         if _rule_matches(data, rule, resolver):
-            stage = rule["stage"]
-            data[field_key] = stage
+            stage = apply_offer_strategy_gate(rule["stage"], data)
+            field_set(data, field_key, stage)
             return stage
-    data[field_key] = "registration"
+    field_set(data, field_key, "registration")
     return "registration"
 
 
