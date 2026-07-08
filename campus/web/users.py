@@ -275,6 +275,10 @@ def api_user_delete(uid):
     user = db.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
     if not user:
         return jsonify({"error": "用户不存在"}), 404
+    db.execute("DELETE FROM interview_bookings WHERE booked_by=?", (uid,))
+    db.execute("DELETE FROM interview_bookings WHERE interviewer_id=?", (uid,))
+    db.execute("DELETE FROM interviewer_availability WHERE user_id=?", (uid,))
+    db.execute("DELETE FROM feedback WHERE user_id=?", (uid,))
     db.execute("DELETE FROM module_acl WHERE subject_type='user' AND subject_id=?", (uid,))
     db.execute("DELETE FROM users WHERE id=?", (uid,))
     add_log(g.user, "user", f"{g.user['display_name']} 删除了用户「{user['display_name']}」", module="permissions", level=1)
