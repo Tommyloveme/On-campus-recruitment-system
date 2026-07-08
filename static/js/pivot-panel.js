@@ -34,22 +34,24 @@ const PIVOT_OPS = [
 const PIVOT_MAX_ZONE_FIELDS = 3;
 
 function pivotAllFields(stageKey) {
-  // 当前页字段优先，其余阶段字段补全（同名去重），全部可作维度/筛选
-  const seen = new Set();
-  const out = [];
-  for (const f of (stageKey ? fieldsForStage(stageKey) : [])) {
-    if (!seen.has(f.key)) { seen.add(f.key); out.push(f); }
-  }
-  for (const f of allFieldsFlat()) {
-    if (!seen.has(f.key)) { seen.add(f.key); out.push(f); }
-  }
-  return out;
+  // 仅当前流程 UI 可见列（与列表表头一致），可作行维度 / 筛选
+  if (!stageKey) return [];
+  if (typeof stageListFields === "function") return stageListFields(stageKey);
+  return visibleFields(stageKey);
 }
 
 function pivotRawValue(c, key) {
+  // 拓源人/接口人：看板维度与筛选用已存姓名（与列表一致）
+  if (key === "拓源人" || key === "sourcer") {
+    const n = c.data?.["拓源人姓名"] || c.data?.sourcer_name || c.data?.["拓源人"] || c.data?.sourcer;
+    return n != null && String(n).trim() !== "" ? String(n).trim() : "";
+  }
+  if (key === "接口人" || key === "interface_person") {
+    const n = c.data?.["接口人姓名"] || c.data?.interface_person_name || c.data?.["接口人"] || c.data?.interface_person;
+    return n != null && String(n).trim() !== "" ? String(n).trim() : "";
+  }
   const v = c.data?.[key];
   if (v !== undefined && v !== null && String(v).trim() !== "") return String(v).trim();
-  // 索引列兜底（当前流程等）
   if (key === "当前流程" || key === "current_stage") return String(c.current_stage || "").trim();
   return "";
 }
@@ -94,7 +96,6 @@ async function renderPivotPanel(rootEl, opts = {}) {
     view: "bar", gran: "ym", colGran: "ym",
     sort: "value_desc", topN: 20,
     pct: "none",
-    onlyStage: !!stageKey,
     filters: [],
     list: [], chart: null,
   };
@@ -159,7 +160,6 @@ async function renderPivotPanel(rootEl, opts = {}) {
             <option value="table">仅透视表</option>
           </select>
         </div>
-        ${stageKey ? `<label class="chk-inline"><input type="checkbox" data-pv-onlystage checked> 仅本流程</label>` : ""}
         <div class="spacer"></div>
         <button class="btn btn-sm" data-pv-export>导出 CSV</button>
         <span class="badge badge-blue" data-pv-count></span>
@@ -185,7 +185,8 @@ async function renderPivotPanel(rootEl, opts = {}) {
   let lastGrid = null;   // 导出 CSV 用
 
   async function loadData() {
-    const url = st.onlyStage && stageKey ? `/api/candidates?stage=${stageKey}` : "/api/candidates";
+    // 看板始终只看当前流程候选人（与列表一致）
+    const url = stageKey ? `/api/candidates?stage=${stageKey}` : "/api/candidates";
     st.list = await api(url);
     draw();
   }
@@ -510,11 +511,6 @@ async function renderPivotPanel(rootEl, opts = {}) {
       if (sel.dataset.pv === "sort") st._userSorted = true;
       draw();
     }));
-  const onlyStageEl = $$("[data-pv-onlystage]");
-  if (onlyStageEl) onlyStageEl.addEventListener("change", e => {
-    st.onlyStage = e.target.checked;
-    loadData().then(renderFilters);
-  });
   $$("[data-pv-addfilter]").addEventListener("click", () => {
     st.filters.push({ key: dimFields[0].key, op: "eq", val: "" });
     renderFilters();

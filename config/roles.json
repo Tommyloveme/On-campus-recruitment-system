@@ -13,79 +13,7 @@
       "label": "普通用户",
       "builtin": true,
       "perms": {
-        "registration": {
-          "v": 1,
-          "r": 1,
-          "w": 1,
-          "m": 0
-        },
-        "recruit_flow": {
-          "v": 1,
-          "r": 1,
-          "w": 1,
-          "m": 0
-        },
-        "resume_screening": {
-          "v": 1,
-          "r": 1,
-          "w": 1,
-          "m": 0
-        },
-        "qualification": {
-          "v": 1,
-          "r": 1,
-          "w": 1,
-          "m": 0
-        },
-        "written_test": {
-          "v": 1,
-          "r": 1,
-          "w": 1,
-          "m": 0
-        },
-        "personality_test": {
-          "v": 1,
-          "r": 1,
-          "w": 1,
-          "m": 0
-        },
-        "qualification_interview": {
-          "v": 1,
-          "r": 1,
-          "w": 1,
-          "m": 0
-        },
-        "tech_interview": {
-          "v": 1,
-          "r": 1,
-          "w": 1,
-          "m": 0
-        },
-        "manager_interview": {
-          "v": 1,
-          "r": 1,
-          "w": 1,
-          "m": 0
-        },
-        "offer_strategy": {
-          "v": 1,
-          "r": 1,
-          "w": 1,
-          "m": 0
-        },
         "approval": {
-          "v": 1,
-          "r": 1,
-          "w": 1,
-          "m": 0
-        },
-        "salary": {
-          "v": 1,
-          "r": 1,
-          "w": 1,
-          "m": 0
-        },
-        "offer": {
           "v": 1,
           "r": 1,
           "w": 1,
@@ -97,16 +25,88 @@
           "w": 1,
           "m": 0
         },
+        "feedback": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "manager_interview": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "offer": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "offer_strategy": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
         "onboarding": {
           "v": 1,
           "r": 1,
           "w": 1,
           "m": 0
         },
-        "feedback": {
+        "personality_test": {
           "v": 1,
           "r": 1,
-          "w": 0,
+          "w": 1,
+          "m": 0
+        },
+        "qualification": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "qualification_interview": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "recruit_flow": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "registration": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "resume_screening": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "salary": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "tech_interview": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
+          "m": 0
+        },
+        "written_test": {
+          "v": 1,
+          "r": 1,
+          "w": 1,
           "m": 0
         }
       }

@@ -4,7 +4,7 @@
 - Application_test.xlsx：applicationProcessList 风格主表（含冗余列，自动入库）；
 - 候选人面试安排管理列表_test.xlsx：面试安排管理表（按应聘档案编号关联）。
 
-简历编号统一为 SR+YYYYMMDD+序号 格式（如 SR20260101001），其中日期段即投递时间。
+应聘档案编号/简历编号统一为 SR+YYYYMMDD+5位序号（如 SR2025081100434），共15位，日期段即投递时间。
 """
 import os
 import random
@@ -45,8 +45,8 @@ SOURCES = ["校园宣讲", "线上投递", "内推", "熟人推荐"]
 
 
 def sr_id(date_str, seq):
-    """SR + YYYYMMDD + 3位序号，如 SR20260101001（日期段即投递时间）。"""
-    return f"SR{date_str}{seq:03d}"
+    """SR + YYYYMMDD + 5位序号，如 SR2025081100434（共15位；日期段即投递时间）。"""
+    return f"SR{date_str}{seq:05d}"
 
 
 def _app_row(

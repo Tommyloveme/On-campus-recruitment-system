@@ -17,16 +17,19 @@ const ovState = {
 };
 
 function ovFields() {
-  // 组合筛选字段以「候选人登记」页字段为准
-  const seen = new Set();
-  const out = [];
-  for (const f of fieldsForStage("registration")) {
-    if (!seen.has(f.key)) { seen.add(f.key); out.push(f); }
-  }
-  return out;
+  // 组合筛选：仅「候选人登记」界面上可见的列（与列表 UI 一致）
+  return visibleFields("registration");
 }
 
 function ovValue(c, key) {
+  if (key === "拓源人" || key === "sourcer") {
+    const n = c.data?.["拓源人姓名"] || c.data?.sourcer_name || c.data?.["拓源人"] || c.data?.sourcer;
+    return n != null && String(n).trim() !== "" ? String(n).trim() : "";
+  }
+  if (key === "接口人" || key === "interface_person") {
+    const n = c.data?.["接口人姓名"] || c.data?.interface_person_name || c.data?.["接口人"] || c.data?.interface_person;
+    return n != null && String(n).trim() !== "" ? String(n).trim() : "";
+  }
   const v = c.data?.[key];
   if (v !== undefined && v !== null && String(v).trim() !== "") return String(v).trim();
   if (key === "当前流程") return String(c.current_stage || "").trim();

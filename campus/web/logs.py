@@ -5,15 +5,16 @@
 - 带 module=<模块key>：该模块日志，具备该模块读权限即可（各页面日志标签页）。
 - 结果按查看者日志权限（users.log_level，1 最高 10 最低）过滤：
   只返回 level >= 查看者权限值的日志；管理员恒为 1（全部可见）。
+- DELETE /api/logs：管理员清理指定模块全量日志，或某时间点之后的日志。
 """
 from flask import Blueprint, g, jsonify, request
 
 from campus.core.log_levels import clamp_log_level
-from campus.core.modules import module_keys
+from campus.core.modules import MODULE_REGISTRY, module_entry, module_keys
 from campus.core.settings import APP_CONFIG
 from campus.db.connection import get_db
 from campus.services.acl import is_admin, module_readable_for
-from campus.services.audit import add_log, query_logs
+from campus.services.audit import add_log, delete_logs, query_logs
 from campus.web.guards import admin_required, login_required
 
 bp = Blueprint("logs", __name__)
@@ -25,6 +26,20 @@ def viewer_log_level(user):
         return 1
     keys = user.keys() if hasattr(user, "keys") else []
     return clamp_log_level(user["log_level"] if "log_level" in keys else None)
+
+
+def _flat_modules():
+    """扁平模块列表（含板块），供日志清理下拉使用。"""
+    out = []
+
+    def walk(entry):
+        out.append({"key": entry["key"], "label": entry["label"], "type": entry.get("type", "item")})
+        for child in entry.get("items") or []:
+            walk(child)
+
+    for e in MODULE_REGISTRY:
+        walk(e)
+    return out
 
 
 @bp.get("/api/logs")
@@ -45,6 +60,42 @@ def api_logs():
     total, items = query_logs(get_db(), page, size, module=module,
                               viewer_level=viewer_log_level(g.user))
     return jsonify({"total": total, "page": page, "size": size, "items": items})
+
+
+@bp.get("/api/logs/modules")
+@admin_required
+def api_log_modules():
+    """日志清理可选模块列表。"""
+    return jsonify({"modules": _flat_modules()})
+
+
+@bp.delete("/api/logs")
+@admin_required
+def api_logs_delete():
+    """删除指定模块的全量日志，或该模块在某时间点之后的日志。
+
+    Body: { module: 模块key, after?: "YYYY-MM-DD HH:MM:SS" 或 "YYYY-MM-DDTHH:MM" }
+    - 不传 after：删除该模块全部日志
+    - 传 after：删除 created_at >= after 的日志
+    """
+    body = request.get_json(force=True) or {}
+    module = (body.get("module") or "").strip()
+    if not module or module not in module_keys():
+        return jsonify({"error": "请选择有效的模块"}), 400
+    after = (body.get("after") or "").strip() or None
+    if after:
+        after = after.replace("T", " ")
+        if len(after) == 16:
+            after += ":00"
+    db = get_db()
+    deleted = delete_logs(db, module=module, after=after)
+    label = (module_entry(module) or {}).get("label") or module
+    scope = f"「{label}」全部" if not after else f"「{label}」自 {after} 起"
+    add_log(g.user, "delete",
+            f"{g.user['display_name']} 清理了{scope}日志（{deleted} 条）",
+            module="op_logs")
+    db.commit()
+    return jsonify({"ok": True, "deleted": deleted, "module": module, "after": after})
 
 
 @bp.get("/api/logs/levels")

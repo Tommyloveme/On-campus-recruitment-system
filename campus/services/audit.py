@@ -7,6 +7,7 @@
   campus.core.log_levels.DEFAULT_ACTION_LEVELS。
 - query_logs(module=..., viewer_level=...)：module 为 None 查全量（管理员审计），
   否则按模块过滤；viewer_level 为查看者日志权限，只返回 level >= viewer_level 的日志。
+- delete_logs / purge_logs：管理员清理指定模块全量日志，或某时间点之后的日志。
 """
 from campus.core.log_levels import clamp_log_level, default_level_for_action
 from campus.db.connection import get_db, now_str
@@ -37,3 +38,24 @@ def query_logs(db, page, size, module=None, viewer_level=1):
         args + [size, (page - 1) * size],
     ).fetchall()
     return total, [dict(r) for r in rows]
+
+
+def delete_logs(db, module, after=None):
+    """删除指定模块日志。after 为空则删该模块全部；否则删 created_at >= after 的记录。
+    返回删除条数。"""
+    module = (module or "").strip()
+    if not module:
+        raise ValueError("必须指定模块")
+    after = (after or "").strip() or None
+    if after:
+        cur = db.execute(
+            "DELETE FROM logs WHERE module_key=? AND created_at>=?",
+            (module, after),
+        )
+    else:
+        cur = db.execute("DELETE FROM logs WHERE module_key=?", (module,))
+    return cur.rowcount or 0
+
+
+# 兼容旧名
+purge_logs = delete_logs

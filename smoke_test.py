@@ -342,8 +342,8 @@ s, r = call("POST", "/api/master-import/refresh", raw=body_r.getvalue(),
 check("主数据表刷新成功", s == 200 and (r.get("created", 0) + r.get("updated", 0)) >= 1)
 s, c_new = call("GET", "/api/candidates?q=" + quote("主表新人"))
 check("主表新人已导入且含SR格式简历编号",
-      len(c_new) == 1 and c_new[0]["data"].get("resume_id") == "SR20260101001")
-check("主表新人含应聘档案编号", c_new[0]["data"].get("application_archive_id") == "SR20260101001")
+      len(c_new) == 1 and c_new[0]["data"].get("resume_id") == "SR2026010100001")
+check("主表新人含应聘档案编号", c_new[0]["data"].get("application_archive_id") == "SR2026010100001")
 check("简历编号日期段解析为投递时间", c_new[0]["data"].get("delivery_time") == "2026-01-01")
 _locked = c_new[0]["data"].get("_master_locked_fields", [])
 check("主表导入锁定登记字段", "候选人" in _locked or "name" in _locked)

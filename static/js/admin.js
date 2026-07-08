@@ -13,15 +13,17 @@ async function renderLogs() {
       <div class="card pagehead">
         <div class="pagehead-text">
           <div class="pagehead-title">操作日志</div>
-          <div class="pagehead-sub">系统全量操作留痕，支持按模块 / 用户 / 类型检索；日志可见级别可按用户配置</div>
+          <div class="pagehead-sub">系统全量操作留痕，支持按模块清理与日志权限配置</div>
         </div>
         <div class="iv-subnav pagehead-tabs">
           <button class="btn btn-sm iv-view-btn active" data-lg-view="list">日志列表</button>
+          <button class="btn btn-sm iv-view-btn" data-lg-view="purge">日志清理</button>
           <button class="btn btn-sm iv-view-btn" data-lg-view="levels">日志权限</button>
         </div>
       </div>
       <div class="card log-card">
         <div id="log-view-list"><div id="log-panel-root"></div></div>
+        <div id="log-view-purge" class="hidden"></div>
         <div id="log-view-levels" class="hidden"></div>
       </div>
     </div>`;
@@ -33,9 +35,87 @@ async function renderLogs() {
         b.classList.toggle("active", b === btn));
       const view = btn.dataset.lgView;
       $("#log-view-list").classList.toggle("hidden", view !== "list");
+      $("#log-view-purge").classList.toggle("hidden", view !== "purge");
       $("#log-view-levels").classList.toggle("hidden", view !== "levels");
       if (view === "levels") renderLogLevelSettings($("#log-view-levels"));
+      if (view === "purge") renderLogPurgePanel($("#log-view-purge"));
     });
+  });
+}
+
+/* 日志清理：按模块删除全量，或删除某时间点之后的日志 */
+async function renderLogPurgePanel(rootEl) {
+  if (!rootEl) return;
+  rootEl.innerHTML = `<div class="log-empty">加载模块列表…</div>`;
+  let modules = [];
+  try {
+    const r = await api("/api/logs/modules");
+    modules = r.modules || [];
+  } catch (e) {
+    rootEl.innerHTML = `<div class="log-empty">加载失败：${esc(e.message)}</div>`;
+    return;
+  }
+  const opts = modules.map(m =>
+    `<option value="${esc(m.key)}">${esc(m.label)}${m.type === "section" ? "（板块）" : ""}</option>`
+  ).join("");
+  rootEl.innerHTML = `
+    <div class="log-purge-card">
+      <div class="log-purge-head">
+        <div>
+          <div class="log-purge-title">清理操作日志</div>
+          <div class="log-purge-sub">按模块删除全量日志，或删除指定时间点之后的日志。此操作不可恢复，请谨慎确认。</div>
+        </div>
+      </div>
+      <div class="log-purge-form">
+        <div class="log-purge-field">
+          <label>目标模块</label>
+          <select id="log-purge-module"><option value="">请选择模块</option>${opts}</select>
+        </div>
+        <div class="log-purge-field">
+          <label>清理范围</label>
+          <div class="log-purge-modes">
+            <label><input type="radio" name="log-purge-mode" value="all" checked> 该模块全部日志</label>
+            <label><input type="radio" name="log-purge-mode" value="after"> 某时间点之后</label>
+          </div>
+        </div>
+        <div class="log-purge-field" id="log-purge-after-wrap" style="display:none">
+          <label>起始时间（含）</label>
+          <input type="datetime-local" id="log-purge-after">
+        </div>
+        <div class="log-purge-actions">
+          <button class="btn btn-danger" id="log-purge-run">确认清理</button>
+        </div>
+      </div>
+    </div>`;
+
+  const syncMode = () => {
+    const mode = rootEl.querySelector('input[name="log-purge-mode"]:checked')?.value;
+    $("#log-purge-after-wrap").style.display = mode === "after" ? "" : "none";
+  };
+  rootEl.querySelectorAll('input[name="log-purge-mode"]').forEach(r =>
+    r.addEventListener("change", syncMode));
+
+  $("#log-purge-run").addEventListener("click", async () => {
+    const module = $("#log-purge-module").value;
+    if (!module) { toast("请选择模块", true); return; }
+    const mode = rootEl.querySelector('input[name="log-purge-mode"]:checked')?.value;
+    let after = null;
+    if (mode === "after") {
+      after = ($("#log-purge-after").value || "").trim();
+      if (!after) { toast("请选择起始时间", true); return; }
+    }
+    const modLabel = $("#log-purge-module").selectedOptions[0]?.textContent || module;
+    const tip = after
+      ? `确定删除模块「${modLabel}」自 ${after.replace("T", " ")} 起的全部日志？`
+      : `确定删除模块「${modLabel}」的全部日志？`;
+    if (!confirm(tip + "\n此操作不可恢复。")) return;
+    try {
+      const body = { module };
+      if (after) body.after = after;
+      const r = await api("/api/logs", { method: "DELETE", json: body });
+      toast(`已清理 ${r.deleted} 条日志`);
+      renderLogPanel($("#log-panel-root"), { pageSize: state.app?.logs_page_size || 30 });
+    } catch (e) { toast(e.message, true); }
   });
 }
 

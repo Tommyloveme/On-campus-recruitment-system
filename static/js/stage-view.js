@@ -28,10 +28,7 @@ async function renderStageView(stageKey) {
   state.tab = stageKey;
   const meta = state.stages.find(s => s.key === stageKey);
   const showCalendar = meta.has_interview_calendar;
-  const ss = getStageState(stageKey);
-  if (ss.stageFilter === undefined) {
-    ss.stageFilter = stageKey !== "registration";
-  }
+  getStageState(stageKey);
 
   const showDashboard = featureAllowed(stageKey, "tab_dashboard");
   const showLogs = featureAllowed(stageKey, "tab_logs");
@@ -121,8 +118,6 @@ async function renderStageList(stageKey) {
     <div class="toolbar">
       <input type="text" id="cand-search" placeholder="全局搜索：姓名 / 电话 / 部门 / 任意字段…">
       <button class="btn btn-sm" id="btn-clear-filter">清空筛选</button>
-      <label class="chk-inline"><input type="checkbox" id="stage-filter-only" ${ss.stageFilter ? "checked" : ""}>
-        ${stageKey === "registration" ? "仅登记阶段" : "仅当前流程"}</label>
       <div class="spacer"></div>
       ${showBatchDelete ? `<button class="btn btn-danger" id="btn-batch-del" disabled>删除选中 (0)</button>` : ""}
       ${showExportExcel ? `<button class="btn" id="btn-export-excel" disabled>导出选中Excel (0)</button>` : ""}
@@ -149,11 +144,6 @@ async function renderStageList(stageKey) {
     ${showResume ? `<input type="file" id="resume-input" style="display:none">` : ""}`;
 
   if (showMasterImport) $("#btn-master-import").addEventListener("click", openMasterImportModal);
-  $("#stage-filter-only")?.addEventListener("change", e => {
-    ss.stageFilter = e.target.checked;
-    ss.page = 1;
-    loadCandidateTable(stageKey);
-  });
   if (canAdd && $("#btn-add")) {
     $("#btn-add").addEventListener("click", () => openCandidateModal(null, stageKey));
   }
@@ -198,17 +188,15 @@ async function renderStageList(stageKey) {
 
 async function loadCandidateTable(stageKey) {
   const ss = getStageState(stageKey);
-  const url = ss.stageFilter !== false
-    ? `/api/candidates?stage=${stageKey}`
-    : "/api/candidates";
-  ss.list = await api(url);
+  // 各流程列表固定按当前流程加载（不再提供「仅登记阶段 / 仅当前流程」开关）
+  ss.list = await api(`/api/candidates?stage=${stageKey}`);
   if (stageUiColumns(stageKey).length) {
     try {
       ss.uiValues = (await api(`/api/data-hub/ui-values?tab=${stageKey}`)).values || {};
     } catch { ss.uiValues = {}; }
   }
   if (stageKey === "registration") {
-    const all = ss.stageFilter !== false ? await api("/api/candidates") : ss.list;
+    const all = await api("/api/candidates");
     ss.allCandidates = all;
     ss.duplicatePhones = computeDuplicatePhones(all);
   } else {
@@ -280,18 +268,25 @@ function candTerminated(c) {
 }
 
 function candidateCellValue(c, f) {
-  if (f.key === "sourcer") {
-    return c.data.sourcer_name || c.data.sourcer || "";
+  // 列表展示：拓源人/接口人读已存姓名字段（不实时查用户表）；编辑表单仍用工号
+  if (f.key === "sourcer" || f.legacy_key === "sourcer") {
+    return c.data["拓源人姓名"] || c.data.sourcer_name || c.data["拓源人"] || c.data.sourcer || "";
   }
-  if (f.key === "interface_person") {
-    return c.data.interface_person_name || c.data.interface_person || "";
+  if (f.key === "interface_person" || f.legacy_key === "interface_person") {
+    return c.data["接口人姓名"] || c.data.interface_person_name
+      || c.data["接口人"] || c.data.interface_person || "";
   }
   return c.data[f.key];
 }
 
 function candidateFilterValue(c, key) {
-  if (key === "sourcer") return c.data.sourcer_name || c.data.sourcer || "";
-  if (key === "interface_person") return c.data.interface_person_name || c.data.interface_person || "";
+  if (key === "sourcer" || key === "拓源人") {
+    return c.data["拓源人姓名"] || c.data.sourcer_name || c.data["拓源人"] || c.data.sourcer || "";
+  }
+  if (key === "interface_person" || key === "接口人") {
+    return c.data["接口人姓名"] || c.data.interface_person_name
+      || c.data["接口人"] || c.data.interface_person || "";
+  }
   return c.data[key] || "";
 }
 
@@ -686,11 +681,19 @@ function registrationDeptFieldHtml(deptKey, value) {
 
 function registrationEmployeeFieldHtml(f, cand, locked) {
   const empKey = f.key;
-  const deptKey = empKey === "sourcer" ? "sourcer_dept" : "interface_dept";
-  const empVal = cand ? (cand.data[empKey] || "") : "";
-  const deptVal = cand ? (cand.data[deptKey] || "") : "";
+  const isSourcer = empKey === "sourcer" || empKey === "拓源人";
+  const deptKey = isSourcer ? "sourcer_dept" : "interface_dept";
+  const empVal = cand
+    ? (cand.data[empKey] || cand.data[isSourcer ? "拓源人" : "接口人"] || "")
+    : "";
+  const deptVal = cand
+    ? (cand.data[deptKey] || cand.data[isSourcer ? "拓源人部门" : "接口人部门"] || "")
+    : "";
+  // 姓名从已存字段读取（不实时查用户表）；输入框仍显示工号
   const nameVal = cand
-    ? (cand.data[empKey === "sourcer" ? "sourcer_name" : "interface_person_name"] || "")
+    ? (isSourcer
+      ? (cand.data["拓源人姓名"] || cand.data.sourcer_name || "")
+      : (cand.data["接口人姓名"] || cand.data.interface_person_name || ""))
     : "";
   // 输入框始终存工号（保存校验按工号），姓名在下方 meta 行展示
   const ve = esc(empVal);
