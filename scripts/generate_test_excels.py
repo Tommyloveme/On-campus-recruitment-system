@@ -19,7 +19,7 @@ APP_HEADERS = [
     "二层部门", "三层部门",
     "拓源人", "拓源人部门", "接口人", "接口人部门",
     "来源渠道", "拟录取工作地",
-    "登记状态", "简历筛选状态", "资审状态", "笔试状态",
+    "登记状态", "简历筛选状态", "资审状态", "商业秘密签署状态", "笔试状态",
     "技术面状态", "主管面状态", "报批状态", "谈薪状态",
     "Offer状态", "签约状态", "是否入职",
     "当前进展", "入职风险",
@@ -52,7 +52,11 @@ def sr_id(date_str, seq):
 def _app_row(
     resume_id, name, phone, education, school, major,
     dept_l2=None, dept_l3=None, sourcer="hr01", iface="hr02",
-    reg_status="已登记", offer="未发放", sign="未签约", onboarded="否",
+    reg_status="已登记", resume_screening="通过", qualification="通过",
+    commercial_secret="已签署", written_test="已完成",
+    tech_status="已完成", manager_status="已完成",
+    approval="审批中", salary="谈薪中",
+    offer="未发放", sign="未签约", onboarded="否",
     progress="", risk="中", hr_code="", note="",
 ):
     dept_l2 = dept_l2 or random.choice(DEPT_L2)
@@ -62,8 +66,8 @@ def _app_row(
         dept_l2, dept_l3,
         sourcer, "软件部", iface, "软件部",
         random.choice(SOURCES), random.choice(LOCATIONS),
-        reg_status, "通过", "通过", "已完成",
-        "已完成", "已完成", "审批中", "谈薪中",
+        reg_status, resume_screening, qualification, commercial_secret, written_test,
+        tech_status, manager_status, approval, salary,
         offer, sign, onboarded,
         progress, risk,
         hr_code or f"HR-{resume_id[-4:]}",
@@ -82,8 +86,9 @@ def build_application_rows():
                  dept_l2="存储部", dept_l3="块存储",
                  progress="0619测试员进展", risk="高", hr_code="HR-9002"),
     ]
+    rows.extend(build_stage_status_rows())
     random.seed(2026)
-    for i in range(3, 31):
+    for i in range(20, 31):
         rid = sr_id("20260110", i)
         name = random.choice(SURNAMES) + random.choice(GIVEN) + random.choice(GIVEN)
         phone = f"138{random.randint(10000000, 99999999)}"
@@ -94,14 +99,76 @@ def build_application_rows():
     return rows
 
 
+def build_stage_status_rows():
+    """覆盖 01-投递 到 10-offer策略 的流程状态 fixture。"""
+    scenarios = [
+        # name, date, seq, phone, registration, resume, qualification, secret, written, current_step, tech, manager, approval, salary, offer, sign, onboarded
+        ("状态01投递", "20260201", 1, "13790002001", "待投递", "", "", "", "", "", "", "", "", "", "", "未签约", "否"),
+        ("状态02简历筛选", "20260202", 2, "13790002002", "已登记", "待筛选", "", "", "", "", "", "", "", "", "", "未签约", "否"),
+        ("状态03资格审查", "20260203", 3, "13790002003", "已登记", "通过", "待审查", "", "", "资审", "", "", "", "", "", "未签约", "否"),
+        ("状态04商业秘密签署", "20260204", 4, "13790002004", "已登记", "通过", "通过", "待签署", "待预约", "", "", "", "", "", "", "未签约", "否"),
+        ("状态05笔试", "20260205", 5, "13790002005", "已登记", "通过", "通过", "已签署", "已预约", "笔试", "", "", "", "", "", "未签约", "否"),
+        ("状态06性格测评", "20260206", 6, "13790002006", "已登记", "通过", "通过", "已签署", "已完成", "性格测评", "", "", "", "", "", "未签约", "否"),
+        ("状态07资格面试", "20260207", 7, "13790002007", "已登记", "通过", "通过", "已签署", "已完成", "资格面试", "", "", "", "", "", "未签约", "否"),
+        ("状态08技术面", "20260208", 8, "13790002008", "已登记", "通过", "通过", "已签署", "已完成", "技术面", "已预约", "", "", "", "", "未签约", "否"),
+        ("状态09主管面", "20260209", 9, "13790002009", "已登记", "通过", "通过", "已签署", "已完成", "主管面", "已完成", "已预约", "", "", "", "未签约", "否"),
+        ("状态10offer策略", "20260210", 10, "13790002010", "已登记", "通过", "通过", "已签署", "已完成", "报批", "已完成", "已完成", "审批中", "待谈薪", "未发放", "未签约", "否"),
+    ]
+    rows = []
+    for name, date, seq, phone, reg, resume, qual, secret, written, progress, tech, manager, approval, salary, offer, sign, onboarded in scenarios:
+        rows.append(_app_row(
+            sr_id(date, seq), name, phone, "硕士", "测试大学", "软件工程",
+            dept_l2="软件部", dept_l3="研发一组",
+            reg_status=reg,
+            resume_screening=resume,
+            qualification=qual,
+            commercial_secret=secret,
+            written_test=written,
+            tech_status=tech,
+            manager_status=manager,
+            approval=approval,
+            salary=salary,
+            offer=offer,
+            sign=sign,
+            onboarded=onboarded,
+            progress=progress,
+            risk="低",
+            hr_code=f"HR-ST{seq:02d}",
+            note=f"{name}流程状态测试",
+        ))
+    return rows
+
+
 def build_interview_rows():
-    return [
+    rows = [
         # 与主表按应聘档案编号关联；手机号为掩码，验证不参与唯一化
         [sr_id("20260101", 1), sr_id("20260101", 1), "主表新人", "+86 XXXXXXXXXXX",
          "综合测评-考试-专业面试", "面试通过", "通过", "已完成", "A", "", "A"],
         [sr_id("20260102", 2), sr_id("20260102", 2), "测试员", "+86 XXXXXXXXXXX",
          "综合测评-考试", "考核中", "通过", "已完成", "", "", ""],
     ]
+    interview_progress = {
+        5: "笔试",
+        6: "性格测评",
+        7: "资格面试",
+        8: "技术面",
+        9: "主管面",
+        10: "报批",
+    }
+    for seq in range(5, 11):
+        rid = sr_id(f"202602{seq:02d}", seq)
+        name = f"状态{seq:02d}{['投递','简历筛选','资格审查','商业秘密签署','笔试','性格测评','资格面试','技术面','主管面','offer策略'][seq-1]}"
+        rows.append([
+            rid, rid, name, "+86 XXXXXXXXXXX",
+            interview_progress.get(seq, ""),
+            "考核中" if seq >= 7 else "",
+            "通过" if seq >= 6 else "",
+            "已完成" if seq >= 5 else "",
+            "A" if seq >= 8 else "",
+            "通过" if seq >= 9 else "",
+            "A" if seq >= 8 else "",
+        ])
+    return rows
 
 
 def write_workbook(path, sheet_name, headers, data_rows):

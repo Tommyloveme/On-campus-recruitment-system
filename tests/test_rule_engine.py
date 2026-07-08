@@ -143,10 +143,10 @@ class TestStageRoutingIntegration(unittest.TestCase):
         return compute_current_stage(dict(base))
 
     def test_offer_stage(self):
-        self.assertEqual(self._stage({"offer_status": "已发放"}), "offer")
+        self.assertEqual(self._stage({"offer_status": "已发放"}), "approval")
 
     def test_onboarding(self):
-        self.assertEqual(self._stage({"onboarded": "是"}), "onboarding")
+        self.assertEqual(self._stage({"onboarded": "是"}), "approval")
 
     def test_default_registration(self):
         self.assertEqual(self._stage({"registration_status": "已登记"}), "registration")
@@ -157,7 +157,7 @@ class TestStageRoutingIntegration(unittest.TestCase):
 
     def test_manual_stage_invalid_ignored(self):
         self.assertEqual(
-            self._stage({"offer_status": "已发放", "manual_stage": "no_such"}), "offer")
+            self._stage({"offer_status": "已发放", "manual_stage": "no_such"}), "approval")
 
     def test_when_rule_with_chinese_name(self):
         """when 条件树直接用中文列名（经字段映射自动解析）。"""
@@ -173,7 +173,7 @@ class TestStageRoutingIntegration(unittest.TestCase):
              ]}},
         ]}
         data = {"offer_status": "已接受", "education": "硕士", "manager_interview_result": "通过"}
-        self.assertEqual(compute_current_stage(data, cfg=cfg), "offer")
+        self.assertEqual(compute_current_stage(data, cfg=cfg), "approval")
         data2 = {"offer_status": "已接受", "education": "大专", "manager_interview_result": "通过"}
         self.assertEqual(compute_current_stage(data2, cfg=cfg), "registration")
 

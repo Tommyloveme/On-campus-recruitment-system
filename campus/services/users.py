@@ -71,8 +71,8 @@ def persist_user_columns(db, uid, fields, role, password=None, is_create=False, 
     if is_create:
         from werkzeug.security import generate_password_hash
 
-        from campus.core.roles_store import role_bypass
-        log_level = 1 if (role == "admin" or role_bypass(role)) else 10
+        from campus.core.roles_store import role_log_level
+        log_level = role_log_level(role)
         db.execute(
             "INSERT INTO users (username, display_name, password_hash, role, "
             "supervisor, department, dept_level2, dept_level3, job_roles, extra, log_level, created_at) "
@@ -177,7 +177,7 @@ def parse_user_profile_body(body, require_employee_id=False):
 
 def user_dict(u):
     """序列化用户：工号 + 角色 + 所有配置字段（builtin 列 + extra JSON）。"""
-    from campus.core.roles_store import role_label
+    from campus.core.roles_store import role_bypass, role_label
     keys = u.keys() if hasattr(u, "keys") else []
     extra = parse_extra(u["extra"] if "extra" in keys else None)
     out = {
@@ -187,6 +187,7 @@ def user_dict(u):
         "role": u["role"],
         "role_label": role_label(u["role"]),
         "job_roles": parse_job_roles(u["job_roles"] if "job_roles" in keys else None),
+        "log_level": 1 if (u["role"] == "admin" or role_bypass(u["role"])) else (u["log_level"] if "log_level" in keys else 10),
     }
     for f in user_fields_config():
         key = f["key"]
@@ -203,8 +204,9 @@ def apply_role_to_user(db, uid, role_key):
     bypass 角色（如系统管理员）清空其 module_acl（依赖 admin_bypass 直通）。
     返回写入的条目数。
     """
-    from campus.core.roles_store import get_role, role_bypass
+    from campus.core.roles_store import get_role, role_bypass, role_log_level
     db.execute("DELETE FROM module_acl WHERE subject_type='user' AND subject_id=?", (uid,))
+    db.execute("UPDATE users SET log_level=? WHERE id=?", (role_log_level(role_key), uid))
     if role_bypass(role_key):
         return 0
     r = get_role(role_key)

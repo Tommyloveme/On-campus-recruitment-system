@@ -54,28 +54,24 @@ OFFER_STRATEGY_STAGES = frozenset({"approval", "salary", "offer", "contract_sign
 
 # 当前流程状态先使用稳定的序号 + 阶段名，实际阶段仍由规则条件组合判定。
 STAGE_STATUS_LABELS = {
-    "registration": "01 待投递",
-    "resume_screening": "02 简历筛选",
-    "qualification": "03 资格审查",
-    "commercial_secret": "04 商业秘密签署",
-    "written_test": "05 笔试",
-    "personality_test": "06 性格测评",
-    "qualification_interview": "07 资格面试",
-    "tech_interview": "08 技术面",
-    "manager_interview": "09 主管面",
-    "approval": "10 报批",
-    "salary": "11 谈薪",
-    "offer": "12 Offer",
-    "contract_signing": "13 签约",
-    "onboarding": "14 入职",
+    "registration": "01-投递",
+    "resume_screening": "02-简历筛选",
+    "qualification": "03-资格审查",
+    "commercial_secret": "04-商业秘密签署",
+    "written_test": "05-笔试",
+    "personality_test": "06-性格测评",
+    "qualification_interview": "07-资格面试",
+    "tech_interview": "08-技术面",
+    "manager_interview": "09-主管面",
+    "approval": "10-offer策略",
+    "salary": "10-offer策略",
+    "offer": "10-offer策略",
+    "contract_signing": "10-offer策略",
+    "onboarding": "10-offer策略",
 }
 
 
 def stage_status_label(stage, data=None):
-    if stage == "registration":
-        reg = str(field_get(data or {}, "registration_status") or "").strip()
-        if reg and reg != "待投递":
-            return f"01 {reg}"
     return STAGE_STATUS_LABELS.get(stage, stage_label_map().get(stage, stage))
 
 
@@ -88,6 +84,10 @@ def apply_offer_strategy_gate(stage, data):
     """Offer 策略门禁：主管面未通过时不得处于 Offer 策略任一子阶段。"""
     if stage in OFFER_STRATEGY_STAGES and not manager_interview_passed(data):
         return "manager_interview"
+    # 自动判定一旦进入 Offer 策略，统一落到第一个流程「报批」；
+    # 报批之后的谈薪/Offer/签约/入职由手动流转推进（manual_stage 覆盖）。
+    if stage in OFFER_STRATEGY_STAGES:
+        return "approval"
     return stage
 
 

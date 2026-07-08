@@ -6,7 +6,8 @@
       "label": "系统管理员",
       "bypass": true,
       "builtin": true,
-      "perms": {}
+      "perms": {},
+      "log_level": 1
     },
     {
       "key": "user",
@@ -109,7 +110,8 @@
           "w": 1,
           "m": 0
         }
-      }
+      },
+      "log_level": 10
     },
     {
       "key": "interviewer",
@@ -157,7 +159,8 @@
         "软件岗",
         "测试岗",
         "算法岗"
-      ]
+      ],
+      "log_level": 10
     },
     {
       "key": "manager",
@@ -218,7 +221,8 @@
           "w": 0,
           "m": 0
         }
-      }
+      },
+      "log_level": 10
     },
     {
       "key": "hr",
@@ -322,7 +326,8 @@
           "w": 0,
           "m": 0
         }
-      }
+      },
+      "log_level": 10
     }
   ]
 }

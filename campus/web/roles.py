@@ -8,10 +8,12 @@ from flask import Blueprint, g, jsonify, request
 from campus.core.roles_store import (
     create_role,
     delete_role,
+    role_log_level,
     role_is_builtin,
     roles_payload,
     update_role,
 )
+from campus.db.connection import get_db
 from campus.services.audit import add_log
 from campus.web.guards import admin_required
 
@@ -34,10 +36,12 @@ def api_role_create():
     bypass = bool(b.get("bypass"))
     try:
         r = create_role(key, label, perms=perms, bypass=bypass,
-                        interview_positions=b.get("interview_positions"))
+                        interview_positions=b.get("interview_positions"),
+                        log_level=b.get("log_level"))
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     add_log(g.user, "permission", f"{g.user['display_name']} 新增了角色「{label}」（{key}）", module="permissions", level=1)
+    get_db().commit()
     return jsonify({"ok": True, "role": r})
 
 
@@ -52,10 +56,15 @@ def api_role_update(key):
             perms=b.get("perms"),
             bypass=b.get("bypass"),
             interview_positions=b.get("interview_positions"),
+            log_level=b.get("log_level"),
         )
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
+    if "log_level" in b or "bypass" in b:
+        db = get_db()
+        db.execute("UPDATE users SET log_level=? WHERE role=?", (role_log_level(key), key))
     add_log(g.user, "permission", f"{g.user['display_name']} 编辑了角色「{r['label']}」（{key}）", module="permissions", level=1)
+    get_db().commit()
     return jsonify({"ok": True, "role": r})
 
 
@@ -69,4 +78,5 @@ def api_role_delete(key):
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     add_log(g.user, "permission", f"{g.user['display_name']} 删除了角色（{key}）", module="permissions", level=1)
+    get_db().commit()
     return jsonify({"ok": True})

@@ -21,6 +21,7 @@ const PERM_FLAGS = [
 const MOD_FILTERS = [
   ["any", "全部"], ["v", "可见"], ["r", "读"], ["w", "写"], ["m", "管理"], ["none", "无权限"],
 ];
+const LOG_LEVELS = Array.from({ length: 10 }, (_, i) => i + 1);
 
 /* 细粒度权限入口按钮的图标（内联 SVG 齿轮，替代 emoji） */
 const PERM_GEAR_SVG = `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.7M8 12.5v1.7M1.8 8h1.7M12.5 8h1.7M3.6 3.6l1.2 1.2M11.2 11.2l1.2 1.2M12.4 3.6l-1.2 1.2M4.8 11.2l-1.2 1.2"/></svg>`;
@@ -187,6 +188,7 @@ function permColumns() {
   ];
   for (const f of fields) cols.push({ id: `f_${f.key}`, kind: "field", field: f, label: f.label });
   cols.push({ id: "role", kind: "role", label: "角色" });
+  cols.push({ id: "log_level", kind: "log_level", label: "日志等级" });
   cols.push({ id: "actions", kind: "actions", label: "操作" });
   for (const m of permModuleCols) cols.push({ id: `m_${m.key}`, kind: "module", module: m, label: m.label });
   return cols;
@@ -196,6 +198,7 @@ function cellValue(u, col) {
   if (col.kind === "text") return u[col.id] ?? "";
   if (col.kind === "field") return u[col.field.key] ?? "";
   if (col.kind === "role") return u.role || "";
+  if (col.kind === "log_level") return String(u.log_level ?? 10);
   return "";
 }
 
@@ -207,6 +210,8 @@ function rowPassesFilter(u, cols) {
       if (f && !String(cellValue(u, col)).toLowerCase().includes(String(f).toLowerCase())) return false;
     } else if (col.kind === "role") {
       if (f && u.role !== f) return false;
+    } else if (col.kind === "log_level") {
+      if (f && String(u.log_level ?? 10) !== f) return false;
     } else if (col.kind === "module") {
       const a = aclOf(u.id, col.module.key);
       const match = {
@@ -302,6 +307,7 @@ function permRoleLabel(u) {
 
 function permFilterOptionTexts(col) {
   if (col.kind === "role") return ["全部", ...(permOptions.roles || []).map(r => r.label)];
+  if (col.kind === "log_level") return ["全部", ...LOG_LEVELS.map(x => `L${x}`)];
   if (col.kind === "module") return MOD_FILTERS.map(([, label]) => label);
   return ["筛选"];
 }
@@ -348,6 +354,10 @@ function permRecomputeDefaultColWidths(cols) {
       for (const u of permUsersCache) maxW = Math.max(maxW, permMeasureBadge(permRoleLabel(u)) + cellPad);
       for (const r of (permOptions.roles || [])) maxW = Math.max(maxW, permMeasureBadge(r.label) + cellPad);
       for (const t of permFilterOptionTexts(col)) maxW = Math.max(maxW, permMeasureText(t, false, 11) + filterPad);
+    } else if (col.kind === "log_level") {
+      maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
+      for (const t of permFilterOptionTexts(col)) maxW = Math.max(maxW, permMeasureText(t, false, 11) + filterPad);
+      maxW = Math.max(maxW, permMeasureText("L10", false, 12) + cellPad + 28);
     } else if (col.kind === "actions") {
       maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
       maxW = Math.max(maxW, permMeasureActions() + cellPad);
@@ -371,6 +381,7 @@ function permDefaultColWidth(col) {
   if (col.id === "display_name") return permMeasureText("一二三四", false) + pad;
   if (col.kind === "actions") return permMeasureActions() + pad;
   if (col.kind === "role") return 72;
+  if (col.kind === "log_level") return 86;
   if (col.kind === "field") return Math.max(56, permMeasureText(col.label || "字段", false) + pad + 12);
   if (col.kind === "module") return Math.max(permMeasureModuleCell() + pad, permMeasureText(col.label || "模块", false) + pad);
   return 72;
@@ -482,6 +493,11 @@ function permFilterRow(cols) {
       return `<th class="col-role-h"><select class="perm-col-filter perm-role-filter" data-col="${c.id}">
         <option value="">全部</option>${ro}</select></th>`;
     }
+    if (c.kind === "log_level") {
+      const opts = LOG_LEVELS.map(l => `<option value="${l}">L${l}</option>`).join("");
+      return `<th><select class="perm-col-filter perm-role-filter" data-col="${c.id}">
+        <option value="">全部</option>${opts}</select></th>`;
+    }
     if (c.kind === "module") {
       const opts = MOD_FILTERS.map(([v, label]) =>
         `<option value="${v}">${label}</option>`).join("");
@@ -504,6 +520,12 @@ function permRowCells(u, cols) {
       const label = rdef ? rdef.label : (ROLE_NAMES[u.role] || u.role || "—");
       const tone = (rdef && rdef.bypass) ? "blue" : "gray";
       return `<td class="col-role"><span class="badge badge-${tone}">${esc(label)}</span></td>`;
+    }
+    if (c.kind === "log_level") {
+      const isAdminRole = (permOptions.roles || []).some(r => r.key === u.role && r.bypass) || u.role === "admin";
+      return `<td><select class="perm-log-level" data-loglv-uid="${u.id}" ${isAdminRole ? "disabled title=\"系统管理员恒为 L1\"" : ""}>
+        ${LOG_LEVELS.map(l => `<option value="${l}" ${String(u.log_level ?? 10) === String(l) ? "selected" : ""}>L${l}</option>`).join("")}
+      </select></td>`;
     }
     if (c.kind === "module") {
       const a = aclOf(u.id, c.module.key);
@@ -592,6 +614,8 @@ function renderPermGridBody(cols) {
   leftTb.querySelectorAll(".perm-row-check").forEach(cb => cb.addEventListener("change", refreshPermBatchBtn));
   rightTb.querySelectorAll(".perm-flag-cb").forEach(cb =>
     cb.addEventListener("change", () => onPermFlagToggle(+cb.dataset.uid, cb.dataset.mk, cb.dataset.flag, cb.checked)));
+  rightTb.querySelectorAll("[data-loglv-uid]").forEach(sel =>
+    sel.addEventListener("change", () => onPermLogLevelChange(+sel.dataset.loglvUid, sel.value)));
   rightTb.querySelectorAll("[data-feat-uid]").forEach(b =>
     b.addEventListener("click", () => openFeatureModal(+b.dataset.featUid, b.dataset.featMk)));
   rightTb.querySelectorAll("[data-uedit]").forEach(b =>
@@ -638,6 +662,20 @@ async function onPermFlagToggle(uid, mk, flag, checked) {
   }
   try {
     await api("/api/module-acl", { method: "PUT", json: body });
+  } catch (e) {
+    toast(e.message, true);
+    await loadPermData();
+    renderPermGrid();
+  }
+}
+
+async function onPermLogLevelChange(uid, value) {
+  try {
+    const r = await api(`/api/logs/levels/${uid}`, { method: "PUT", json: { log_level: +value } });
+    const u = permUsersCache.find(x => x.id === uid);
+    if (u) u.log_level = r.log_level;
+    toast("日志等级已保存");
+    renderPermGrid();
   } catch (e) {
     toast(e.message, true);
     await loadPermData();
@@ -874,6 +912,7 @@ function roleColumns() {
     { id: "r_label", kind: "text", label: "角色名称" },
     { id: "r_key", kind: "text", label: "角色key" },
     { id: "r_bypass", kind: "bool", label: "全权" },
+    { id: "r_log_level", kind: "log_level", label: "日志等级" },
     { id: "r_builtin", kind: "bool", label: "内置" },
     { id: "r_actions", kind: "actions", label: "操作" },
   ];
@@ -885,6 +924,7 @@ function roleCellValue(role, col) {
   if (col.id === "r_label") return role.label || "";
   if (col.id === "r_key") return role.key || "";
   if (col.id === "r_bypass") return role.bypass ? "1" : "0";
+  if (col.id === "r_log_level") return String(role.log_level ?? (role.bypass ? 1 : 10));
   if (col.id === "r_builtin") return role.builtin ? "1" : "0";
   return "";
 }
@@ -905,6 +945,8 @@ function rowPassesRoleFilter(role, cols) {
     if (col.kind === "text") {
       if (!String(roleCellValue(role, col)).toLowerCase().includes(String(f).toLowerCase())) return false;
     } else if (col.kind === "bool") {
+      if (roleCellValue(role, col) !== f) return false;
+    } else if (col.kind === "log_level") {
       if (roleCellValue(role, col) !== f) return false;
     } else if (col.kind === "module") {
       if (role.bypass) {
@@ -963,6 +1005,9 @@ function roleRecomputeDefaultColWidths(cols) {
       maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
       maxW = Math.max(maxW, permMeasureBadge(col.id === "r_bypass" ? "全权" : "内置") + cellPad);
       maxW = Math.max(maxW, permMeasureText("普通", false, 11) + filterPad);
+    } else if (col.kind === "log_level") {
+      maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
+      maxW = Math.max(maxW, permMeasureText("L10", false, 12) + cellPad + 28);
     } else if (col.kind === "actions") {
       maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
       maxW = Math.max(maxW, permMeasureActions() + cellPad);
@@ -1087,6 +1132,11 @@ function roleFilterRow(cols) {
         : `<option value="">全部</option><option value="1">内置</option><option value="0">自定义</option>`;
       return `<th><select class="perm-col-filter role-col-filter" data-col="${c.id}">${opts}</select></th>`;
     }
+    if (c.kind === "log_level") {
+      const opts = LOG_LEVELS.map(l => `<option value="${l}">L${l}</option>`).join("");
+      return `<th><select class="perm-col-filter role-col-filter" data-col="${c.id}">
+        <option value="">全部</option>${opts}</select></th>`;
+    }
     if (c.kind === "module") {
       const opts = MOD_FILTERS.map(([v, label]) => `<option value="${v}">${label}</option>`).join("");
       return `<th class="col-module perm-mod-head"><select class="perm-col-filter role-col-filter perm-mod-filter" data-col="${c.id}">${opts}</select></th>`;
@@ -1104,6 +1154,9 @@ function roleRowCells(role, cols) {
       ${role.builtin ? "" : `<button class="btn btn-sm btn-danger" data-role-del="${esc(role.key)}">删除</button>`}
     </div></td>`;
     if (c.id === "r_bypass") return `<td><span class="badge badge-${role.bypass ? "blue" : "gray"}">${role.bypass ? "全权" : "—"}</span></td>`;
+    if (c.id === "r_log_level") return `<td><select class="role-log-level" data-role-loglv="${esc(role.key)}" ${role.bypass ? "disabled title=\"全权角色恒为 L1\"" : ""}>
+      ${LOG_LEVELS.map(l => `<option value="${l}" ${String(role.log_level ?? 10) === String(l) ? "selected" : ""}>L${l}</option>`).join("")}
+    </select></td>`;
     if (c.id === "r_builtin") return `<td><span class="badge badge-${role.builtin ? "gray" : "blue"}">${role.builtin ? "内置" : "自定义"}</span></td>`;
     if (c.kind === "module") {
       if (role.bypass) return `<td class="col-module perm-mod-cell"><span class="perm-dash" title="全权角色">—</span></td>`;
@@ -1191,6 +1244,8 @@ function renderRoleGridBody(cols) {
 
   rightTb.querySelectorAll(".role-flag-cb").forEach(cb =>
     cb.addEventListener("change", () => onRoleFlagToggle(cb.dataset.rkey, cb.dataset.mk, cb.dataset.flag, cb.checked)));
+  rightTb.querySelectorAll("[data-role-loglv]").forEach(sel =>
+    sel.addEventListener("change", () => onRoleLogLevelChange(sel.dataset.roleLoglv, sel.value)));
   rightTb.querySelectorAll("[data-role-feat]").forEach(b =>
     b.addEventListener("click", () => openRoleFeatureModal(b.dataset.roleFeat, b.dataset.featMk)));
   rightTb.querySelectorAll("[data-role-edit]").forEach(b =>
@@ -1225,6 +1280,23 @@ async function onRoleFlagToggle(roleKey, mk, flag, checked) {
   try {
     await api(`/api/roles/${encodeURIComponent(roleKey)}`, { method: "PUT", json: { perms } });
     role.perms = perms;
+  } catch (e) {
+    toast(e.message, true);
+    await loadPermData();
+    renderRoleGrid();
+  }
+}
+
+async function onRoleLogLevelChange(roleKey, value) {
+  const role = rolesCache().find(r => r.key === roleKey);
+  if (!role || role.bypass) return;
+  try {
+    await api(`/api/roles/${encodeURIComponent(roleKey)}`, { method: "PUT", json: { log_level: +value } });
+    role.log_level = +value;
+    toast("角色日志等级已保存");
+    await loadPermData();
+    renderPermGrid();
+    renderRoleGrid();
   } catch (e) {
     toast(e.message, true);
     await loadPermData();
@@ -1342,6 +1414,10 @@ function openRoleModal(role) {
         <input id="rf-label" value="${role ? esc(role.label) : ""}"></div>
       <div class="form-item"><label>角色key ${isNew ? "（唯一，英文/数字/下划线）" : "（不可修改）"}</label>
         <input id="rf-key" value="${role ? esc(role.key) : ""}" ${isNew ? "" : "disabled"}></div>
+      <div class="form-item"><label>默认日志等级</label>
+        <select id="rf-log-level" ${role?.bypass ? "disabled" : ""}>
+          ${LOG_LEVELS.map(l => `<option value="${l}" ${String(role?.log_level ?? 10) === String(l) ? "selected" : ""}>L${l}</option>`).join("")}
+        </select></div>
     </div>
     <label class="perm-flag-toggle" style="margin:6px 0 4px"><input type="checkbox" id="rf-bypass" ${role?.bypass ? "checked" : ""}>
       <span>全权角色（绕过所有模块权限，如系统管理员）</span></label>
@@ -1353,7 +1429,7 @@ function openRoleModal(role) {
   $("#rf-save").addEventListener("click", async () => {
     const label = $("#rf-label").value.trim();
     const bypass = $("#rf-bypass").checked;
-    const body = { label, bypass };
+    const body = { label, bypass, log_level: +$("#rf-log-level").value };
     const roleKey = isNew ? $("#rf-key").value.trim() : role.key;
     if (roleKey === "interviewer") {
       body.interview_positions = [...document.querySelectorAll(".rf-interview-pos:checked")].map(cb => cb.value);

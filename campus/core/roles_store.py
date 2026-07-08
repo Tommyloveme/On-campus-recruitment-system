@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """角色（权限模板）存取：加载/保存/CRUD，持久化到 config/roles.json。
 
-角色 = 权限模板。每个角色定义 key/label/bypass/perms。
+角色 = 权限模板。每个角色定义 key/label/bypass/log_level/perms。
 - 应用角色到用户（campus.services.users.apply_role_to_user）时，将 perms
   写入该用户的 module_acl（覆盖其原有模块权限）。
 - bypass=true 的角色等同系统管理员：直通所有权限校验（is_admin 判定的
@@ -82,6 +82,17 @@ def role_perms(key):
     return (r or {}).get("perms", {}) or {}
 
 
+def role_log_level(key):
+    """角色默认日志等级：bypass/admin 恒为 1，其余默认 10。"""
+    from campus.core.log_levels import clamp_log_level
+    r = get_role(key)
+    if not r:
+        return 10
+    if key == "admin" or r.get("bypass"):
+        return 1
+    return clamp_log_level(r.get("log_level"), default=10)
+
+
 def valid_role_key(key):
     """校验角色 key：仅中英文/数字/下划线，长度<=32。"""
     if not key or len(key) > 32:
@@ -123,7 +134,7 @@ def _normalize_perms(perms):
     return out
 
 
-def create_role(key, label, perms=None, bypass=False, interview_positions=None):
+def create_role(key, label, perms=None, bypass=False, interview_positions=None, log_level=None):
     key = (key or "").strip()
     label = (label or "").strip()
     if not valid_role_key(key):
@@ -139,6 +150,8 @@ def create_role(key, label, perms=None, bypass=False, interview_positions=None):
         "bypass": bool(bypass),
         "perms": _normalize_perms(perms or {}),
     }
+    from campus.core.log_levels import clamp_log_level
+    entry["log_level"] = 1 if entry["bypass"] else clamp_log_level(log_level, default=10)
     if interview_positions is not None:
         entry["interview_positions"] = [str(x).strip() for x in interview_positions if str(x).strip()]
     roles.append(entry)
@@ -147,7 +160,7 @@ def create_role(key, label, perms=None, bypass=False, interview_positions=None):
     return get_role(key)
 
 
-def update_role(key, label=None, perms=None, bypass=None, interview_positions=None):
+def update_role(key, label=None, perms=None, bypass=None, interview_positions=None, log_level=None):
     data = _read()
     roles = data.get("roles", [])
     for r in roles:
@@ -159,6 +172,11 @@ def update_role(key, label=None, perms=None, bypass=None, interview_positions=No
                 r["label"] = label
             if bypass is not None:
                 r["bypass"] = bool(bypass)
+                if r["bypass"]:
+                    r["log_level"] = 1
+            if log_level is not None:
+                from campus.core.log_levels import clamp_log_level
+                r["log_level"] = 1 if (key == "admin" or r.get("bypass")) else clamp_log_level(log_level, default=10)
             if perms is not None:
                 r["perms"] = _normalize_perms(perms)
             if interview_positions is not None:
@@ -192,6 +210,7 @@ def roles_payload():
             "label": r["label"],
             "builtin": bool(r.get("builtin")),
             "bypass": bool(r.get("bypass")),
+            "log_level": role_log_level(r["key"]),
             "perms": r.get("perms", {}) or {},
             "interview_positions": list(r.get("interview_positions") or []),
         }

@@ -18,13 +18,11 @@ async function renderLogs() {
         <div class="iv-subnav pagehead-tabs">
           <button class="btn btn-sm iv-view-btn active" data-lg-view="list">日志列表</button>
           <button class="btn btn-sm iv-view-btn" data-lg-view="purge">日志清理</button>
-          <button class="btn btn-sm iv-view-btn" data-lg-view="levels">日志权限</button>
         </div>
       </div>
       <div class="card log-card">
         <div id="log-view-list"><div id="log-panel-root"></div></div>
         <div id="log-view-purge" class="hidden"></div>
-        <div id="log-view-levels" class="hidden"></div>
       </div>
     </div>`;
   renderLogPanel($("#log-panel-root"), { pageSize: state.app?.logs_page_size || 30 });
@@ -36,8 +34,6 @@ async function renderLogs() {
       const view = btn.dataset.lgView;
       $("#log-view-list").classList.toggle("hidden", view !== "list");
       $("#log-view-purge").classList.toggle("hidden", view !== "purge");
-      $("#log-view-levels").classList.toggle("hidden", view !== "levels");
-      if (view === "levels") renderLogLevelSettings($("#log-view-levels"));
       if (view === "purge") renderLogPurgePanel($("#log-view-purge"));
     });
   });
