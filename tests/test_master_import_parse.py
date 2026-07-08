@@ -8,6 +8,7 @@ from campus.domain.stage_routing import compute_current_stage
 from campus.db.field_store import field_get
 from campus.services.master_import import join_master_rows, merge_rows_by_identity, parse_excel_file
 from campus.services.master_import_store import detect_source_key, filename_matches
+from scripts.expand_real_process_status_excels import CASES as REAL_STATUS_CASES
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROCESS_LIST = os.path.join(ROOT, "applicationProcessList20260626083908.xlsx")
@@ -117,6 +118,27 @@ class TestMasterImportParse(unittest.TestCase):
             row = by_name[name]
             self.assertEqual(compute_current_stage(row, cfg=self.cfg), stage, name)
             self.assertEqual(field_get(row, "process_status"), status, name)
+
+    def test_real_dual_excel_covers_process_statuses(self):
+        """根目录真实双 Excel 扩充后，可通过主数据导入覆盖 01-投递 到 10-offer策略。"""
+        if not (os.path.isfile(PROCESS_LIST) and os.path.isfile(INTERVIEW_LIST)):
+            self.skipTest("真实主数据双 Excel 不存在")
+        interview_src = next(s for s in self.cfg["sources"] if s["key"] == "interview_mgmt")
+        app_rows = parse_excel_file(PROCESS_LIST, self.app_src)
+        interview_rows = parse_excel_file(INTERVIEW_LIST, interview_src)
+        valid = join_master_rows(
+            app_rows,
+            interview_rows,
+            join_key=self.cfg.get("join_key", "application_archive_id"),
+            match_keys=self.cfg.get("match_keys"),
+        )
+        by_name = {r.get("name"): r for r in valid}
+        for case in REAL_STATUS_CASES:
+            name = case["name"]
+            self.assertIn(name, by_name)
+            row = by_name[name]
+            self.assertEqual(compute_current_stage(row, cfg=self.cfg), case["expected_stage"], name)
+            self.assertEqual(field_get(row, "process_status"), case["expected_status"], name)
 
 
 if __name__ == "__main__":

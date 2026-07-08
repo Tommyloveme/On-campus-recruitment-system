@@ -67,23 +67,17 @@ async function renderPermissions() {
 
       <section class="card perm-section">
         <div class="perm-section-head">
-          <div class="perm-section-title">用户 × 模块权限矩阵
-            <span class="perm-section-sub">勾选即时保存；点击齿轮按钮配置页面内细粒度权限</span></div>
+          <div class="perm-section-title">用户信息管理
+            <span class="perm-section-sub">用户仅维护账号、角色归属、日志等级与附属信息；模块权限统一由角色/组决定</span></div>
           <div class="perm-head-actions">
             <button class="btn btn-primary btn-sm" id="perm-add-user">+ 新增用户</button>
             <button class="btn btn-sm" id="perm-batch-edit" disabled>批量修改附属信息</button>
-            <button class="btn btn-sm" id="perm-export">导出矩阵</button>
+            <button class="btn btn-sm" id="perm-export">导出角色/组权限</button>
           </div>
         </div>
         <div class="perm-batch-bar">
-          <span class="perm-batch-label">批量授权</span>
-          <span class="perm-batch-field"><label class="perm-batch-cap">模块</label><select id="perm-batch-module" class="perm-select"></select></span>
-          <span class="perm-batch-flags">
-            ${PERM_FLAGS.map(([s, , label, color]) =>
-              `<label class="perm-flag-toggle" style="--flag-color:${color}"><input type="checkbox" id="perm-batch-${s}"><span>${label}</span></label>`).join("")}
-          </span>
-          <button class="btn btn-primary btn-sm" id="perm-batch-apply">应用到所选用户</button>
-          <button class="btn btn-sm" id="perm-batch-revoke">清空所选用户该模块</button>
+          <span class="perm-batch-label">用户资料</span>
+          <span class="perm-muted">模块权限不再按用户单独授权，请在下方角色/组权限中统一配置。</span>
           <span class="perm-flex"></span>
           <span id="perm-row-count" class="muted"></span>
         </div>
@@ -95,8 +89,8 @@ async function renderPermissions() {
 
       <section class="card perm-section" id="perm-roles">
         <div class="perm-section-head">
-          <div class="perm-section-title">角色管理
-            <span class="perm-section-sub">角色 = 权限模板，应用后写入用户模块权限</span></div>
+          <div class="perm-section-title">角色/组权限管理
+            <span class="perm-section-sub">角色 = 权限组，用户权限实时由所属角色/组模板决定</span></div>
           <div class="perm-head-actions">
             <button class="btn btn-primary btn-sm" id="role-add">+ 新增角色</button>
           </div>
@@ -141,17 +135,14 @@ async function renderPermissions() {
 
   $("#perm-add-user").addEventListener("click", () => openUserModal(null));
   $("#perm-batch-edit").addEventListener("click", openBatchEditModal);
-  $("#perm-batch-apply").addEventListener("click", () => permBatchApply(false));
-  $("#perm-batch-revoke").addEventListener("click", () => permBatchApply(true));
   $("#perm-export").addEventListener("click", () => { window.location.href = "/api/module-acl/export"; });
   $("#role-add").addEventListener("click", () => openRoleModal(null));
   $("#role-batch-apply").addEventListener("click", () => roleBatchApply(false));
   $("#role-batch-revoke").addEventListener("click", () => roleBatchApply(true));
 
   await loadPermData();
-  $("#perm-batch-module").innerHTML = permModuleCols
+  $("#role-batch-module").innerHTML = permModuleCols
     .map(m => `<option value="${m.key}">${esc(m.label)}${m.type === "section" ? "（板块）" : ""}</option>`).join("");
-  $("#role-batch-module").innerHTML = $("#perm-batch-module").innerHTML;
   roleLoadColWidths();
   renderPermGrid();
   refreshPermBatchBtn();
@@ -190,7 +181,6 @@ function permColumns() {
   cols.push({ id: "role", kind: "role", label: "角色" });
   cols.push({ id: "log_level", kind: "log_level", label: "日志等级" });
   cols.push({ id: "actions", kind: "actions", label: "操作" });
-  for (const m of permModuleCols) cols.push({ id: `m_${m.key}`, kind: "module", module: m, label: m.label });
   return cols;
 }
 

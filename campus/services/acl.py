@@ -21,7 +21,7 @@ from campus.core.modules import (  # noqa: F401  （对外统一从本模块取�
     module_entry,
     module_keys,
 )
-from campus.core.roles_store import role_bypass
+from campus.core.roles_store import role_bypass, role_perms
 from campus.core.settings import load_app_config
 from campus.db.connection import get_db
 
@@ -112,7 +112,7 @@ def _merge_module_rows(rows):
 
 
 def effective_module_perms(db, user, module_key):
-    """用户对模块的有效权限：用户直接授权（含板块→子模块继承）；admin 直通全权。"""
+    """用户对模块的有效权限：由用户所属角色/组权限模板决定；admin 直通全权。"""
     if user is None:
         return _empty_perms()
     if permission_settings()["admin_bypass"] and is_admin(user):
@@ -123,13 +123,14 @@ def effective_module_perms(db, user, module_key):
     if mkey in cache:
         return cache[mkey]
 
-    chain = module_ancestor_chain(module_key) or [module_key]
-    key_ph = ",".join("?" * len(chain))
-    rows = db.execute(
-        f"SELECT * FROM module_acl WHERE subject_type=? AND subject_id=? AND module_key IN ({key_ph})",
-        [SUBJECT_TYPE_USER, user["id"], *chain],
-    ).fetchall()
-    final = _merge_module_rows(rows)
+    perms = role_perms(user["role"])
+    final = _empty_perms()
+    for mk in module_ancestor_chain(module_key) or [module_key]:
+        flags = perms.get(mk) or {}
+        final["visibility"] |= 1 if flags.get("v") else 0
+        final["read"] |= 1 if flags.get("r") else 0
+        final["write"] |= 1 if flags.get("w") else 0
+        final["manage"] |= 1 if flags.get("m") else 0
     cache[mkey] = final
     return final
 
@@ -163,19 +164,13 @@ def effective_module_features(db, user, module_key):
     if ckey in cache:
         return cache[ckey]
 
+    role_flags = role_perms(user["role"])
     chain = module_ancestor_chain(module_key) or [module_key]
-    key_ph = ",".join("?" * len(chain))
-    rows = db.execute(
-        f"SELECT module_key, perm_features FROM module_acl "
-        f"WHERE subject_type=? AND subject_id=? AND module_key IN ({key_ph})",
-        [SUBJECT_TYPE_USER, user["id"], *chain],
-    ).fetchall()
-    by_module = {r["module_key"]: _parse_features(r["perm_features"]) for r in rows}
     result = {}
     for fk in keys:
         val = 1
         for mk in chain:  # 子模块显式配置优先，其次板块
-            feats = by_module.get(mk)
+            feats = (role_flags.get(mk) or {}).get("features") or None
             if feats is not None and fk in feats:
                 val = 1 if feats[fk] else 0
                 break

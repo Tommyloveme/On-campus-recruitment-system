@@ -700,6 +700,7 @@ th.sortable:hover { color: var(--primary); }
   padding: 8px 12px; margin-bottom: 12px; font-size: 12px;
 }
 .perm-batch-label { font-weight: 600; color: #334155; }
+.perm-muted { color: #64748b; line-height: 1.5; }
 .perm-batch-field { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; white-space: nowrap; }
 .perm-batch-cap { color: #64748b; }
 .perm-batch-bar .perm-select { padding: 4px 8px; font-size: 12px; min-width: 220px; max-width: none; width: auto; }

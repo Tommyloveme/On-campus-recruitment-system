@@ -230,31 +230,27 @@ def api_module_acl_batch():
 @bp.get("/api/module-acl/export")
 @admin_required
 def api_module_acl_export():
-    """导出模块权限矩阵为 Excel（用户 × 模块 四勾选）。"""
-    db = get_db()
-    users = {u["id"]: dict(u) for u in db.execute(
-        "SELECT id, username, display_name FROM users").fetchall()}
-    rows = db.execute(
-        "SELECT * FROM module_acl WHERE subject_type=? ORDER BY module_key, subject_id",
-        (SUBJECT_TYPE_USER,),
-    ).fetchall()
+    """导出角色/组权限矩阵为 Excel（角色 × 模块 四勾选）。"""
     wb = Workbook()
     ws = wb.active
-    ws.title = "模块权限矩阵"
-    headers = ["模块", "主体ID", "工号", "姓名", "可见性", "读", "写", "管理"]
+    ws.title = "角色组权限矩阵"
+    headers = ["角色key", "角色名称", "模块", "可见性", "读", "写", "管理"]
     ws.append(headers)
-    for r in rows:
-        u = users.get(r["subject_id"], {})
-        ws.append([r["module_key"], r["subject_id"], u.get("username", ""), u.get("display_name", ""),
-                   r["perm_visibility"], r["perm_read"], r["perm_write"], r["perm_manage"]])
+    count = 0
+    for role in roles_payload():
+        for mk, flags in (role.get("perms") or {}).items():
+            ws.append([role["key"], role["label"], mk,
+                       1 if flags.get("v") else 0, 1 if flags.get("r") else 0,
+                       1 if flags.get("w") else 0, 1 if flags.get("m") else 0])
+            count += 1
     for i, h in enumerate(headers, start=1):
         ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = max(12, len(h) * 2 + 4)
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    add_log(g.user, "export", f"{g.user['display_name']} 导出了模块权限矩阵（{len(rows)} 条）", module="permissions")
+    add_log(g.user, "export", f"{g.user['display_name']} 导出了角色/组权限矩阵（{count} 条）", module="permissions")
     db.commit()
-    resp = send_file(buf, as_attachment=True, download_name="模块权限矩阵.xlsx",
+    resp = send_file(buf, as_attachment=True, download_name="角色组权限矩阵.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    resp.headers["X-Export-Count"] = str(len(rows))
+    resp.headers["X-Export-Count"] = str(count)
     return resp

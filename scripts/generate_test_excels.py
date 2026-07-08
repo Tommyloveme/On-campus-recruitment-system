@@ -22,7 +22,7 @@ APP_HEADERS = [
     "登记状态", "简历筛选状态", "资审状态", "商业秘密签署状态", "笔试状态",
     "技术面状态", "主管面状态", "报批状态", "谈薪状态",
     "Offer状态", "签约状态", "是否入职",
-    "当前进展", "入职风险",
+    "当前环节", "当前环节状态", "当前进展", "入职风险",
     # 冗余列（未映射，按表头原文自动入库）
     "HR内部编号", "备注说明", "投递渠道明细", "校招批次",
 ]
@@ -57,7 +57,7 @@ def _app_row(
     tech_status="已完成", manager_status="已完成",
     approval="审批中", salary="谈薪中",
     offer="未发放", sign="未签约", onboarded="否",
-    progress="", risk="中", hr_code="", note="",
+    current_step="", current_step_status="", progress="", risk="中", hr_code="", note="",
 ):
     dept_l2 = dept_l2 or random.choice(DEPT_L2)
     dept_l3 = dept_l3 or random.choice(DEPT_L3)
@@ -69,7 +69,7 @@ def _app_row(
         reg_status, resume_screening, qualification, commercial_secret, written_test,
         tech_status, manager_status, approval, salary,
         offer, sign, onboarded,
-        progress, risk,
+        current_step, current_step_status, progress, risk,
         hr_code or f"HR-{resume_id[-4:]}",
         note or f"{name}样例备注",
         "官网+宣讲会",
@@ -105,7 +105,7 @@ def build_stage_status_rows():
         # name, date, seq, phone, registration, resume, qualification, secret, written, current_step, tech, manager, approval, salary, offer, sign, onboarded
         ("状态01投递", "20260201", 1, "13790002001", "待投递", "", "", "", "", "", "", "", "", "", "", "未签约", "否"),
         ("状态02简历筛选", "20260202", 2, "13790002002", "已登记", "待筛选", "", "", "", "", "", "", "", "", "", "未签约", "否"),
-        ("状态03资格审查", "20260203", 3, "13790002003", "已登记", "通过", "待审查", "", "", "资审", "", "", "", "", "", "未签约", "否"),
+        ("状态03资格审查", "20260203", 3, "13790002003", "已登记", "通过", "待审查", "待签署", "", "资审", "", "", "", "", "", "未签约", "否"),
         ("状态04商业秘密签署", "20260204", 4, "13790002004", "已登记", "通过", "通过", "待签署", "待预约", "", "", "", "", "", "", "未签约", "否"),
         ("状态05笔试", "20260205", 5, "13790002005", "已登记", "通过", "通过", "已签署", "已预约", "笔试", "", "", "", "", "", "未签约", "否"),
         ("状态06性格测评", "20260206", 6, "13790002006", "已登记", "通过", "通过", "已签署", "已完成", "性格测评", "", "", "", "", "", "未签约", "否"),
@@ -131,7 +131,9 @@ def build_stage_status_rows():
             offer=offer,
             sign=sign,
             onboarded=onboarded,
-            progress=progress,
+            current_step=progress,
+            current_step_status="进行中" if progress else "",
+            progress=f"{name}当前进展",
             risk="低",
             hr_code=f"HR-ST{seq:02d}",
             note=f"{name}流程状态测试",

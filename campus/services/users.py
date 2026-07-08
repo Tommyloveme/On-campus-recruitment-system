@@ -199,36 +199,14 @@ def user_dict(u):
 
 
 def apply_role_to_user(db, uid, role_key):
-    """将角色权限模板写入用户的 module_acl（覆盖该用户原有模块权限）。
+    """应用角色到用户：当前权限统一由角色/组模板实时决定。
 
-    bypass 角色（如系统管理员）清空其 module_acl（依赖 admin_bypass 直通）。
-    返回写入的条目数。
+    历史 module_acl 不再作为运行时权限来源；这里仅清理用户直授权并同步日志等级。
     """
-    from campus.core.roles_store import get_role, role_bypass, role_log_level
+    from campus.core.roles_store import role_log_level
     db.execute("DELETE FROM module_acl WHERE subject_type='user' AND subject_id=?", (uid,))
     db.execute("UPDATE users SET log_level=? WHERE id=?", (role_log_level(role_key), uid))
-    if role_bypass(role_key):
-        return 0
-    r = get_role(role_key)
-    perms = (r or {}).get("perms", {}) or {}
-    now = now_str()
-    cnt = 0
-    for mk, flags in perms.items():
-        if not flags or not (flags.get("v") or flags.get("r") or flags.get("w") or flags.get("m")):
-            continue
-        feats = flags.get("features") or {}
-        feat_json = json.dumps(feats, ensure_ascii=False) if feats else ""
-        db.execute(
-            "INSERT INTO module_acl (subject_type, subject_id, module_key, "
-            "perm_visibility, perm_read, perm_write, perm_manage, perm_features, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?)",
-            ("user", uid, mk,
-             1 if flags.get("v") else 0, 1 if flags.get("r") else 0,
-             1 if flags.get("w") else 0, 1 if flags.get("m") else 0,
-             feat_json, now),
-        )
-        cnt += 1
-    return cnt
+    return 0
 
 
 def lookup_employee_by_username(db, username):
