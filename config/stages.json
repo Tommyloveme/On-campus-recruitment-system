@@ -13,7 +13,7 @@
     {
       "key": "resume_screening",
       "label": "简历筛选",
-      "short_label": "筛简历",
+      "short_label": "简历筛选",
       "order": 2,
       "icon": "🔍",
       "can_create": false,
