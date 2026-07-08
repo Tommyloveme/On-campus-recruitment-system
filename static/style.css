@@ -788,6 +788,47 @@ th.sortable:hover { color: var(--primary); }
   margin-left: 4px; font-size: 10px; color: #94a3b8;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+/* ---- 细粒度权限（子标签/按钮级）配置 ---- */
+.perm-feat-btn {
+  border: none; background: transparent; cursor: pointer;
+  font-size: 13px; color: #94a3b8; padding: 0 2px; line-height: 1;
+  vertical-align: middle; border-radius: 4px;
+}
+.perm-feat-btn:hover { color: #2563eb; background: #eff6ff; }
+.perm-feat-btn.has-custom { color: #d97706; }
+.feat-section { margin-bottom: 14px; }
+.feat-section-title {
+  font-size: 12px; font-weight: 700; color: #64748b;
+  text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px;
+}
+.feat-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+.feat-switch { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+.feat-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.feat-slider {
+  width: 34px; height: 19px; border-radius: 999px; background: #cbd5e1;
+  position: relative; transition: background .15s ease; flex: 0 0 auto;
+}
+.feat-slider::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px;
+  border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25);
+  transition: transform .15s ease;
+}
+.feat-switch input:checked + .feat-slider { background: #16a34a; }
+.feat-switch input:checked + .feat-slider::after { transform: translateX(15px); }
+.feat-name { font-size: 13px; }
+
+/* ---- 表格 UI 专属列（值存于汇总总表 data_hub） ---- */
+.ui-col-mark {
+  font-size: 9px; font-weight: 700; color: #7c3aed; background: #f3e8ff;
+  border-radius: 4px; padding: 1px 4px; vertical-align: middle;
+}
+.ui-col-input { width: 100%; min-width: 90px; font-size: 12px; padding: 3px 6px; }
+.ui-col-input.ui-col-saved { border-color: #16a34a; box-shadow: 0 0 0 2px rgba(22,163,74,.15); }
+
+/* ---- 手动流转按钮 ---- */
+.flow-btns { display: inline-flex; gap: 3px; margin-left: 4px; }
+.flow-btns .btn { padding: 2px 6px; font-size: 11px; }
 .log-table .log-msg {
   color: #1e293b; font-size: 12px; line-height: 1.35;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

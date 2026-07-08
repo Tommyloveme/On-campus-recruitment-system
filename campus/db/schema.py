@@ -115,9 +115,24 @@ CREATE TABLE IF NOT EXISTS module_acl (
     perm_read INTEGER NOT NULL DEFAULT 0,
     perm_write INTEGER NOT NULL DEFAULT 0,
     perm_manage INTEGER NOT NULL DEFAULT 0,
+    perm_features TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     UNIQUE(subject_type, subject_id, module_key)
 );
+CREATE TABLE IF NOT EXISTS data_hub (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    tab_key TEXT NOT NULL DEFAULT '',
+    resume_id TEXT NOT NULL DEFAULT '',
+    field_key TEXT NOT NULL,
+    field_label TEXT DEFAULT '',
+    value TEXT DEFAULT '',
+    updated_by TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(source, tab_key, resume_id, field_key)
+);
+CREATE INDEX IF NOT EXISTS idx_data_hub_resume ON data_hub(resume_id);
 CREATE TABLE IF NOT EXISTS feedback (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id),
@@ -166,6 +181,11 @@ def migrate(db):
         for action, lv in DEFAULT_ACTION_LEVELS.items():
             db.execute("UPDATE logs SET level=? WHERE action=?", (lv, action))
     db.execute("CREATE INDEX IF NOT EXISTS idx_logs_module ON logs(module_key, id)")
+
+    # ---- 模块细粒度特性权限列（JSON，{feature_key: 0|1}，缺省=允许） ----
+    acl_cols = {r["name"] for r in db.execute("PRAGMA table_info(module_acl)").fetchall()}
+    if "perm_features" not in acl_cols:
+        db.execute("ALTER TABLE module_acl ADD COLUMN perm_features TEXT NOT NULL DEFAULT ''")
 
     # ---- 用户日志权限等级（1 最高、10 最低；管理员默认 1，普通用户默认 10） ----
     user_cols_pre = {r["name"] for r in db.execute("PRAGMA table_info(users)").fetchall()}

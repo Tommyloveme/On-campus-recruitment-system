@@ -62,13 +62,29 @@ def _load_stage_display_overrides(stage_key):
 
 
 def load_stage_table_config(stage_key):
-    """阶段表格 UI 配置：列顺序（仅影响网页表格）、左侧冻结列数（含勾选列）、默认排序。"""
+    """阶段表格 UI 配置：列顺序（仅影响网页表格）、左侧冻结列数（含勾选列）、
+    默认排序，以及 UI 专属列 ui_columns。
+
+    ui_columns 为仅存在于界面的附加列（不进候选人 data），每项
+    {key, label, format: text|number|date}；取值同步存储于总表 data_hub
+    （source='ui'，按简历编号关联）。
+    """
     display = _load_stage_display_overrides(stage_key)
     default_sort = display.get("default_sort") or {}
     sort_dir = default_sort.get("dir", "asc")
+    ui_columns = []
+    for c in display.get("ui_columns") or []:
+        if not c.get("key"):
+            continue
+        ui_columns.append({
+            "key": str(c["key"]),
+            "label": str(c.get("label") or c["key"]),
+            "format": c.get("format", "text"),
+        })
     return {
         "column_order": list(display.get("column_order") or []),
         "frozen_column_count": int(display.get("frozen_column_count") or 0),
+        "ui_columns": ui_columns,
         "default_sort": {
             "key": default_sort.get("key", ""),
             "dir": -1 if str(sort_dir).lower() in ("desc", "descending", "-1") else 1,

@@ -9,6 +9,7 @@ from campus.web.auth import bp as auth_bp
 from campus.web.backups import bp as backups_bp
 from campus.web.candidates import bp as candidates_bp
 from campus.web.config import bp as config_bp
+from campus.web.data_hub import bp as data_hub_bp
 from campus.web.feedback import bp as feedback_bp
 from campus.web.import_export import bp as import_export_bp
 from campus.web.interviews import bp as interviews_bp
@@ -36,5 +37,6 @@ def register_routes(app):
         pages_bp,
         acl_bp,
         feedback_bp,
+        data_hub_bp,
     ):
         app.register_blueprint(bp)

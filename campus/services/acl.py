@@ -130,7 +130,63 @@ def effective_module_perms(db, user, module_key):
     return final
 
 
+def _parse_features(raw):
+    if not raw:
+        return {}
+    try:
+        v = json.loads(raw)
+        return v if isinstance(v, dict) else {}
+    except (TypeError, json.JSONDecodeError):
+        return {}
+
+
+def effective_module_features(db, user, module_key):
+    """用户对模块各细粒度特性（子标签/按钮）的有效开关。
+
+    默认允许（1）；沿继承链子模块优先取显式配置；admin 全开。
+    """
+    from campus.core.features import feature_keys
+    keys = feature_keys(module_key)
+    if not keys:
+        return {}
+    if user is None:
+        return {k: 0 for k in keys}
+    if permission_settings()["admin_bypass"] and is_admin(user):
+        return {k: 1 for k in keys}
+
+    cache = _cache()
+    ckey = ("features", module_key)
+    if ckey in cache:
+        return cache[ckey]
+
+    chain = module_ancestor_chain(module_key) or [module_key]
+    key_ph = ",".join("?" * len(chain))
+    rows = db.execute(
+        f"SELECT module_key, perm_features FROM module_acl "
+        f"WHERE subject_type=? AND subject_id=? AND module_key IN ({key_ph})",
+        [SUBJECT_TYPE_USER, user["id"], *chain],
+    ).fetchall()
+    by_module = {r["module_key"]: _parse_features(r["perm_features"]) for r in rows}
+    result = {}
+    for fk in keys:
+        val = 1
+        for mk in chain:  # 子模块显式配置优先，其次板块
+            feats = by_module.get(mk)
+            if feats is not None and fk in feats:
+                val = 1 if feats[fk] else 0
+                break
+        result[fk] = val
+    cache[ckey] = result
+    return result
+
+
+def feature_allowed_for(user, module_key, feature_key):
+    feats = effective_module_features(get_db(), user, module_key)
+    return bool(feats.get(feature_key, 1))
+
+
 def module_acl_row_dict(r):
+    keys = r.keys() if hasattr(r, "keys") else []
     return {
         "id": r["id"],
         "subject_type": r["subject_type"],
@@ -140,6 +196,7 @@ def module_acl_row_dict(r):
         "perm_read": int(r["perm_read"]),
         "perm_write": int(r["perm_write"]),
         "perm_manage": int(r["perm_manage"]),
+        "features": _parse_features(r["perm_features"] if "perm_features" in keys else ""),
         "created_at": r["created_at"],
     }
 
@@ -167,28 +224,41 @@ def module_writable_for(user, module_key):
     return bool(effective_module_perms(get_db(), user, module_key)["write"])
 
 
+def manual_transition_allowed(user):
+    """Offer 策略手动流转权限：管理员直通，其余按 config/stage_flow.json 角色。"""
+    from campus.core.stage_flow import load_stage_flow
+    if user is None:
+        return False
+    if is_admin(user):
+        return True
+    return user["role"] in load_stage_flow()["roles"]
+
+
 def module_registry_payload(user=None):
-    """模块注册表 + 当前用户对各模块的有效权限（供前端导航渲染）。"""
+    """模块注册表 + 当前用户对各模块的有效权限与细粒度特性（供前端渲染）。"""
     db = get_db()
+
+    def decorate(e, key):
+        eff = effective_module_perms(db, user, key)
+        e["effective"] = eff
+        e["visible"] = module_visible_for(user, key)
+        e["readable"] = module_readable_for(user, key)
+        e["writable"] = bool(eff["write"])
+        feats = effective_module_features(db, user, key)
+        if feats:
+            e["features"] = feats
+
     out = []
     for entry in MODULE_REGISTRY:
         e = {"key": entry["key"], "label": entry["label"], "type": entry["type"]}
         if user is not None:
-            eff = effective_module_perms(db, user, entry["key"])
-            e["effective"] = eff
-            e["visible"] = module_visible_for(user, entry["key"])
-            e["readable"] = module_readable_for(user, entry["key"])
-            e["writable"] = bool(eff["write"])
+            decorate(e, entry["key"])
         if "items" in entry:
             e["items"] = []
             for child in entry["items"]:
                 ci = {"key": child["key"], "label": child["label"], "type": child["type"]}
                 if user is not None:
-                    eff = effective_module_perms(db, user, child["key"])
-                    ci["effective"] = eff
-                    ci["visible"] = module_visible_for(user, child["key"])
-                    ci["readable"] = module_readable_for(user, child["key"])
-                    ci["writable"] = bool(eff["write"])
+                    decorate(ci, child["key"])
                 e["items"].append(ci)
         out.append(e)
     return out
@@ -211,24 +281,31 @@ def query_module_acl(db, module_key=None, subject_id=None):
     return db.execute(sql, args).fetchall()
 
 
-def upsert_module_acl(db, subject_id, module_key, perms):
-    """perms: {perm_visibility, perm_read, perm_write, perm_manage} 均为 0/1。"""
+def upsert_module_acl(db, subject_id, module_key, perms, features=None):
+    """perms: {perm_visibility, perm_read, perm_write, perm_manage} 均为 0/1；
+    features: {feature_key: 0|1}（None 表示不改动既有细粒度配置）。"""
     from campus.db.connection import now_str
+    feat_json = json.dumps(features, ensure_ascii=False) if features is not None else None
     existing = db.execute(
         "SELECT id FROM module_acl WHERE subject_type=? AND subject_id=? AND module_key=?",
         (SUBJECT_TYPE_USER, subject_id, module_key),
     ).fetchone()
     if existing:
-        db.execute(
-            "UPDATE module_acl SET perm_visibility=?, perm_read=?, perm_write=?, perm_manage=? WHERE id=?",
-            (perms["perm_visibility"], perms["perm_read"], perms["perm_write"], perms["perm_manage"], existing["id"]),
-        )
+        sql = "UPDATE module_acl SET perm_visibility=?, perm_read=?, perm_write=?, perm_manage=?"
+        args = [perms["perm_visibility"], perms["perm_read"], perms["perm_write"], perms["perm_manage"]]
+        if feat_json is not None:
+            sql += ", perm_features=?"
+            args.append(feat_json)
+        sql += " WHERE id=?"
+        args.append(existing["id"])
+        db.execute(sql, args)
     else:
         db.execute(
             "INSERT INTO module_acl (subject_type, subject_id, module_key, "
-            "perm_visibility, perm_read, perm_write, perm_manage, created_at) VALUES (?,?,?,?,?,?,?,?)",
+            "perm_visibility, perm_read, perm_write, perm_manage, perm_features, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
             (SUBJECT_TYPE_USER, subject_id, module_key, perms["perm_visibility"], perms["perm_read"],
-             perms["perm_write"], perms["perm_manage"], now_str()),
+             perms["perm_write"], perms["perm_manage"], feat_json or "", now_str()),
         )
 
 

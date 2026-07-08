@@ -20,11 +20,13 @@ from campus.core.master_import_config import (
 # ---------------------------------------------------------------------------
 
 def _cell_str(v):
+    """单元格转文本：日期统一 YYYY-MM-DD（带时分秒则保留），见 domain.dates。"""
+    from campus.domain.dates import normalize_date_value
     if v is None:
         return ""
     if isinstance(v, datetime):
-        return v.strftime("%Y-%m-%d")
-    return str(v).strip()
+        return normalize_date_value(v)
+    return normalize_date_value(str(v).strip())
 
 
 def _text_match(pattern, text):
@@ -301,11 +303,16 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn):
         update_candidate_row,
     )
 
+    from campus.core.master_import_config import master_field_label_map
     from campus.services.candidate_pipeline import record_master
+    from campus.services.data_hub import SOURCE_MASTER, hub_resume_key, record_hub_fields
 
     created = updated = skipped = 0
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     by_phone = build_global_candidate_index(db)
+    hub_labels = master_field_label_map(cfg.get("field_mappings") or {})
+    hub_tab = cfg.get("page", "registration")
+    user_name = user["display_name"] if user else ""
 
     for data in rows_data:
         phone = normalize_candidate_phone(data.get("phone"))
@@ -320,11 +327,17 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn):
         compute_stage_fn(data, cfg)
         match = by_phone.get(phone)
 
+        can_edit = can_edit_fn(user)
+        if can_edit:
+            record_hub_fields(db, SOURCE_MASTER, hub_tab, hub_resume_key(data),
+                              data, hub_labels, user_name)
+        cn_labels = {hub_labels.get(k, k): v for k, v in data.items()
+                     if not k.startswith("_")}
         if match:
-            if not can_edit_fn(user):
+            if not can_edit:
                 skipped += 1
                 continue
-            record_master(db, phone, data, ts=now)
+            record_master(db, phone, data, labels=cn_labels, ts=now)
             old = json.loads(match["data"])
             merged = merge_master_import_data(old, data, cfg)
             compute_stage_fn(merged, cfg)
@@ -334,10 +347,10 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn):
                 match = db.execute("SELECT * FROM candidates WHERE id=?", (match["id"],)).fetchone()
                 by_phone[phone] = match
         else:
-            if not can_edit_fn(user):
+            if not can_edit:
                 skipped += 1
                 continue
-            record_master(db, phone, data, ts=now)
+            record_master(db, phone, data, labels=cn_labels, ts=now)
             payload = merge_master_import_data({}, data, cfg)
             cid = insert_candidate_row(db, payload, group_id=None, ts=now)
             row = db.execute("SELECT * FROM candidates WHERE id=?", (cid,)).fetchone()

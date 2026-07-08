@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """字段配置接口。"""
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from campus.core.field_dictionary import field_dictionary
 from campus.core.settings import load_app_config
@@ -39,4 +39,12 @@ def api_config():
         resp["app"] = load_app_config().get("ui", {})
         resp["app"]["interview"] = load_app_config().get("interview", {})
         resp["app"]["user_profile"] = load_app_config().get("user_profile", {})
+        from campus.core.stage_flow import load_stage_flow
+        from campus.services.acl import manual_transition_allowed
+        flow = load_stage_flow()
+        resp["stage_flow"] = {
+            "stages": flow["stages"],
+            "roles": flow["roles"],
+            "can_transition": manual_transition_allowed(g.user),
+        }
     return jsonify(resp)

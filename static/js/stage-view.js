@@ -31,6 +31,9 @@ async function renderStageView(stageKey) {
   const ss = getStageState(stageKey);
   ss.stageFilter = ss.stageFilter !== false; // 默认仅显示当前流程候选人
 
+  const showDashboard = featureAllowed(stageKey, "tab_dashboard");
+  const showLogs = featureAllowed(stageKey, "tab_logs");
+
   $("#main").innerHTML = `
     <div class="stage-header">
       <h2 title="${esc(meta.description || "")}">${meta.icon || ""} ${esc(meta.label)}</h2>
@@ -38,7 +41,8 @@ async function renderStageView(stageKey) {
     <div class="iv-subnav" style="margin-bottom:12px">
       <button class="btn btn-sm iv-view-btn active" data-view="list">候选人列表</button>
       ${showCalendar ? `<button class="btn btn-sm iv-view-btn" data-view="calendar">面试日程表</button>` : ""}
-      <button class="btn btn-sm iv-view-btn" data-view="logs">日志</button>
+      ${showDashboard ? `<button class="btn btn-sm iv-view-btn" data-view="dashboard">数据看板</button>` : ""}
+      ${showLogs ? `<button class="btn btn-sm iv-view-btn" data-view="logs">日志</button>` : ""}
     </div>
     <div id="stage-content"></div>`;
 
@@ -47,21 +51,40 @@ async function renderStageView(stageKey) {
       document.querySelectorAll(".iv-view-btn").forEach(b => b.classList.toggle("active", b === btn));
       if (btn.dataset.view === "calendar") renderInterviewCalendar(stageKey);
       else if (btn.dataset.view === "logs") renderLogPanel($("#stage-content"), { module: stageKey });
+      else if (btn.dataset.view === "dashboard") renderPivotPanel($("#stage-content"), { stageKey });
       else renderStageList(stageKey);
     }));
   renderStageList(stageKey);
+}
+
+function stageUiColumns(stageKey) {
+  return stageTableCfg(stageKey).ui_columns || [];
+}
+
+function candHubKey(c) {
+  const rid = String(c.data.resume_id || "").trim();
+  if (rid) return rid;
+  const phone = String(c.data.phone || "").trim();
+  return phone ? `无编号-${phone}` : "";
 }
 
 async function renderStageList(stageKey) {
   const meta = state.stages.find(s => s.key === stageKey);
   const ss = getStageState(stageKey);
   const fields = visibleFields(stageKey);
+  const uiCols = stageUiColumns(stageKey);
   const showResume = stageKey === "registration";
-  const canAdd = typeof moduleWritable === "function" && moduleWritable(stageKey) && meta.can_create;
-  const showMasterImport = stageKey === "registration" && canAdd;
+  const canAdd = typeof moduleWritable === "function" && moduleWritable(stageKey) && meta.can_create
+    && featureAllowed(stageKey, "btn_add");
+  const showMasterImport = stageKey === "registration" && canAdd && featureAllowed(stageKey, "btn_master_import");
+  const showExportExcel = featureAllowed(stageKey, "btn_export_excel");
+  const showExportResume = showResume && featureAllowed(stageKey, "btn_export_resume");
+  const showBatchDelete = canBatchDelete() && stageKey === "registration" && featureAllowed(stageKey, "btn_batch_delete");
 
   const headCells = fields.map(f =>
     `<th class="sortable" data-sortkey="${f.key}" title="点击排序">${esc(f.label)}<span class="sort-arrow" data-arrow="${f.key}"></span></th>`
+  ).join("") + uiCols.map(c =>
+    `<th title="界面专属列（存于汇总总表）">${esc(c.label)} <span class="ui-col-mark">UI</span></th>`
   ).join("");
   const filterCells = fields.map(f => {
     if (f.type === "select") {
@@ -69,7 +92,7 @@ async function renderStageList(stageKey) {
       return `<th><select data-filter="${f.key}"><option value="">全部</option>${opts}</select></th>`;
     }
     return `<th><input type="text" data-filter="${f.key}" placeholder="筛选"></th>`;
-  }).join("");
+  }).join("") + uiCols.map(() => "<th></th>").join("");
 
   const root = $("#stage-content") || $("#main");
   root.innerHTML = `
@@ -79,9 +102,9 @@ async function renderStageList(stageKey) {
       <label class="chk-inline"><input type="checkbox" id="stage-filter-only" ${ss.stageFilter ? "checked" : ""}>
         仅当前流程</label>
       <div class="spacer"></div>
-      ${canBatchDelete() && stageKey === "registration" ? `<button class="btn btn-danger" id="btn-batch-del" disabled>删除选中 (0)</button>` : ""}
-      <button class="btn" id="btn-export-excel" disabled>导出选中Excel (0)</button>
-      ${showResume ? `<button class="btn" id="btn-export-resume" disabled>导出选中简历 (0)</button>` : ""}
+      ${showBatchDelete ? `<button class="btn btn-danger" id="btn-batch-del" disabled>删除选中 (0)</button>` : ""}
+      ${showExportExcel ? `<button class="btn" id="btn-export-excel" disabled>导出选中Excel (0)</button>` : ""}
+      ${showExportResume ? `<button class="btn" id="btn-export-resume" disabled>导出选中简历 (0)</button>` : ""}
       ${canAdd ? `<button class="btn btn-primary" id="btn-add">+ 新增候选人</button>` : ""}
       ${showMasterImport ? `<button class="btn btn-primary" id="btn-master-import">主数据表导入</button>` : ""}
     </div>
@@ -112,12 +135,10 @@ async function renderStageList(stageKey) {
   if (canAdd && $("#btn-add")) {
     $("#btn-add").addEventListener("click", () => openCandidateModal(null, stageKey));
   }
-  if (canBatchDelete()) $("#btn-batch-del").addEventListener("click", () => batchDeleteSelected(stageKey));
-  if (showResume) {
-    $("#btn-export-resume").addEventListener("click", exportSelectedResumes);
-    $("#resume-input").addEventListener("change", onResumeFilePicked);
-  }
-  $("#btn-export-excel").addEventListener("click", () => exportSelectedExcel(stageKey));
+  if (showBatchDelete) $("#btn-batch-del").addEventListener("click", () => batchDeleteSelected(stageKey));
+  if (showExportResume) $("#btn-export-resume").addEventListener("click", exportSelectedResumes);
+  if (showResume) $("#resume-input").addEventListener("change", onResumeFilePicked);
+  $("#btn-export-excel")?.addEventListener("click", () => exportSelectedExcel(stageKey));
   enableColumnResize(stageKey);
   const onFilterChange = () => { ss.page = 1; renderCandidateRows(stageKey); };
   $("#cand-search").addEventListener("input", debounce(onFilterChange, 250));
@@ -159,6 +180,11 @@ async function loadCandidateTable(stageKey) {
     ? `/api/candidates?stage=${stageKey}`
     : "/api/candidates";
   ss.list = await api(url);
+  if (stageUiColumns(stageKey).length) {
+    try {
+      ss.uiValues = (await api(`/api/data-hub/ui-values?tab=${stageKey}`)).values || {};
+    } catch { ss.uiValues = {}; }
+  }
   if (stageKey === "registration") {
     const all = ss.stageFilter !== false ? await api("/api/candidates") : ss.list;
     ss.allCandidates = all;
@@ -264,9 +290,13 @@ function renderCandidateRows(stageKey) {
   if (!tbody) return;
   const ss = getStageState(stageKey);
   const fields = visibleFields(stageKey);
+  const uiCols = stageUiColumns(stageKey);
   const showResume = stageKey === "registration";
   const list = filteredCandidates(stageKey);
-  const colCount = 3 + fields.length + (showResume ? 1 : 0);
+  const colCount = 3 + fields.length + uiCols.length + (showResume ? 1 : 0);
+  const uiEditable = uiCols.length && moduleWritable(stageKey);
+  const canFlow = (state.stageFlow?.stages || []).includes(stageKey) &&
+    state.stageFlow?.can_transition && featureAllowed(stageKey, "btn_stage_transition");
 
   const total = list.length;
   const pages = ss.pageSize > 0 ? Math.max(1, Math.ceil(total / ss.pageSize)) : 1;
@@ -301,6 +331,13 @@ function renderCandidateRows(stageKey) {
           }
           return `<td>${inner}</td>`;
         }).join("")}
+        ${uiCols.map(col => {
+          const hk = candHubKey(c);
+          const val = hk ? ((ss.uiValues || {})[hk] || {})[col.key] ?? "" : "";
+          if (!uiEditable || !hk) return `<td>${esc(val) || '<span style="color:#cbd5e1">—</span>'}</td>`;
+          const itype = col.format === "date" ? "date" : (col.format === "number" ? "number" : "text");
+          return `<td><input type="${itype}" class="ui-col-input" data-uicol="${col.key}" data-uikey="${esc(hk)}" value="${esc(val)}"></td>`;
+        }).join("")}
         ${showResume ? `<td>${resumeCellHtml(c)}</td>` : ""}
         <td>
           ${canEdit()
@@ -308,6 +345,12 @@ function renderCandidateRows(stageKey) {
               (canDelete() && stageKey === "registration"
                 ? `<button class="btn btn-sm btn-danger" data-del="${c.id}">删除</button>` : "")
             : `<span style="color:#94a3b8;font-size:12px">只读</span>`}
+          ${canFlow ? `
+            <span class="flow-btns" title="手动流转（写入手动状态，优先于自动判定）">
+              <button class="btn btn-sm" data-flowprev="${c.id}" title="退回上一流程">←退回</button>
+              <button class="btn btn-sm" data-flownext="${c.id}" title="切换到下一流程">推进→</button>
+              ${c.data.manual_stage ? `<button class="btn btn-sm" data-flowauto="${c.id}" title="清除手动状态，恢复按规则自动判定">自动</button>` : ""}
+            </span>` : ""}
         </td>
       </tr>`).join("");
   }
@@ -340,6 +383,36 @@ function renderCandidateRows(stageKey) {
   }
   tbody.querySelectorAll("[data-prog]").forEach(b =>
     b.addEventListener("click", () => openProgressModal(ss.list.find(c => c.id === +b.dataset.prog), stageKey)));
+
+  if (uiEditable) {
+    tbody.querySelectorAll(".ui-col-input").forEach(inp =>
+      inp.addEventListener("change", async () => {
+        try {
+          await api("/api/data-hub/ui-value", { method: "PUT", json: {
+            tab: stageKey, resume_key: inp.dataset.uikey,
+            field_key: inp.dataset.uicol, value: inp.value,
+          } });
+          ss.uiValues = ss.uiValues || {};
+          (ss.uiValues[inp.dataset.uikey] = ss.uiValues[inp.dataset.uikey] || {})[inp.dataset.uicol] = inp.value;
+          inp.classList.add("ui-col-saved");
+          setTimeout(() => inp.classList.remove("ui-col-saved"), 800);
+        } catch (e) { alert(e.message || "保存失败"); }
+      }));
+  }
+  if (canFlow) {
+    const doFlow = async (id, direction) => {
+      try {
+        await api(`/api/candidates/${id}/stage-transition`, { method: "POST", json: { direction } });
+        await loadCandidateTable(stageKey);
+      } catch (e) { alert(e.message || "流转失败"); }
+    };
+    tbody.querySelectorAll("[data-flownext]").forEach(b =>
+      b.addEventListener("click", () => doFlow(+b.dataset.flownext, "next")));
+    tbody.querySelectorAll("[data-flowprev]").forEach(b =>
+      b.addEventListener("click", () => doFlow(+b.dataset.flowprev, "prev")));
+    tbody.querySelectorAll("[data-flowauto]").forEach(b =>
+      b.addEventListener("click", () => doFlow(+b.dataset.flowauto, "auto")));
+  }
 
   renderPager(stageKey, total, pages);
   updateSelectionUI(stageKey, list);
@@ -409,8 +482,10 @@ function autoFitCandColumns(stageKey) {
     widths[colIdx] = Math.min(480, Math.max(64, Math.ceil(maxW)));
     colIdx++;
   });
+  stageUiColumns(stageKey).forEach(() => { widths[colIdx++] = 150; });
   if (showResume) widths[colIdx++] = 148;
-  widths[colIdx] = 108;
+  const hasFlow = (state.stageFlow?.stages || []).includes(stageKey) && state.stageFlow?.can_transition;
+  widths[colIdx] = hasFlow ? 236 : 108;
   ss.colWidths = widths;
   applyCandColWidths(ss);
 }
@@ -1074,7 +1149,7 @@ function openCandidateModal(cand, stageKey) {
         toast("请上传简历", true);
         return;
       }
-      if (findCandidateByPhoneInList(data.phone, cand?.id ?? null)) {
+      if (isNew && findCandidateByPhoneInList(data.phone, null)) {
         toast("该电话已被其他候选人使用，请修改后再保存", true);
         return;
       }
@@ -1086,10 +1161,24 @@ function openCandidateModal(cand, stageKey) {
         const r = await postCandidateCreate(data, stageKey);
         cid = r.id;
       } else {
-        await api(`/api/candidates/${cand.id}`, { method: "PUT", json: { data, stage: stageKey } });
-        cid = cand.id;
+        try {
+          await api(`/api/candidates/${cand.id}`, { method: "PUT", json: { data, stage: stageKey } });
+          cid = cand.id;
+        } catch (e) {
+          // 双手机号同一人：电话撞上已有候选人，确认后合并（主数据侧优先）
+          if (e.status !== 409 || !e.can_merge) throw e;
+          const other = e.existing || {};
+          const ok = confirm(
+            `电话 ${data.phone} 已属于候选人「${other.name || "未知"}」。\n` +
+            `确认后两条记录将合并为一条（重复字段优先使用主数据表导入的数据）。\n\n是否合并？`);
+          if (!ok) return;
+          const r = await api(`/api/candidates/${cand.id}`,
+            { method: "PUT", json: { data, stage: stageKey, merge_on_conflict: true } });
+          cid = r.id;
+          toast("两条记录已合并（主数据优先）");
+        }
       }
-      if (stageKey === "registration" && _modalResumeFile) {
+      if (stageKey === "registration" && _modalResumeFile && cid) {
         await uploadCandidateResume(cid, _modalResumeFile);
       }
       toast(isNew ? "候选人已新增" : "已保存");

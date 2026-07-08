@@ -6,10 +6,11 @@
  * 操作日志 / 数据备份 已剥离为「管理看板」同级标签页；附属信息字段配置置于本页顶部。
  */
 let permOptions = { users: [], user_fields: [], modules: [], settings: {} };
-let permAclMap = {};        // `${uid}|${moduleKey}` -> {v,r,w,m}
+let permAclMap = {};        // `${uid}|${moduleKey}` -> {v,r,w,m,feats}
 let permModuleCols = [];    // 扁平化的模块列 [{key,label,type}]
 let permUsersCache = [];    // 用户列表
 let permFilters = {};       // 列 id -> 过滤值（文本模糊 / 模块权限状态）
+let permFeatureRegistry = {}; // moduleKey -> [{key,label,kind}] 可配置的细粒度特性
 
 const PERM_FLAGS = [
   ["v", "perm_visibility", "可见", "#2563eb"],
@@ -22,7 +23,7 @@ const MOD_FILTERS = [
 ];
 
 function aclKey(uid, mk) { return `${uid}|${mk}`; }
-function aclOf(uid, mk) { return permAclMap[aclKey(uid, mk)] || {v:0,r:0,w:0,m:0}; }
+function aclOf(uid, mk) { return permAclMap[aclKey(uid, mk)] || {v:0,r:0,w:0,m:0,feats:{}}; }
 
 function flattenModuleCols(modules) {
   const out = [];
@@ -137,17 +138,20 @@ async function renderPermissions() {
 }
 
 async function loadPermData() {
-  const [opts, acls] = await Promise.all([
+  const [opts, acls, feats] = await Promise.all([
     api("/api/permissions/options"),
     api("/api/module-acl"),
+    api("/api/permissions/features"),
   ]);
   permOptions = opts;
   permUsersCache = opts.users || [];
   permModuleCols = flattenModuleCols(opts.modules || []);
+  permFeatureRegistry = (feats && feats.features) || {};
   permAclMap = {};
   for (const r of (acls || [])) {
     permAclMap[aclKey(r.subject_id, r.module_key)] = {
       v: +r.perm_visibility, r: +r.perm_read, w: +r.perm_write, m: +r.perm_manage,
+      feats: r.features || {},
     };
   }
 }
@@ -474,10 +478,16 @@ function permRowCells(u, cols) {
     }
     if (c.kind === "module") {
       const a = aclOf(u.id, c.module.key);
+      const feats = permFeatureRegistry[c.module.key];
+      const hasCustom = feats && Object.values(a.feats || {}).some(v => v === 0);
+      const gear = feats
+        ? `<button class="perm-feat-btn${hasCustom ? " has-custom" : ""}" data-feat-uid="${u.id}"
+             data-feat-mk="${c.module.key}" title="细粒度权限（子标签/按钮可见性）">⚙</button>`
+        : "";
       return `<td class="col-module perm-mod-cell">${PERM_FLAGS.map(([s, , label, color]) =>
         `<label class="perm-flag" title="${label}"><input type="checkbox" class="perm-flag-cb"
           data-uid="${u.id}" data-mk="${c.module.key}" data-flag="${s}" ${a[s] ? "checked" : ""}
-          style="--flag-color:${color}"></label>`).join("")}</td>`;
+          style="--flag-color:${color}"></label>`).join("")}${gear}</td>`;
     }
     const val = cellValue(u, c);
     const inner = val === "" ? `<span class="perm-dash">—</span>` : esc(val);
@@ -553,6 +563,8 @@ function renderPermGridBody(cols) {
   leftTb.querySelectorAll(".perm-row-check").forEach(cb => cb.addEventListener("change", refreshPermBatchBtn));
   rightTb.querySelectorAll(".perm-flag-cb").forEach(cb =>
     cb.addEventListener("change", () => onPermFlagToggle(+cb.dataset.uid, cb.dataset.mk, cb.dataset.flag, cb.checked)));
+  rightTb.querySelectorAll("[data-feat-uid]").forEach(b =>
+    b.addEventListener("click", () => openFeatureModal(+b.dataset.featUid, b.dataset.featMk)));
   rightTb.querySelectorAll("[data-uedit]").forEach(b =>
     b.addEventListener("click", () => openUserModal(permUsersCache.find(u => u.id === +b.dataset.uedit))));
   rightTb.querySelectorAll("[data-udel]").forEach(b =>
@@ -602,6 +614,60 @@ async function onPermFlagToggle(uid, mk, flag, checked) {
     await loadPermData();
     renderPermGrid();
   }
+}
+
+/* ---------- 细粒度权限（子标签 / 按钮级） ---------- */
+
+function openFeatureModal(uid, mk) {
+  const feats = permFeatureRegistry[mk] || [];
+  const u = permUsersCache.find(x => x.id === uid);
+  const mod = permModuleCols.find(m => m.key === mk);
+  const cur = aclOf(uid, mk);
+  const isOn = k => !((cur.feats || {})[k] === 0);
+  const kinds = [["tab", "子标签可见性"], ["button", "按钮可见性"]];
+  const sections = kinds.map(([kind, title]) => {
+    const items = feats.filter(f => f.kind === kind);
+    if (!items.length) return "";
+    return `
+      <div class="feat-section">
+        <div class="feat-section-title">${title}</div>
+        <div class="feat-list">
+          ${items.map(f => `
+            <label class="feat-switch">
+              <input type="checkbox" class="feat-cb" data-fk="${f.key}" ${isOn(f.key) ? "checked" : ""}>
+              <span class="feat-slider"></span>
+              <span class="feat-name">${esc(f.label)}</span>
+            </label>`).join("")}
+        </div>
+      </div>`;
+  }).join("");
+
+  openModal(`细粒度权限 · ${esc(u?.display_name || "用户#" + uid)} × ${esc(mod?.label || mk)}`, `
+    <p class="muted" style="font-size:12px;margin:0 0 12px">
+      在模块读写权限之内进一步控制页面内部元素：关闭后该用户在此页面看不到对应子标签或按钮。默认全部开启。</p>
+    ${sections}`,
+    `<button class="btn" onclick="closeModal()">取消</button>
+     <button class="btn btn-sm" id="feat-reset">全部恢复默认</button>
+     <button class="btn btn-primary" id="feat-save">保存</button>`);
+
+  $("#feat-reset").addEventListener("click", () => {
+    document.querySelectorAll(".feat-cb").forEach(cb => { cb.checked = true; });
+  });
+  $("#feat-save").addEventListener("click", async () => {
+    const features = {};
+    document.querySelectorAll(".feat-cb").forEach(cb => { features[cb.dataset.fk] = cb.checked ? 1 : 0; });
+    try {
+      await api("/api/module-acl", { method: "PUT", json: {
+        subject_type: "user", subject_id: uid, module_key: mk,
+        perm_visibility: cur.v, perm_read: cur.r, perm_write: cur.w, perm_manage: cur.m,
+        features,
+      } });
+      toast("细粒度权限已保存");
+      closeModal();
+      await loadPermData();
+      renderPermGrid();
+    } catch (e) { toast(e.message, true); }
+  });
 }
 
 async function permBatchApply(revoke) {

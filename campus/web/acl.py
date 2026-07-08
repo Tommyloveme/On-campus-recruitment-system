@@ -114,6 +114,16 @@ def _log_module_acl_change(user, b, perms, action):
     add_log(user, "permission", msg, module="permissions")
 
 
+def _features_from_body(b, module_key):
+    """从请求体解析细粒度特性开关（仅接受该模块注册过的特性 key）。"""
+    from campus.core.features import feature_keys
+    raw = b.get("features")
+    if raw is None or not isinstance(raw, dict):
+        return None
+    known = set(feature_keys(module_key))
+    return {k: (1 if _truthy(v) else 0) for k, v in raw.items() if k in known}
+
+
 @bp.put("/api/module-acl")
 @admin_required
 def api_module_acl_upsert():
@@ -122,11 +132,30 @@ def api_module_acl_upsert():
     if err:
         return jsonify({"error": err}), 400
     perms = _module_perms_from_body(b)
+    features = _features_from_body(b, b["module_key"])
     db = get_db()
-    upsert_module_acl(db, int(b["subject_id"]), b["module_key"], perms)
+    upsert_module_acl(db, int(b["subject_id"]), b["module_key"], perms, features=features)
     _log_module_acl_change(g.user, b, perms, action="upsert")
+    if features is not None:
+        closed = [k for k, v in features.items() if not v]
+        add_log(g.user, "permission",
+                f"{g.user['display_name']} 配置 用户#{b['subject_id']} 模块「{b['module_key']}」细粒度权限："
+                f"关闭 {('、'.join(closed)) or '无'}", module="permissions")
     db.commit()
     return jsonify({"ok": True})
+
+
+@bp.get("/api/permissions/features")
+@admin_required
+def api_permission_features():
+    """各模块可配置的细粒度特性注册表（权限管理界面用）。"""
+    from campus.core.features import module_features
+    out = {}
+    for mk in module_keys():
+        feats = module_features(mk)
+        if feats:
+            out[mk] = feats
+    return jsonify({"features": out})
 
 
 @bp.delete("/api/module-acl")

@@ -1,5 +1,5 @@
 {
-  "comment": "阶段判定规则：priority 越高越优先；values 中 * 表示任意非空。条件字段均来自 Application*.xlsx / 候选人管理*.xlsx 映射列。",
+  "comment": "阶段判定规则：priority 越高越优先。旧格式 fields/values（* 任意非空，支持通配符）；新格式 when 条件树支持 all(与)/any(或)/not(非) 嵌套组合，op 支持 eq/ne/contains/icontains(模糊包含)/regex(正则)/wildcard/in/not_in/empty/not_empty/startswith/endswith/gt/gte/lt/lte，field 可写英文 field_key、Excel 中文列名或界面标签，table 可指定 预处理表/主数据原始表/手动原始表。示例：{\"priority\": 90, \"stage\": \"offer\", \"when\": {\"all\": [{\"field\": \"Offer状态\", \"op\": \"eq\", \"value\": \"已发放\"}, {\"any\": [{\"field\": \"学历\", \"op\": \"in\", \"value\": [\"硕士\", \"博士\"]}, {\"field\": \"毕业院校\", \"op\": \"regex\", \"value\": \"(大学|学院)$\"}]}]}}",
   "rules": [
     { "priority": 100, "stage": "onboarding", "label": "已入职", "fields": ["onboarded"], "values": ["是"] },
     { "priority": 98, "stage": "onboarding", "label": "已签约待入职", "fields": ["sign_status", "onboarded"], "values": ["已签约", "否"] },

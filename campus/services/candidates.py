@@ -130,6 +130,62 @@ def delete_candidate_row(db, row):
     delete_raw_records(db, normalize_candidate_phone(phone))
 
 
+def merge_candidate_rows(db, edited_row, edited_data, target_row):
+    """双手机号合并（编辑电话撞上已有候选人时触发）。
+
+    场景：Application 表注册的手机号与手动录入的不一致，实为同一人；
+    用户把手动记录的电话改成主数据电话后确认合并。
+    规则：重复字段优先使用主数据表导入侧的数据；保留主数据侧的行
+    （锁定字段/主数据关联不丢），另一行的简历、面试预约转移后删除。
+    返回 (保留行id, 合并后data)。
+    """
+    from campus.services.candidate_pipeline import delete_raw_records, record_manual
+    from campus.domain.stage_routing import compute_current_stage
+
+    target_data = json.loads(target_row["data"])
+    edited_master = bool(edited_data.get("_master_imported"))
+    target_master = bool(target_data.get("_master_imported"))
+    if edited_master and not target_master:
+        keep_row, keep_data = edited_row, edited_data
+        drop_row, drop_data = target_row, target_data
+    else:
+        keep_row, keep_data = target_row, target_data
+        drop_row, drop_data = edited_row, edited_data
+
+    # 合并：非主数据侧为底，主数据侧非空值覆盖（内部簿记键随主数据侧）
+    merged = {k: v for k, v in drop_data.items() if not k.startswith("_")}
+    for k, v in keep_data.items():
+        if k.startswith("_") or str(v or "").strip():
+            merged[k] = v
+    final_phone = normalize_candidate_phone(target_row["phone"] or target_data.get("phone"))
+    merged["phone"] = final_phone
+    compute_current_stage(merged)
+
+    # 简历转移：保留行没有简历而被删行有 → 挪过去
+    if not keep_row["resume_file"] and drop_row["resume_file"]:
+        db.execute("UPDATE candidates SET resume_file=?, resume_name=? WHERE id=?",
+                   (drop_row["resume_file"], drop_row["resume_name"], keep_row["id"]))
+
+    # 面试预约转移到保留行（撞唯一约束的预约放弃转移）
+    for bk in db.execute("SELECT id FROM interview_bookings WHERE candidate_id=?",
+                         (drop_row["id"],)).fetchall():
+        try:
+            db.execute("UPDATE interview_bookings SET candidate_id=? WHERE id=?",
+                       (keep_row["id"], bk["id"]))
+        except sqlite3.IntegrityError:
+            db.execute("DELETE FROM interview_bookings WHERE id=?", (bk["id"],))
+
+    # 删除被合并行及其旧电话的原始表记录（不删简历文件，已转移或保留行自有）
+    db.execute("DELETE FROM candidates WHERE id=?", (drop_row["id"],))
+    drop_phone = normalize_candidate_phone(drop_row["phone"] or drop_data.get("phone"))
+    if drop_phone and drop_phone != final_phone:
+        delete_raw_records(db, drop_phone)
+
+    update_candidate_row(db, keep_row["id"], merged)
+    record_manual(db, final_phone, merged)
+    return keep_row["id"], merged
+
+
 def candidate_dict(row, group_names=None):
     data = json.loads(row["data"])
     gname = (group_names or {}).get(row["group_id"])

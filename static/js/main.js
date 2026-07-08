@@ -26,6 +26,12 @@ function moduleByKey(key) {
 function moduleVisible(key) { const m = moduleByKey(key); return m ? !!m.visible : false; }
 function moduleReadable(key) { const m = moduleByKey(key); return m ? !!m.readable : false; }
 function moduleWritable(key) { const m = moduleByKey(key); return m ? !!m.writable : false; }
+/** 细粒度特性（子标签/按钮）开关：未配置默认允许 */
+function featureAllowed(moduleKey, featureKey) {
+  const m = moduleByKey(moduleKey);
+  if (!m || !m.features) return true;
+  return m.features[featureKey] !== 0 && m.features[featureKey] !== false;
+}
 
 /** 左侧导航结构（依据后端模块注册表与当前用户有效权限过滤） */
 function buildNavStructure() {
@@ -77,6 +83,7 @@ async function boot() {
   state.stageFields = cfg.stage_fields;
   state.stageTable = cfg.stage_table || {};
   state.masterImport = cfg.master_import || {};
+  state.stageFlow = cfg.stage_flow || {};
   state.app = cfg.app || {};
   modulePerms = (mods && mods.modules) || [];
 

@@ -18,6 +18,7 @@ from campus.services.acl import (
 )
 from campus.services.audit import add_log
 from campus.services.candidate_pipeline import delete_raw_records, record_manual
+from campus.services.data_hub import SOURCE_MANUAL, hub_resume_key, record_hub_fields
 from campus.services.candidates import (
     PhoneDuplicateError,
     candidate_dict,
@@ -25,6 +26,7 @@ from campus.services.candidates import (
     find_candidate_by_phone,
     group_name_map,
     insert_candidate_row,
+    merge_candidate_rows,
     normalize_candidate_phone,
     phone_duplicate_payload,
     update_candidate_row,
@@ -113,6 +115,9 @@ def api_candidate_create():
     except PhoneDuplicateError as e:
         return jsonify(e.payload), 409
     record_manual(db, phone, data)
+    record_hub_fields(db, SOURCE_MANUAL, stage, hub_resume_key(data),
+                      {k: v for k, v in data.items() if v},
+                      field_labels(stage), g.user["display_name"])
     add_log(g.user, "create", f"{g.user['display_name']} 在{meta['label']}新增了候选人「{data['name']}」",
             cid, data["name"], module=stage)
     db.commit()
@@ -147,6 +152,7 @@ def api_candidate_update(cid):
     new = dict(old)
     locked = set(old.get("_master_locked_fields") or [])
     changes = []
+    changed_keys = []
     blocked = []
     for f in fields:
         if f["key"] not in incoming:
@@ -160,6 +166,7 @@ def api_candidate_update(cid):
             blocked.append(labels.get(k, k))
             continue
         new[k] = nv
+        changed_keys.append(k)
         changes.append(f"{labels[k]}：{ov or '空'} → {nv or '空'}")
     if blocked:
         return jsonify({
@@ -177,7 +184,20 @@ def api_candidate_update(cid):
     new["phone"] = phone
     dup = find_candidate_by_phone(db, phone, exclude_id=cid)
     if dup:
-        return jsonify(phone_duplicate_payload(db, dup, phone)), 409
+        if not b.get("merge_on_conflict"):
+            payload = phone_duplicate_payload(db, dup, phone)
+            payload["can_merge"] = True
+            return jsonify(payload), 409
+        # 双手机号同一人：确认合并（主数据侧数据优先，保留主数据侧行）
+        merged_id, merged = merge_candidate_rows(db, row, new, dup)
+        name = merged.get("name", "")
+        add_log(g.user, "update",
+                f"{g.user['display_name']} 通过修改电话合并了候选人「{name}」的两条记录"
+                f"（保留 #{merged_id}，主数据优先）",
+                merged_id, name, module=stage)
+        db.commit()
+        log.info("电话合并 %s keep=%d drop=%d phone=%s", who(g.user), merged_id, cid, phone)
+        return jsonify({"ok": True, "merged": True, "id": merged_id})
     if stage == "registration":
         ref_err = validate_registration_user_refs(db, new.get("sourcer"), new.get("interface_person"))
         if ref_err:
@@ -195,6 +215,9 @@ def api_candidate_update(cid):
     if old_phone and old_phone != phone:
         delete_raw_records(db, old_phone)
     record_manual(db, phone, new)
+    record_hub_fields(db, SOURCE_MANUAL, stage, hub_resume_key(new),
+                      {k: new[k] for k in changed_keys},
+                      labels, g.user["display_name"])
     name = new.get("name") or old.get("name", "")
     add_log(g.user, "update",
             f"{g.user['display_name']} 修改了「{name}」：" + "；".join(changes),
@@ -254,6 +277,64 @@ def api_candidates_batch_delete():
     log.info("批量删除 %s 删除%d 跳过%d", who(g.user), len(deleted_names), len(rows) - len(deleted_names))
     return jsonify({"ok": True, "deleted": len(deleted_names),
                     "skipped": len(rows) - len(deleted_names)})
+
+
+@bp.post("/api/candidates/<int:cid>/stage-transition")
+@login_required
+def api_candidate_stage_transition(cid):
+    """Offer 策略手动流转：direction=next（下一流程）/ prev（退回）/ auto（恢复自动判定）。
+
+    仅 config/stage_flow.json 配置的角色（或管理员）可操作，且候选人当前
+    须处于配置的阶段范围内。切换写入 manual_stage，优先于自动判定。
+    """
+    from campus.core.stage_flow import load_stage_flow
+    from campus.domain.stage_routing import MANUAL_STAGE_KEY, ordered_stage_keys, stage_label_map
+    from campus.services.acl import manual_transition_allowed
+
+    if not manual_transition_allowed(g.user):
+        log.warning("手动流转权限拒绝 %s cid=%d", who(g.user), cid)
+        return jsonify({"error": "无手动流转权限（角色可在 config/stage_flow.json 配置）"}), 403
+
+    db = get_db()
+    row = db.execute("SELECT * FROM candidates WHERE id=?", (cid,)).fetchone()
+    if not row:
+        return jsonify({"error": "候选人不存在"}), 404
+
+    direction = (request.get_json(force=True) or {}).get("direction", "")
+    if direction not in ("next", "prev", "auto"):
+        return jsonify({"error": "direction 须为 next / prev / auto"}), 400
+
+    data = json.loads(row["data"])
+    flow = load_stage_flow()
+    current = data.get("current_stage") or "registration"
+    if current not in flow["stages"]:
+        return jsonify({"error": f"当前阶段「{current}」不支持手动流转（配置见 config/stage_flow.json）"}), 400
+
+    labels = stage_label_map()
+    if direction == "auto":
+        data.pop(MANUAL_STAGE_KEY, None)
+        detail = "恢复自动判定"
+    else:
+        order = ordered_stage_keys()
+        idx = order.index(current) if current in order else -1
+        target_idx = idx + (1 if direction == "next" else -1)
+        if idx < 0 or not 0 <= target_idx < len(order):
+            return jsonify({"error": "已到流程边界，无法继续流转"}), 400
+        target = order[target_idx]
+        data[MANUAL_STAGE_KEY] = target
+        detail = f"{labels.get(current, current)} → {labels.get(target, target)}"
+
+    compute_current_stage(data)
+    update_candidate_row(db, cid, data)
+    record_manual(db, normalize_candidate_phone(data.get("phone")), data)
+    name = data.get("name", "")
+    add_log(g.user, "update",
+            f"{g.user['display_name']} 手动流转候选人「{name}」：{detail}",
+            cid, name, module=current)
+    db.commit()
+    log.info("手动流转 %s cid=%d %s", who(g.user), cid, detail)
+    return jsonify({"ok": True, "current_stage": data.get("current_stage"),
+                    "manual_stage": data.get(MANUAL_STAGE_KEY, "")})
 
 
 @bp.post("/api/candidates/recompute-stages")

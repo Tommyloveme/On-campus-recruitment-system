@@ -1,0 +1,7 @@
+{
+  "comment": "手动流转配置：stages 为允许手动切换（下一流程/退回上一流程）的阶段（Offer策略各子页面）；roles 为允许操作的角色 key（config/roles.json，系统管理员恒可操作）。切换写入候选人 manual_stage 字段，优先于 stage_rules 自动判定；direction=auto 可清除手动状态恢复自动判定。",
+  "manual_transition": {
+    "stages": ["approval", "salary", "offer", "contract_signing"],
+    "roles": ["admin", "manager", "hr"]
+  }
+}

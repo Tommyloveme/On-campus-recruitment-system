@@ -38,6 +38,7 @@ async function api(url, options = {}) {
     if (body) {
       err.code = body.code;
       err.existing = body.existing;
+      err.can_merge = body.can_merge;
     }
     throw err;
   }

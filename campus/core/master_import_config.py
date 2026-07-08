@@ -69,6 +69,45 @@ def master_field_ui_map(field_mappings):
     return result
 
 
+def master_field_alias_map(field_mappings):
+    """中文名（Excel 列名 / ui_label）-> field_key，供规则引擎按中文列名取值。"""
+    aliases = {}
+    for fm in field_mappings.get("fields", []):
+        key = fm.get("field_key")
+        if not key:
+            continue
+        ui = (fm.get("ui_label") or "").strip()
+        if ui:
+            aliases.setdefault(ui, key)
+        for src in (fm.get("sources") or {}).values():
+            col = (src.get("excel_column") or "").strip()
+            if col:
+                aliases.setdefault(col, key)
+            for alias in src.get("excel_aliases") or []:
+                if alias:
+                    aliases.setdefault(str(alias).strip(), key)
+    return aliases
+
+
+def master_field_label_map(field_mappings):
+    """field_key -> 中文名（优先 ui_label，其次任一来源的 excel_column）。"""
+    labels = {}
+    for fm in field_mappings.get("fields", []):
+        key = fm.get("field_key")
+        if not key:
+            continue
+        ui = (fm.get("ui_label") or "").strip()
+        if ui:
+            labels[key] = ui
+            continue
+        for src in (fm.get("sources") or {}).values():
+            col = (src.get("excel_column") or "").strip()
+            if col:
+                labels[key] = col
+                break
+    return labels
+
+
 def _build_sources(page_dir, index, field_mappings):
     fm_sources = field_mappings.get("sources") or {}
     legacy_patterns = index.get("file_patterns") or {}

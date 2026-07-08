@@ -48,18 +48,56 @@ def record_manual(db, phone, data, ts=None):
         _upsert_raw(db, "candidates_raw_manual", phone, _clean(data), ts)
 
 
-def record_master(db, phone, data, ts=None):
-    """记录一次主数据表导入的行数据到主数据原始表。"""
-    if phone:
-        _upsert_raw(db, "candidates_raw_master", phone, _clean(data), ts)
+def record_master(db, phone, data, labels=None, ts=None):
+    """记录一次主数据表导入的行数据到主数据原始表。
+
+    存储双命名空间：fields=英文 field_key 键（供合并），字段=Excel 中文列名键
+    （供规则引擎/检索按中文名取值）。labels 为 {中文列名: 值}，缺省自动
+    按主数据字段映射翻译。
+    """
+    if not phone:
+        return
+    fields = _clean(data)
+    if labels is None:
+        from campus.core.master_import_config import (
+            load_master_import_config,
+            master_field_label_map,
+        )
+        try:
+            label_map = master_field_label_map(
+                load_master_import_config().get("field_mappings") or {})
+        except (ValueError, OSError):
+            label_map = {}
+        labels = {label_map.get(k, k): v for k, v in fields.items()}
+    _upsert_raw(db, "candidates_raw_master", phone,
+                {"fields": fields, "字段": labels}, ts)
+
+
+def _master_fields(master):
+    """主数据原始表行 → 英文键 dict（兼容双命名空间与历史扁平结构）。"""
+    if master is None:
+        return None
+    if "fields" in master and isinstance(master["fields"], dict):
+        return master["fields"]
+    return master
+
+
+def master_rule_record(master):
+    """主数据原始表行 → 规则引擎取数记录（中文列名 + 英文键合并视图）。"""
+    if master is None:
+        return {}
+    fields = _master_fields(master) or {}
+    labels = master.get("字段") if isinstance(master.get("字段"), dict) else {}
+    return {**fields, **labels}
 
 
 def merge_raw_sources(manual, master, cfg=None):
     """合并两个原始表的数据：以手动为底、主数据优先覆盖（纯函数）。"""
     from campus.services.master_import import merge_master_import_data
-    if not master:
+    master_fields = _master_fields(master)
+    if not master_fields:
         return dict(manual or {})
-    return merge_master_import_data(dict(manual or {}), dict(master), cfg)
+    return merge_master_import_data(dict(manual or {}), dict(master_fields), cfg)
 
 
 def rebuild_candidate(db, phone, cfg=None):
@@ -80,7 +118,10 @@ def rebuild_candidate(db, phone, cfg=None):
         return None
     merged = merge_raw_sources(manual, master, cfg)
     merged["phone"] = phone
-    compute_current_stage(merged)
+    compute_current_stage(merged, tables={
+        "主数据原始表": master_rule_record(master),
+        "手动原始表": dict(manual or {}),
+    })
 
     row = find_candidate_by_phone(db, phone)
     if row:
