@@ -346,6 +346,16 @@ function resumeCellHtml(c) {
     : `<span style="color:#cbd5e1">—</span>`;
 }
 
+function isRegistrationRemarkField(f) {
+  return f && (f.key === "registration_remark" || f.key === "登记备注"
+    || f.legacy_key === "registration_remark");
+}
+
+function registrationRemarkValue(c) {
+  const d = (c && c.data) || {};
+  return d["登记备注"] || d.registration_remark || "";
+}
+
 function renderCandidateRows(stageKey) {
   const tbody = $("#cand-tbody");
   if (!tbody) return;
@@ -381,8 +391,8 @@ function renderCandidateRows(stageKey) {
             inner = multilineCellHtml(full);
             if (canEdit())
               inner += ` <button class="btn btn-sm" data-prog="${c.id}" title="更新进展">更新</button>`;
-          } else if (f.key === "registration_remark") {
-            inner = multilineCellHtml(c.data.registration_remark || "");
+          } else if (isRegistrationRemarkField(f)) {
+            inner = multilineCellHtml(registrationRemarkValue(c));
           } else if (f.key === "registration_source" && c.data.registration_source === "其他") {
             const custom = (c.data.registration_source_custom || "").trim();
             inner = cellHtml(f, custom ? `其他：${custom}` : "其他");
@@ -513,8 +523,8 @@ function measureTextWidth(text, font) {
 }
 
 function candFieldDisplayText(c, f, stageKey, ss) {
-  if (f.key === "registration_remark") {
-    return ((c.data.registration_remark || "").split("\n")[0] || "").trim();
+  if (isRegistrationRemarkField(f)) {
+    return ((registrationRemarkValue(c) || "").split("\n")[0] || "").trim();
   }
   if (f.key === "registration_source" && c.data.registration_source === "其他") {
     const custom = (c.data.registration_source_custom || "").trim();
@@ -990,22 +1000,22 @@ function registrationFormFieldHtml(f, cand, stageKey, isRegCreate, lockedFields)
     </div>`;
   }
   return `
-    <div class="form-item${locked ? " is-master-locked" : ""}${f.key === "registration_remark" ? " form-item-full" : ""}">
-      <label>${esc(f.label)}${f.required ? " *" : ""}${locked ? "（主数据锁定）" : ""}${f.key === "registration_remark" ? '<span class="field-hint-inline">（最新写在第一行）</span>' : ""}</label>
+    <div class="form-item${locked ? " is-master-locked" : ""}${isRegistrationRemarkField(f) ? " form-item-full" : ""}">
+      <label>${esc(f.label)}${f.required ? " *" : ""}${locked ? "（主数据锁定）" : ""}${isRegistrationRemarkField(f) ? '<span class="field-hint-inline">（最新写在第一行）</span>' : ""}</label>
       ${fieldInput(f, candidateFieldDefault(f, cand, isRegCreate), { locked })}
     </div>`;
 }
 
 function candidateFieldDefault(f, cand, isRegCreate) {
-  if (f.key === "registration_remark") {
+  if (f.key === "registration_remark" || f.key === "登记备注") {
     const prefix = registrationRemarkPrefix();
     if (cand) {
-      const cur = (cand.data.registration_remark || "").trim();
+      const cur = registrationRemarkValue(cand).trim();
       return cur ? `${prefix}\n${cur}` : prefix;
     }
     return prefix;
   }
-  if (cand) return cand.data[f.key];
+  if (cand) return cand.data[f.key] ?? cand.data[f.storage_key] ?? "";
   if (f.key === "progress") return todayPrefix();
   return "";
 }
@@ -1190,8 +1200,9 @@ function openCandidateModal(cand, stageKey) {
 
   $("#cand-save").addEventListener("click", async () => {
     const data = collectCandidateFormData(fields);
-    if (stageKey === "registration" && "registration_remark" in data) {
-      data.registration_remark = normalizeRegistrationRemark(data.registration_remark);
+    if (stageKey === "registration" && ("registration_remark" in data || "登记备注" in data)) {
+      const rk = "registration_remark" in data ? "registration_remark" : "登记备注";
+      data[rk] = normalizeRegistrationRemark(data[rk]);
     }
     if (isRegCreate && !validateRegistrationCreateForm(fields, data)) return;
     const missing = fields.filter(f => f.required && !(data[f.key] || "").trim());

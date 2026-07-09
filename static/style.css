@@ -402,6 +402,22 @@ th.sortable:hover { color: var(--primary); }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   vertical-align: bottom; cursor: default;
 }
+.multiline-cell { max-width: var(--clip-max, 280px); }
+
+/* 多行备注悬浮框：展示全量内容（保留换行） */
+.cell-tip {
+  position: fixed; z-index: 9999;
+  max-width: min(420px, calc(100vw - 24px));
+  max-height: min(280px, calc(100vh - 24px));
+  overflow: auto;
+  padding: 8px 10px;
+  background: #0f172a; color: #f8fafc;
+  border-radius: 6px; font-size: 12px; line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.28);
+  pointer-events: none;
+}
+.cell-tip.hidden { display: none; }
 
 /* 分页条 */
 .pager-bar {

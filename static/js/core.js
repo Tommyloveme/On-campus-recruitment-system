@@ -161,9 +161,58 @@ function normalizeRegistrationRemark(value) {
 function multilineCellHtml(full) {
   const text = (full || "").trim();
   if (!text) return `<span style="color:#cbd5e1">—</span>`;
-  const first = text.split("\n")[0];
-  return `<span class="clip multiline-cell" title="${esc(text)}">${esc(first)}</span>`;
+  const first = (text.split("\n")[0] || "").trim();
+  // 原生 title 对多行支持差：用 data-tip 自定义悬浮框展示全量备注
+  return `<span class="clip multiline-cell" data-tip="${esc(text)}">${esc(first)}</span>`;
 }
+
+let _tipEl = null;
+function ensureTipEl() {
+  if (_tipEl) return _tipEl;
+  _tipEl = document.createElement("div");
+  _tipEl.className = "cell-tip hidden";
+  document.body.appendChild(_tipEl);
+  return _tipEl;
+}
+
+function hideCellTip() {
+  if (_tipEl) _tipEl.classList.add("hidden");
+}
+
+function showCellTip(anchor, text) {
+  const tip = ensureTipEl();
+  tip.textContent = text;
+  tip.classList.remove("hidden");
+  const r = anchor.getBoundingClientRect();
+  const pad = 8;
+  let left = r.left;
+  let top = r.bottom + 6;
+  // 先放到视口内再量宽高，避免首次显示偏移
+  tip.style.left = `${left}px`;
+  tip.style.top = `${top}px`;
+  const tw = tip.offsetWidth;
+  const th = tip.offsetHeight;
+  if (left + tw + pad > window.innerWidth) left = Math.max(pad, window.innerWidth - tw - pad);
+  if (top + th + pad > window.innerHeight) top = Math.max(pad, r.top - th - 6);
+  tip.style.left = `${left}px`;
+  tip.style.top = `${top}px`;
+}
+
+document.addEventListener("mouseover", e => {
+  const el = e.target.closest("[data-tip]");
+  if (!el) return;
+  const text = el.getAttribute("data-tip") || "";
+  if (!text.trim()) return;
+  showCellTip(el, text);
+});
+document.addEventListener("mouseout", e => {
+  const el = e.target.closest("[data-tip]");
+  if (!el) return;
+  const to = e.relatedTarget;
+  if (to && (el.contains(to) || (to.closest && to.closest("[data-tip]") === el))) return;
+  hideCellTip();
+});
+document.addEventListener("scroll", hideCellTip, true);
 
 function cellHtml(field, value) {
   const v = value ?? "";
