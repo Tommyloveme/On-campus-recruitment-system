@@ -517,7 +517,9 @@ function autoFitCandColumns(stageKey) {
   }
   const fields = stageListFields(stageKey);
   const showResume = stageKey === "registration";
-  const list = ss.list || [];
+  // 自适应列宽只需抽样测量：万级数据逐行 measureText 会卡住页面
+  const full = ss.list || [];
+  const list = full.length > 300 ? full.slice(0, 300) : full;
   const widths = {};
   let colIdx = 1;
   widths[colIdx++] = 40;
@@ -998,83 +1000,6 @@ function bindRegistrationSourceCustom() {
   toggle();
 }
 
-let _modalResumeFile = null;
-
-function registrationResumeBlockHtml(cand) {
-  const current = cand?.resume_name
-    ? `<span class="resume-dropzone-current">当前：${esc(cand.resume_name)}</span>`
-    : "";
-  return `
-    <div class="form-item form-item-full registration-resume-block">
-      <label>简历 *</label>
-      <div class="resume-dropzone" id="reg-resume-dropzone" role="button" tabindex="0">
-        <p class="resume-dropzone-hint">拖拽文件到此处，或点击选择</p>
-        <p class="resume-dropzone-name" id="reg-resume-filename">尚未选择文件</p>
-        ${current}
-        <input type="file" id="reg-resume-input" hidden>
-      </div>
-    </div>`;
-}
-
-function bindRegistrationResumeDropzone(cand) {
-  _modalResumeFile = null;
-  const zone = $("#reg-resume-dropzone");
-  const input = $("#reg-resume-input");
-  const nameEl = $("#reg-resume-filename");
-  if (!zone || !input || !nameEl) return;
-
-  const refreshLabel = () => {
-    if (_modalResumeFile) {
-      nameEl.textContent = _modalResumeFile.name;
-      zone.classList.add("has-file");
-      return;
-    }
-    if (cand?.resume_name) {
-      nameEl.textContent = "保留当前简历（可拖拽或点击更换）";
-      zone.classList.add("has-file");
-      return;
-    }
-    nameEl.textContent = "尚未选择文件";
-    zone.classList.remove("has-file");
-  };
-
-  const pickFile = file => {
-    _modalResumeFile = file || null;
-    refreshLabel();
-  };
-
-  refreshLabel();
-
-  zone.addEventListener("click", () => input.click());
-  zone.addEventListener("keydown", e => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); }
-  });
-  input.addEventListener("change", () => pickFile(input.files[0] || null));
-  zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("dragover"); });
-  zone.addEventListener("dragleave", e => {
-    if (!zone.contains(e.relatedTarget)) zone.classList.remove("dragover");
-  });
-  zone.addEventListener("drop", e => {
-    e.preventDefault();
-    zone.classList.remove("dragover");
-    const file = e.dataTransfer?.files?.[0];
-    if (file) pickFile(file);
-  });
-}
-
-function registrationResumeReady(cand) {
-  return !!(_modalResumeFile || cand?.resume_name);
-}
-
-async function uploadCandidateResume(cid, file) {
-  const fd = new FormData();
-  fd.append("file", file);
-  const res = await fetch(`/api/candidates/${cid}/resume`, { method: "POST", body: fd });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || "简历上传失败");
-  return body;
-}
-
 function collectCandidateFormData(fields) {
   const data = {};
   $("#modal-body").querySelectorAll("[data-field]").forEach(el => {
@@ -1206,8 +1131,6 @@ function openCandidateModal(cand, stageKey) {
              placeholder="请填写具体简历来源">
     </div>` : "";
 
-  const resumeBlock = stageKey === "registration" ? registrationResumeBlockHtml(cand) : "";
-
   openModal(isNew ? `新增候选人 - ${meta.label}` : `编辑 - ${esc(cand.data.name || "")}（${meta.label}）`, `
     <div class="registration-modal-body">
       <div class="form-grid registration-form-grid">
@@ -1217,7 +1140,6 @@ function openCandidateModal(cand, stageKey) {
           return html;
         }).join("")}
       </div>
-      ${resumeBlock}
     </div>`,
     `<button class="btn" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="cand-save">保存</button>`);
@@ -1227,7 +1149,6 @@ function openCandidateModal(cand, stageKey) {
     bindRegistrationEmployeeLookup();
     bindRegistrationPhoneDuplicateCheck(cand, stageKey);
     bindRegistrationRemarkInput();
-    bindRegistrationResumeDropzone(cand);
   }
 
   $("#cand-save").addEventListener("click", async () => {
@@ -1242,10 +1163,6 @@ function openCandidateModal(cand, stageKey) {
       return;
     }
     if (stageKey === "registration") {
-      if (!registrationResumeReady(cand)) {
-        toast("请上传简历", true);
-        return;
-      }
       if (isNew && findCandidateByPhoneInList(data.phone, null)) {
         toast("该电话已被其他候选人使用，请修改后再保存", true);
         return;
@@ -1274,9 +1191,6 @@ function openCandidateModal(cand, stageKey) {
           cid = r.id;
           toast("两条记录已合并（主数据优先）");
         }
-      }
-      if (stageKey === "registration" && _modalResumeFile && cid) {
-        await uploadCandidateResume(cid, _modalResumeFile);
       }
       toast(isNew ? "候选人已新增" : "已保存");
       closeModal();

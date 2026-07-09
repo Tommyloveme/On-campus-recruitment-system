@@ -353,6 +353,23 @@ function ovDrawPassRate(list) {
     </div>` : `<div class="empty">暂无数据</div>`;
 }
 
+/* 明细表分片渲染：万级数据一次性拼全部 <tr> 会长时间阻塞页面 */
+const OV_TABLE_CHUNK = 300;
+
+function ovRowHtml(c) {
+  return `
+          <tr>
+            <td><b>${esc(ovValue(c, "候选人") || "—")}</b></td>
+            <td class="mono">${esc(ovValue(c, "电话"))}</td>
+            <td><span class="badge badge-blue">${esc(ovStageLabel(c.current_stage))}</span></td>
+            <td>${ovSlaBadge(c)}</td>
+            <td>${esc(ovValue(c, "学历"))}</td>
+            <td>${esc(ovValue(c, "毕业院校"))}</td>
+            <td>${esc(ovValue(c, "拟录取工作地"))}</td>
+            <td class="latest-log" title="${esc(c.latest_log)}">${esc(c.latest_log)}</td>
+          </tr>`;
+}
+
 function ovDrawTable(list) {
   const el = document.querySelector("[data-ov-table]");
   if (!el) return;
@@ -383,21 +400,34 @@ function ovDrawTable(list) {
             `<th class="sortable" data-ov-sort="${esc(k)}" title="点击排序">${esc(l)}${arrow(k)}</th>`).join("")}
           <th>最新进展</th>
         </tr></thead>
-        <tbody>
-          ${list.map(c => `
-          <tr>
-            <td><b>${esc(ovValue(c, "候选人") || "—")}</b></td>
-            <td class="mono">${esc(ovValue(c, "电话"))}</td>
-            <td><span class="badge badge-blue">${esc(ovStageLabel(c.current_stage))}</span></td>
-            <td>${ovSlaBadge(c)}</td>
-            <td>${esc(ovValue(c, "学历"))}</td>
-            <td>${esc(ovValue(c, "毕业院校"))}</td>
-            <td>${esc(ovValue(c, "拟录取工作地"))}</td>
-            <td class="latest-log" title="${esc(c.latest_log)}">${esc(c.latest_log)}</td>
-          </tr>`).join("")}
+        <tbody data-ov-tbody>
+          ${list.slice(0, OV_TABLE_CHUNK).map(ovRowHtml).join("")}
         </tbody>
       </table>
-    </div>` : `<div class="empty">没有符合条件的候选人</div>`;
+    </div>
+    ${list.length > OV_TABLE_CHUNK ? `
+    <div class="pager-bar">
+      <span data-ov-shown>已显示前 ${OV_TABLE_CHUNK} / ${list.length} 条</span>
+      <button class="btn btn-sm" data-ov-more>加载更多</button>
+      <button class="btn btn-sm" data-ov-all>显示全部</button>
+    </div>` : ""}` : `<div class="empty">没有符合条件的候选人</div>`;
+
+  let shown = Math.min(OV_TABLE_CHUNK, list.length);
+  const appendRows = count => {
+    const next = Math.min(list.length, shown + count);
+    if (next <= shown) return;
+    el.querySelector("[data-ov-tbody]")
+      .insertAdjacentHTML("beforeend", list.slice(shown, next).map(ovRowHtml).join(""));
+    shown = next;
+    const bar = el.querySelector("[data-ov-shown]")?.parentElement;
+    if (shown >= list.length) {
+      if (bar) bar.remove();
+    } else {
+      el.querySelector("[data-ov-shown]").textContent = `已显示前 ${shown} / ${list.length} 条`;
+    }
+  };
+  el.querySelector("[data-ov-more]")?.addEventListener("click", () => appendRows(OV_TABLE_CHUNK * 4));
+  el.querySelector("[data-ov-all]")?.addEventListener("click", () => appendRows(list.length));
 
   el.querySelectorAll("[data-ov-sort]").forEach(th =>
     th.addEventListener("click", () => {

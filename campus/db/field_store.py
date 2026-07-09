@@ -8,7 +8,6 @@
 """
 from __future__ import annotations
 
-import copy
 import json
 import os
 from functools import lru_cache
@@ -45,6 +44,22 @@ def load_table_registry():
 def reload_field_registry():
     load_field_registry.cache_clear()
     load_table_registry.cache_clear()
+    _normalize_maps.cache_clear()
+
+
+@lru_cache(maxsize=1)
+def _normalize_maps():
+    """(legacy→storage 翻译表, 已注册键集合)。
+
+    normalize_record / legacy_to_storage 在导入链路中逐行逐键调用，
+    预构建平坦 dict 比每次遍历注册表快一个数量级。
+    """
+    reg = load_field_registry()
+    fm = reg.get("fields") or {}
+    trans = {leg: (meta.get("storage_key") or leg) for leg, meta in fm.items()}
+    trans.update(_INTERNAL_LEGACY)
+    registered = set(fm) | set(reg.get("legacy_index") or {})
+    return trans, registered
 
 
 def _fields_map(reg=None):
@@ -61,10 +76,12 @@ def legacy_to_storage(key: str, reg=None) -> str:
     """英文 legacy_key / 旧配置 key → 中文 storage_key；未知键原样返回。"""
     if not key:
         return key
+    if reg is None:
+        trans, _ = _normalize_maps()
+        return trans.get(key, key)
     if key.startswith("_") and key in _INTERNAL_LEGACY:
         return _INTERNAL_LEGACY[key]
-    fm = _fields_map(reg)
-    entry = fm.get(key)
+    entry = _fields_map(reg).get(key)
     if entry:
         return entry.get("storage_key") or key
     return key
@@ -147,38 +164,33 @@ def normalize_record(record: dict | None, *, drop_legacy: bool = True) -> dict:
     """将已知英文键转为中文 storage_key；未注册键（含英文自动列）保留不动。"""
     if not record:
         return {}
+    trans, registered = _normalize_maps()
     out = {}
-    reg = load_field_registry()
     for k, v in record.items():
         if k.startswith("_") and k not in _INTERNAL_LEGACY:
             out[k] = v
             continue
-        if k.startswith("_") and k in _INTERNAL_LEGACY:
-            cn = _INTERNAL_LEGACY[k]
-            out[cn] = v
-            continue
-        if is_registered_key(k, reg):
-            sk = legacy_to_storage(k, reg) if k in _fields_map(reg) or k in _INTERNAL_LEGACY else k
-            if isinstance(v, dict):
-                out[sk] = normalize_record(v, drop_legacy=drop_legacy)
-            else:
-                out[sk] = v
+        sk = trans.get(k, k)
+        if isinstance(v, dict) and not k.startswith("_") and (k in registered or k in trans):
+            out[sk] = normalize_record(v, drop_legacy=drop_legacy)
         else:
-            out[k] = v
+            out[sk] = v
     if drop_legacy:
-        fm = _fields_map(reg)
-        for leg in fm:
-            cn = fm[leg].get("storage_key")
-            if cn and leg in out and cn in out:
+        for leg, cn in trans.items():
+            if cn != leg and leg in out and cn in out:
                 del out[leg]
     return out
 
 
 def denormalize_record(record: dict | None) -> dict:
-    """API 兼容：中文 storage → legacy 英文键（双写视图，便于渐进迁移）。"""
+    """API 兼容：中文 storage → legacy 英文键（双写视图，便于渐进迁移）。
+
+    浅拷贝即可：结果只用于 JSON 序列化，legacy 键与中文键共享值对象；
+    列表接口逐行 deepcopy 万级数据会明显拖慢响应。
+    """
     if not record:
         return {}
-    out = copy.deepcopy(record)
+    out = dict(record)
     reg = load_field_registry()
     rev = reg.get("legacy_index") or {}
     for cn, leg in rev.items():

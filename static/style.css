@@ -88,22 +88,6 @@ body {
   border-radius: 4px;
 }
 .cell-phone-dup { color: #dc2626; font-weight: 600; }
-.resume-dropzone {
-  border: 2px dashed #cbd5e1;
-  border-radius: 8px;
-  padding: 20px 16px;
-  text-align: center;
-  background: #f8fafc;
-  cursor: pointer;
-  transition: border-color .15s, background .15s;
-}
-.resume-dropzone:hover,
-.resume-dropzone.dragover { border-color: #3b82f6; background: #eff6ff; }
-.resume-dropzone.has-file { border-color: #86efac; background: #f0fdf4; }
-.resume-dropzone-hint { margin: 0 0 6px; font-size: 13px; color: #64748b; }
-.resume-dropzone-name { margin: 0; font-size: 13px; color: #0f172a; font-weight: 500; word-break: break-all; }
-.resume-dropzone-current { display: block; margin-top: 6px; font-size: 12px; color: #64748b; }
-.registration-resume-block { margin-top: 12px; }
 .registration-emp-block .emp-resolved-meta {
   display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin-top: 6px;
 }

@@ -1,5 +1,5 @@
 {
-  "comment": "阶段判定规则：priority 越高越优先。旧格式 fields/values（* 任意非空，支持通配符）；新格式 when 条件树支持 all(与)/any(或)/not(非) 嵌套组合，op 支持 eq/ne/contains/icontains(模糊包含)/regex(正则)/wildcard/in/not_in/empty/not_empty/startswith/endswith/gt/gte/lt/lte，field 可写英文 field_key、Excel 中文列名或界面标签，table 可指定 预处理表/主数据原始表/手动原始表。示例：{\"priority\": 90, \"stage\": \"offer\", \"when\": {\"all\": [{\"field\": \"Offer状态\", \"op\": \"eq\", \"value\": \"已发放\"}, {\"any\": [{\"field\": \"学历\", \"op\": \"in\", \"value\": [\"硕士\", \"博士\"]}, {\"field\": \"毕业院校\", \"op\": \"regex\", \"value\": \"(大学|学院)$\"}]}]}}",
+  "comment": "阶段判定规则：priority 越高越优先。条件字段仅使用两张真实业务表（applicationProcessList / 候选人面试安排管理列表）中实际存在的映射列，核心依据为「当前环节」（应聘表列名为“当前缓解”）。旧格式 fields/values（* 任意非空，支持通配符）；新格式 when 条件树支持 all(与)/any(或)/not(非) 嵌套组合，op 支持 eq/ne/contains/icontains(模糊包含)/regex(正则)/wildcard/in/not_in/empty/not_empty/startswith/endswith/gt/gte/lt/lte，field 可写英文 field_key、Excel 中文列名或界面标签，table 可指定 预处理表/主数据原始表/手动原始表。",
   "rules": [
     { "priority": 110, "stage": "onboarding", "label": "环节-入职", "when": {"any": [
       {"field": "current_step", "op": "icontains", "value": "入职"},
@@ -12,22 +12,13 @@
     ]}},
     { "priority": 104, "stage": "salary", "label": "环节-谈薪", "when": {"field": "current_step", "op": "icontains", "value": "谈薪"}},
     { "priority": 102, "stage": "approval", "label": "环节-报批", "when": {"field": "current_step", "op": "icontains", "value": "报批"}},
-    { "priority": 100, "stage": "onboarding", "label": "已入职", "fields": ["onboarded"], "values": ["是"] },
-    { "priority": 98, "stage": "onboarding", "label": "已签约待入职", "fields": ["sign_status", "onboarded"], "values": ["已签约", "否"] },
     { "priority": 97, "stage": "manager_interview", "label": "环节-主管面", "when": {"field": "current_step", "op": "icontains", "value": "主管"}},
-    { "priority": 96, "stage": "contract_signing", "label": "签约进行中", "fields": ["contract_signing_status", "sign_status"], "values": ["签约中", "未签约"] },
-    { "priority": 94, "stage": "contract_signing", "label": "待签约", "fields": ["offer_status", "contract_signing_status"], "values": ["已接受", "待签约"] },
     { "priority": 92, "stage": "tech_interview", "label": "环节-专业/技术面", "when": {"any": [
       {"field": "current_step", "op": "icontains", "value": "专业面试"},
       {"field": "current_step", "op": "icontains", "value": "技术面"},
       {"field": "current_step", "op": "icontains", "value": "业务主管"}
     ]}},
     { "priority": 91, "stage": "qualification_interview", "label": "环节-资格面试", "when": {"field": "current_step", "op": "icontains", "value": "资格面试"}},
-    { "priority": 90, "stage": "offer", "label": "Offer已发放", "when": { "all": [
-      { "field": "Offer状态", "op": "eq", "value": "已发放" },
-      { "field": "主管面结果", "op": "eq", "value": "通过" }
-    ] } },
-    { "priority": 90, "stage": "offer", "label": "Offer已接受待签约", "fields": ["offer_status", "contract_signing_status"], "values": ["已接受", "签约中"] },
     { "priority": 88, "stage": "personality_test", "label": "环节-性格/综合测评", "when": {"any": [
       {"field": "current_step", "op": "icontains", "value": "性格"},
       {"field": "current_step", "op": "icontains", "value": "测评"}
@@ -44,57 +35,19 @@
     { "priority": 84, "stage": "qualification", "label": "环节-资审", "when": {"field": "current_step", "op": "icontains", "value": "资审"}},
     { "priority": 82, "stage": "resume_screening", "label": "环节-简历筛选", "when": {"field": "current_step", "op": "icontains", "value": "简历筛选"}},
     { "priority": 80, "stage": "tech_interview", "label": "环节-面试评价", "when": {"field": "current_step", "op": "icontains", "value": "面试"}},
-    { "priority": 78, "stage": "salary", "label": "谈薪中", "fields": ["salary_status", "offer_status"], "values": ["谈薪中", "未发放"] },
-    {
-      "priority": 74,
-      "stage": "manager_interview",
-      "label": "主管面未通过不进Offer策略",
-      "when": {
-        "all": [
-          {
-            "any": [
-              { "field": "报批状态", "op": "not_empty" },
-              { "field": "谈薪状态", "op": "not_empty" },
-              { "field": "Offer状态", "op": "not_empty" }
-            ]
-          },
-          { "not": { "field": "主管面结果", "op": "eq", "value": "通过" } }
-        ]
-      }
-    },
-    { "priority": 70, "stage": "approval", "label": "报批中", "fields": ["approval_status", "salary_status"], "values": ["审批中", "*"] },
-    { "priority": 65, "stage": "approval", "label": "报批已通过", "fields": ["approval_status", "salary_status"], "values": ["已通过", "待谈薪"] },
-    { "priority": 60, "stage": "manager_interview", "label": "主管面进行中", "fields": ["manager_interview_status", "approval_status"], "values": ["已预约", "待提交"] },
-    { "priority": 55, "stage": "manager_interview", "label": "主管面已完成", "fields": ["manager_interview_status", "approval_status"], "values": ["已完成", "待提交"] },
-    { "priority": 50, "stage": "tech_interview", "label": "技术面进行中", "fields": ["tech_interview_status", "manager_interview_status"], "values": ["已预约", "待预约"] },
-    { "priority": 45, "stage": "tech_interview", "label": "技术面已完成", "fields": ["tech_interview_status", "manager_interview_status"], "values": ["已完成", "待预约"] },
-    { "priority": 52, "stage": "qualification_interview", "label": "资格面试进行中", "fields": ["qualification_interview_status", "tech_interview_status"], "values": ["已预约", "待预约"] },
-    { "priority": 51, "stage": "qualification_interview", "label": "资格面试已完成", "fields": ["qualification_interview_status", "tech_interview_status"], "values": ["已完成", "待预约"] },
-    { "priority": 48, "stage": "personality_test", "label": "性格测评进行中", "fields": ["personality_test_status", "qualification_interview_status"], "values": ["已预约", "待预约"] },
-    { "priority": 47, "stage": "personality_test", "label": "性格测评待资格面", "fields": ["personality_test_status", "qualification_interview_status"], "values": ["已完成", "待预约"] },
     { "priority": 40, "stage": "written_test", "label": "笔试进行中", "fields": ["written_test_status", "personality_test_status"], "values": ["已预约", "待测评"] },
     { "priority": 35, "stage": "written_test", "label": "笔试已完成", "fields": ["written_test_status", "personality_test_status"], "values": ["已完成", "待测评"] },
-    { "priority": 34, "stage": "commercial_secret", "label": "资审通过待商业秘密签署", "fields": ["qualification_status", "commercial_secret_status"], "values": ["通过", "待签署"] },
-    { "priority": 33, "stage": "commercial_secret", "label": "资审通过待商业秘密签署", "fields": ["qualification_status", "written_test_status"], "values": ["通过", "待预约"] },
     { "priority": 32, "stage": "commercial_secret", "label": "商业秘密已签署待笔试", "fields": ["commercial_secret_status", "written_test_status"], "values": ["已签署", "待预约"] },
-    { "priority": 30, "stage": "qualification", "label": "资审阶段", "fields": ["qualification_status", "commercial_secret_status"], "values": ["待审查", "待签署"] },
-    { "priority": 25, "stage": "qualification", "label": "资审通过待商业秘密签署", "fields": ["qualification_status", "commercial_secret_status"], "values": ["通过", "待签署"] },
     {
       "priority": 22,
       "stage": "resume_screening",
-      "label": "简历筛选通过(主数据院校模糊匹配示例)",
+      "label": "简历筛选中(主数据院校模糊匹配示例)",
       "when": {
         "all": [
-          { "field": "登记状态", "op": "eq", "value": "已登记", "table": "预处理表" },
           { "field": "毕业院校", "op": "icontains", "value": "大学", "table": "主数据原始表" },
-          { "field": "简历筛选状态", "op": "eq", "value": "通过" }
+          { "field": "当前环节", "op": "icontains", "value": "筛选" }
         ]
       }
-    },
-    { "priority": 20, "stage": "resume_screening", "label": "简历筛选", "fields": ["registration_status", "resume_screening_status"], "values": ["已登记", "待筛选"] },
-    { "priority": 15, "stage": "resume_screening", "label": "简历筛选通过", "fields": ["registration_status", "resume_screening_status"], "values": ["已登记", "通过"] },
-    { "priority": 12, "stage": "registration", "label": "待投递", "fields": ["registration_status"], "values": ["待投递"] },
-    { "priority": 10, "stage": "registration", "label": "登记阶段", "fields": ["registration_status", "resume_screening_status"], "values": ["待完善", "*"] },
-    { "priority": 5, "stage": "registration", "label": "默认登记", "fields": ["registration_status"], "values": ["*"] }
+    }
   ]
 }

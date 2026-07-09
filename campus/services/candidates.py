@@ -13,7 +13,6 @@ from campus.db.field_store import (
     denormalize_record,
     field_get,
     field_set,
-    nested_view,
     normalize_record,
 )
 
@@ -250,9 +249,10 @@ def candidate_dict(row):
         "phone": row["phone"] if "phone" in keys else field_get(data, "phone"),
         "resume_id": row["resume_id"] if "resume_id" in keys else field_get(data, "resume_id"),
         "current_stage": row["current_stage"] if "current_stage" in keys else field_get(data, "current_stage"),
-        # 双键视图：中文 storage_key 为准，同时附带 legacy 英文键（API 兼容）
+        # 双键视图：中文 storage_key 为准，同时附带 legacy 英文键（API 兼容）。
+        # 注：不再内联 data_nested 嵌套视图——万级数据时逐行构建嵌套树
+        # 是列表接口的主要耗时点，且前端并未使用。
         "data": denormalize_record(data),
-        "data_nested": nested_view(data),
     }
 
 

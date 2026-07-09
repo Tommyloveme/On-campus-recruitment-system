@@ -251,12 +251,12 @@
     },
     "resume_screening_status": {
       "legacy_key": "resume_screening_status",
-      "storage_key": "简历筛选状态",
-      "label": "简历筛选状态",
+      "storage_key": "筛选状态",
+      "label": "筛选状态",
       "path": [
         "候选人",
         "流程状态",
-        "简历筛选状态"
+        "筛选状态"
       ],
       "stages": [
         "resume_screening"
@@ -901,12 +901,12 @@
     },
     "offer_send_time": {
       "legacy_key": "offer_send_time",
-      "storage_key": "Offer发放时间",
-      "label": "Offer发放时间",
+      "storage_key": "发放时间",
+      "label": "发放时间",
       "path": [
         "候选人",
         "Offer签约",
-        "Offer发放时间"
+        "发放时间"
       ],
       "stages": [
         "offer"
@@ -940,12 +940,12 @@
     },
     "contract_signing_status": {
       "legacy_key": "contract_signing_status",
-      "storage_key": "签约情况状态",
-      "label": "签约情况状态",
+      "storage_key": "签约状态",
+      "label": "签约状态",
       "path": [
         "候选人",
         "流程状态",
-        "签约情况状态"
+        "签约状态"
       ],
       "stages": [
         "contract_signing"
@@ -992,12 +992,12 @@
     },
     "sign_status": {
       "legacy_key": "sign_status",
-      "storage_key": "签约状态",
-      "label": "签约状态",
+      "storage_key": "sign_status",
+      "label": "sign_status",
       "path": [
         "候选人",
         "流程状态",
-        "签约状态"
+        "sign_status"
       ],
       "stages": [
         "onboarding"
@@ -1388,7 +1388,7 @@
     "候选人.登记拓源.登记时间": "登记时间",
     "候选人.登记拓源.投递时间": "投递时间",
     "候选人.登记拓源.登记备注": "登记备注",
-    "候选人.流程状态.简历筛选状态": "简历筛选状态",
+    "候选人.流程状态.筛选状态": "筛选状态",
     "候选人.扩展.筛选人": "筛选人",
     "候选人.扩展.筛选时间": "筛选时间",
     "候选人.扩展.筛选备注": "筛选备注",
@@ -1438,14 +1438,14 @@
     "候选人.扩展.谈薪时间": "谈薪时间",
     "候选人.扩展.谈薪备注": "谈薪备注",
     "候选人.流程状态.Offer状态": "Offer状态",
-    "候选人.Offer签约.Offer发放时间": "Offer发放时间",
+    "候选人.Offer签约.发放时间": "发放时间",
     "候选人.Offer签约.接受截止": "接受截止",
     "候选人.Offer签约.Offer备注": "Offer备注",
-    "候选人.流程状态.签约情况状态": "签约情况状态",
+    "候选人.流程状态.签约状态": "签约状态",
     "候选人.扩展.签约时间": "签约时间",
     "候选人.扩展.签约备注": "签约备注",
     "候选人.入职.三层部门": "三层部门",
-    "候选人.流程状态.签约状态": "签约状态",
+    "候选人.流程状态.sign_status": "sign_status",
     "候选人.入职.预计入职时间": "预计入职时间",
     "候选人.扩展.预约体检时间": "预约体检时间",
     "候选人.扩展.是否体检": "是否体检",
@@ -1495,7 +1495,7 @@
     "登记时间": "registration_time",
     "投递时间": "delivery_time",
     "登记备注": "registration_remark",
-    "简历筛选状态": "resume_screening_status",
+    "筛选状态": "resume_screening_status",
     "筛选人": "resume_screening_reviewer",
     "筛选时间": "resume_screening_time",
     "筛选备注": "resume_screening_remark",
@@ -1545,14 +1545,14 @@
     "谈薪时间": "salary_negotiation_time",
     "谈薪备注": "salary_remark",
     "Offer状态": "offer_status",
-    "Offer发放时间": "offer_send_time",
+    "发放时间": "offer_send_time",
     "接受截止": "offer_accept_deadline",
     "Offer备注": "offer_remark",
-    "签约情况状态": "contract_signing_status",
+    "签约状态": "contract_signing_status",
     "签约时间": "contract_signing_time",
     "签约备注": "contract_signing_remark",
     "三层部门": "dept_level3",
-    "签约状态": "sign_status",
+    "sign_status": "sign_status",
     "预计入职时间": "expected_onboard_time",
     "预约体检时间": "physical_exam_time",
     "是否体检": "physical_exam_done",

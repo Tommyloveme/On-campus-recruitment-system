@@ -134,7 +134,7 @@ class TestValidate(unittest.TestCase):
 
 
 class TestStageRoutingIntegration(unittest.TestCase):
-    """stage_rules.json 实配看护：状态列 → 阶段（含手动流转覆盖）。"""
+    """stage_rules.json 实配看护：真实表「当前环节」→ 阶段（含手动流转覆盖）。"""
 
     def _stage(self, data):
         from campus.domain.stage_routing import compute_current_stage
@@ -142,22 +142,26 @@ class TestStageRoutingIntegration(unittest.TestCase):
         base.update(data)
         return compute_current_stage(dict(base))
 
-    def test_offer_stage(self):
-        self.assertEqual(self._stage({"offer_status": "已发放"}), "approval")
+    def test_approval_stage_from_current_step(self):
+        self.assertEqual(self._stage({"current_step": "报批"}), "approval")
 
-    def test_onboarding(self):
-        self.assertEqual(self._stage({"onboarded": "是"}), "approval")
+    def test_onboarding_step_gated_by_manager_result(self):
+        # 入职属 Offer 策略：主管面通过后自动判定统一落到「报批」
+        self.assertEqual(self._stage({"current_step": "入职报到"}), "approval")
+
+    def test_tech_interview_step(self):
+        self.assertEqual(self._stage({"current_step": "专业面试1"}), "tech_interview")
 
     def test_default_registration(self):
-        self.assertEqual(self._stage({"registration_status": "已登记"}), "registration")
+        self.assertEqual(self._stage({"current_step": ""}), "registration")
 
     def test_manual_stage_override(self):
         self.assertEqual(
-            self._stage({"offer_status": "已发放", "manual_stage": "salary"}), "salary")
+            self._stage({"current_step": "报批", "manual_stage": "salary"}), "salary")
 
     def test_manual_stage_invalid_ignored(self):
         self.assertEqual(
-            self._stage({"offer_status": "已发放", "manual_stage": "no_such"}), "approval")
+            self._stage({"current_step": "报批", "manual_stage": "no_such"}), "approval")
 
     def test_when_rule_with_chinese_name(self):
         """when 条件树直接用中文列名（经字段映射自动解析）。"""
@@ -168,13 +172,13 @@ class TestStageRoutingIntegration(unittest.TestCase):
         cfg["stage_rules"] = {"rules": [
             {"priority": 100, "stage": "offer",
              "when": {"all": [
-                 {"field": "Offer状态", "op": "in", "value": ["已发放", "已接受"]},
+                 {"field": "当前环节", "op": "in", "value": ["Offer审批", "Offer发放"]},
                  {"not": {"field": "学历", "op": "eq", "value": "大专"}},
              ]}},
         ]}
-        data = {"offer_status": "已接受", "education": "硕士", "manager_interview_result": "通过"}
+        data = {"current_step": "Offer发放", "education": "硕士", "manager_interview_result": "通过"}
         self.assertEqual(compute_current_stage(data, cfg=cfg), "approval")
-        data2 = {"offer_status": "已接受", "education": "大专", "manager_interview_result": "通过"}
+        data2 = {"current_step": "Offer发放", "education": "大专", "manager_interview_result": "通过"}
         self.assertEqual(compute_current_stage(data2, cfg=cfg), "registration")
 
     def test_stage_rules_config_valid(self):

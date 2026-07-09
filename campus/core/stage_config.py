@@ -12,11 +12,23 @@ STAGES_DIR = os.path.join(CONFIG_DIR, "stages")
 COMMON_STAGE = "_common"
 
 
+#: stages.json 解析缓存（mtime 失效）：阶段判定每行都要读阶段列表，
+#: 万级导入时逐行读盘解析是明显热点
+_STAGES_META_CACHE = {"stamp": None, "stages": None}
+
+
 def load_stages_meta():
-    """读取阶段元数据列表（按 order 排序）。"""
-    with open(STAGES_PATH, encoding="utf-8") as f:
-        stages = json.load(f)["stages"]
-    return sorted(stages, key=lambda s: s["order"])
+    """读取阶段元数据列表（按 order 排序，带 mtime 缓存）。"""
+    try:
+        stamp = os.path.getmtime(STAGES_PATH)
+    except OSError:
+        stamp = None
+    if _STAGES_META_CACHE["stages"] is None or _STAGES_META_CACHE["stamp"] != stamp:
+        with open(STAGES_PATH, encoding="utf-8") as f:
+            stages = json.load(f)["stages"]
+        _STAGES_META_CACHE["stages"] = sorted(stages, key=lambda s: s["order"])
+        _STAGES_META_CACHE["stamp"] = stamp
+    return [dict(s) for s in _STAGES_META_CACHE["stages"]]
 
 
 def stage_keys():

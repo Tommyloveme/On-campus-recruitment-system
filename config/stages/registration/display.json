@@ -28,7 +28,7 @@
   },
   "hide_field_range": {
     "from": "dept_level3",
-    "through": "onboard_risk"
+    "through": "manager_interview_result"
   },
   "hidden_keys": ["progress"],
   "visible": {

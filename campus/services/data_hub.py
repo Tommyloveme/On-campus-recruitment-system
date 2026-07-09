@@ -36,22 +36,25 @@ def record_hub_fields(db, source, tab_key, resume_key, fields,
         return 0
     label_map = label_map or {}
     now = now_str()
-    n = 0
-    for key, value in (fields or {}).items():
-        if key.startswith("_"):
-            continue
-        sk = legacy_to_storage(key)
-        db.execute(
+    params = [
+        (source, tab_key or "", resume_key, sk,
+         label_map.get(key, label_map.get(sk, sk)),
+         str(value if value is not None else ""), user_name, now, now)
+        for key, value in (fields or {}).items()
+        if not key.startswith("_")
+        for sk in (legacy_to_storage(key),)
+    ]
+    if params:
+        # 批量 UPSERT：主数据导入每行涉及数十个字段，逐条 execute 是导入耗时大头
+        db.executemany(
             "INSERT INTO data_hub (source, tab_key, resume_id, field_key, field_label, "
             "value, updated_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?) "
             "ON CONFLICT(source, tab_key, resume_id, field_key) DO UPDATE SET "
             "value=excluded.value, field_label=excluded.field_label, "
             "updated_by=excluded.updated_by, updated_at=excluded.updated_at",
-            (source, tab_key or "", resume_key, sk, label_map.get(key, label_map.get(sk, sk)),
-             str(value if value is not None else ""), user_name, now, now),
+            params,
         )
-        n += 1
-    return n
+    return len(params)
 
 
 def query_hub(db, resume_id=None, source=None, tab=None, field=None, limit=2000):

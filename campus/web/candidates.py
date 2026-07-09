@@ -46,17 +46,21 @@ bp = Blueprint("candidates", __name__)
 @login_required
 def api_candidates():
     db = get_db()
-    rows = db.execute("SELECT * FROM candidates ORDER BY updated_at DESC").fetchall()
+    q = (request.args.get("q") or "").strip()
+    stage_filter = request.args.get("stage")
+    # 阶段过滤直接下推 SQL（current_stage 为带索引的同步列），
+    # 避免大数据量时对全表做 JSON 反序列化。
+    if stage_filter:
+        rows = db.execute(
+            "SELECT * FROM candidates WHERE current_stage=? ORDER BY updated_at DESC",
+            (stage_filter,)).fetchall()
+    else:
+        rows = db.execute("SELECT * FROM candidates ORDER BY updated_at DESC").fetchall()
     # 共享池：所有登录用户可见
     rows = [r for r in rows if can_see_candidate(db, g.user, r)]
     result = [candidate_dict(r) for r in rows]
-    q = (request.args.get("q") or "").strip()
-    stage_filter = request.args.get("stage")
     if q:
         result = [c for c in result if any(q in str(v) for v in c["data"].values())]
-    if stage_filter:
-        result = [c for c in result if (c.get("current_stage")
-                  or field_get(c["data"], "current_stage")) == stage_filter]
     log.debug("候选人列表 %s 返回%d条 q=%s stage=%s",
               who(g.user), len(result), q or "-", stage_filter or "-")
     return jsonify(result)

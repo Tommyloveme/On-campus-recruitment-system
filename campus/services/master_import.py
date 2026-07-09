@@ -183,13 +183,18 @@ def _select_workbook_sheet(wb, source_cfg, source_label=""):
 
 def parse_excel_file(path, source_cfg):
     from openpyxl import load_workbook
-    wb = load_workbook(path, data_only=True)
-    sheet = _select_workbook_sheet(wb, source_cfg)
-    rows = list(sheet.iter_rows(values_only=True))
-    if not rows:
-        return []
-    col_map = parse_master_header(source_cfg, rows[0])
-    return [row_to_data(source_cfg, col_map, raw) for raw in rows[1:]]
+    # read_only 流式解析：万行大表比常规模式快数倍且省内存
+    wb = load_workbook(path, data_only=True, read_only=True)
+    try:
+        sheet = _select_workbook_sheet(wb, source_cfg)
+        rows_iter = sheet.iter_rows(values_only=True)
+        header = next(rows_iter, None)
+        if header is None:
+            return []
+        col_map = parse_master_header(source_cfg, header)
+        return [row_to_data(source_cfg, col_map, raw) for raw in rows_iter]
+    finally:
+        wb.close()
 
 
 # ---------------------------------------------------------------------------
@@ -451,19 +456,30 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn):
         if not can_edit:
             skipped += 1
             continue
-        record_hub_fields(db, SOURCE_MASTER, hub_tab, hub_resume_key(data),
-                          data, hub_labels, user_name)
-        cn_labels = {hub_labels.get(k, k): v for k, v in data.items()
-                     if not k.startswith("_")}
-        raw_phone = phone or (normalize_candidate_phone(
-            field_get(json.loads(match["data"]), "phone")) if match else "")
-        if raw_phone:
-            record_master(db, raw_phone, data, labels=cn_labels, ts=now)
+
+        old = json.loads(match["data"]) if match else None
         if match:
-            old = json.loads(match["data"])
             merged = merge_master_import_data(old, data, cfg)
             compute_stage_fn(merged, cfg)
-            if merged != old:
+            changed = merged != old
+        else:
+            merged = None
+            changed = True
+
+        # 重复刷新时大部分行没有任何变化：跳过总表/原始表回写，
+        # 否则每行数十个字段的 UPSERT 是重复导入的最大耗时点
+        if changed:
+            record_hub_fields(db, SOURCE_MASTER, hub_tab, hub_resume_key(data),
+                              data, hub_labels, user_name)
+            cn_labels = {hub_labels.get(k, k): v for k, v in data.items()
+                         if not k.startswith("_")}
+            raw_phone = phone or (normalize_candidate_phone(
+                field_get(old, "phone")) if old else "")
+            if raw_phone:
+                record_master(db, raw_phone, data, labels=cn_labels, ts=now)
+
+        if match:
+            if changed:
                 update_candidate_row(db, match["id"], merged, ts=now)
                 updated += 1
                 match = db.execute("SELECT * FROM candidates WHERE id=?", (match["id"],)).fetchone()

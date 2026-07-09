@@ -5,19 +5,8 @@ from campus.db.field_store import field_get
 from campus.domain.stage_routing import stage_label_map
 
 # 各流程用于计算通过率的状态字段与「通过」取值
+# （仅保留两张真实业务表可提供的状态列：考试状态/综测状态/面试结论等）
 STAGE_PASS_CONFIG = {
-    "resume_screening": {
-        "status_key": "resume_screening_status",
-        "pass_values": {"通过"},
-        "fail_values": {"不通过", "淘汰"},
-        "pending_prefixes": ("待",),
-    },
-    "qualification": {
-        "status_key": "qualification_status",
-        "pass_values": {"通过"},
-        "fail_values": {"不通过"},
-        "pending_prefixes": ("待",),
-    },
     "written_test": {
         "status_key": "written_test_status",
         "pass_values": {"已完成"},
@@ -26,12 +15,6 @@ STAGE_PASS_CONFIG = {
     },
     "personality_test": {
         "status_key": "personality_test_status",
-        "pass_values": {"已完成"},
-        "fail_values": {"放弃"},
-        "pending_prefixes": ("待",),
-    },
-    "qualification_interview": {
-        "status_key": "qualification_interview_status",
         "pass_values": {"已完成"},
         "fail_values": {"放弃"},
         "pending_prefixes": ("待",),
@@ -47,36 +30,6 @@ STAGE_PASS_CONFIG = {
         "pass_values": {"通过"},
         "fail_values": {"不通过"},
         "pending_prefixes": ("待",),
-    },
-    "approval": {
-        "status_key": "approval_status",
-        "pass_values": {"已通过"},
-        "fail_values": {"已驳回", "不通过"},
-        "pending_prefixes": ("待", "审批"),
-    },
-    "salary": {
-        "status_key": "salary_status",
-        "pass_values": {"已接受"},
-        "fail_values": {"已拒绝"},
-        "pending_prefixes": ("待", "谈薪"),
-    },
-    "offer": {
-        "status_key": "offer_status",
-        "pass_values": {"已接受"},
-        "fail_values": {"已拒绝", "已放弃"},
-        "pending_prefixes": ("未", "待"),
-    },
-    "contract_signing": {
-        "status_key": "contract_signing_status",
-        "pass_values": {"已签约"},
-        "fail_values": {"放弃签约"},
-        "pending_prefixes": ("待", "签约中"),
-    },
-    "onboarding": {
-        "status_key": "onboarded",
-        "pass_values": {"是"},
-        "fail_values": set(),
-        "pending_prefixes": ("否",),
     },
 }
 
@@ -267,14 +220,20 @@ def build_overview_payload(db):
     dwell_by_cand, dwell_by_stage = compute_stage_dwell(db, sla_cfg)
 
     rows = db.execute("SELECT * FROM candidates ORDER BY updated_at DESC").fetchall()
+    # 每人最新一条日志：单条聚合查询（SQLite 保证 MAX(id) 行的裸列取自同一行），
+    # 避免万级数据时逐人查询
+    latest_logs = {
+        r["candidate_id"]: f"[{r['created_at']}] {r['message']}"
+        for r in db.execute(
+            "SELECT candidate_id, message, created_at, MAX(id) FROM logs "
+            "WHERE candidate_id IS NOT NULL GROUP BY candidate_id"
+        ).fetchall()
+    }
     cands = []
     stats = {"total": len(rows), "signed": 0, "onboarded": 0, "high_risk": 0, "sla_overdue": 0}
     for r in rows:
         c = candidate_dict(r)
-        log_row = db.execute(
-            "SELECT message, created_at FROM logs WHERE candidate_id=? ORDER BY id DESC LIMIT 1", (r["id"],)
-        ).fetchone()
-        c["latest_log"] = (f"[{log_row['created_at']}] {log_row['message']}" if log_row else "暂无更新记录")
+        c["latest_log"] = latest_logs.get(r["id"], "暂无更新记录")
         dw = dwell_by_cand.get(r["id"]) or {}
         c["stay_days"] = dw.get("days", 0)
         c["sla_status"] = dw.get("sla_status", "ok")

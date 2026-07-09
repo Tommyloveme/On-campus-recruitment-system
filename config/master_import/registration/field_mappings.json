@@ -1,5 +1,5 @@
 {
-  "comment": "主数据导入字段映射（外部 Excel 列 ↔ 内部字段的隔离层）。sources 配置各 Excel 的文件名模式与工作表；excel_column/excel_aliases 支持精确名与 * 通配；ui_label 为空则网页不可见；lock_on_import 为 true 导入后不可编辑。未配置的 Excel 列按表头原文自动入库（界面默认不可见），外部表头变化只需改本文件。",
+  "comment": "主数据导入字段映射（外部 Excel 列 ↔ 内部字段的隔离层）。仅收录两张真实业务表（applicationProcessList*.xlsx / 候选人面试安排管理列表*.xlsx）中实际存在的列；sources 配置各 Excel 的文件名模式与工作表；excel_column/excel_aliases 支持精确名与 * 通配；ui_label 为空则网页不可见；lock_on_import 为 true 导入后不可编辑。未配置的 Excel 列按表头原文自动入库（界面默认不可见），外部表头变化只需改本文件。",
   "sources": {
     "application": {
       "file_pattern": "application*.xlsx",
@@ -41,11 +41,8 @@
       "lock_on_import": true,
       "sources": {
         "application": {
-          "excel_column": "候选人",
+          "excel_column": "姓名",
           "required": true,
-          "excel_aliases": [
-            "姓名"
-          ],
           "match_patterns": []
         },
         "interview_mgmt": {
@@ -61,10 +58,7 @@
       "lock_on_import": true,
       "sources": {
         "application": {
-          "excel_column": "电话",
-          "excel_aliases": [
-            "联系电话"
-          ],
+          "excel_column": "联系电话",
           "match_patterns": []
         },
         "interview_mgmt": {
@@ -175,10 +169,7 @@
       "lock_on_import": true,
       "sources": {
         "application": {
-          "excel_column": "学历",
-          "excel_aliases": [
-            "学历（1）"
-          ],
+          "excel_column": "学历（1）",
           "match_patterns": []
         },
         "interview_mgmt": {
@@ -193,10 +184,7 @@
       "lock_on_import": true,
       "sources": {
         "application": {
-          "excel_column": "毕业院校",
-          "excel_aliases": [
-            "毕业学校（1）"
-          ],
+          "excel_column": "毕业学校（1）",
           "match_patterns": []
         },
         "interview_mgmt": {
@@ -211,10 +199,7 @@
       "lock_on_import": true,
       "sources": {
         "application": {
-          "excel_column": "专业",
-          "excel_aliases": [
-            "专业（1）"
-          ],
+          "excel_column": "专业（1）",
           "match_patterns": []
         },
         "interview_mgmt": {
@@ -229,11 +214,7 @@
       "lock_on_import": false,
       "sources": {
         "application": {
-          "excel_column": "三层部门",
-          "excel_aliases": [
-            "入职三层",
-            "拟录二层部门"
-          ],
+          "excel_column": "拟录二层部门",
           "match_patterns": []
         }
       }
@@ -244,54 +225,7 @@
       "lock_on_import": false,
       "sources": {
         "application": {
-          "excel_column": "二层部门",
-          "excel_aliases": [
-            "拟录一层部门"
-          ],
-          "match_patterns": []
-        }
-      }
-    },
-    {
-      "field_key": "sourcer",
-      "ui_label": "拓源人",
-      "lock_on_import": false,
-      "sources": {
-        "application": {
-          "excel_column": "拓源人",
-          "match_patterns": []
-        }
-      }
-    },
-    {
-      "field_key": "sourcer_dept",
-      "ui_label": "拓源人部门",
-      "lock_on_import": false,
-      "sources": {
-        "application": {
-          "excel_column": "拓源人部门",
-          "match_patterns": []
-        }
-      }
-    },
-    {
-      "field_key": "interface_person",
-      "ui_label": "接口人",
-      "lock_on_import": false,
-      "sources": {
-        "application": {
-          "excel_column": "接口人",
-          "match_patterns": []
-        }
-      }
-    },
-    {
-      "field_key": "interface_dept",
-      "ui_label": "接口人部门",
-      "lock_on_import": false,
-      "sources": {
-        "application": {
-          "excel_column": "接口人部门",
+          "excel_column": "拟录一层部门",
           "match_patterns": []
         }
       }
@@ -302,9 +236,8 @@
       "lock_on_import": false,
       "sources": {
         "application": {
-          "excel_column": "来源渠道",
+          "excel_column": "渠道名称",
           "excel_aliases": [
-            "渠道名称",
             "渠道类型"
           ],
           "match_patterns": []
@@ -317,10 +250,8 @@
       "lock_on_import": false,
       "sources": {
         "application": {
-          "excel_column": "拟录取工作地",
+          "excel_column": "拟录工作地",
           "excel_aliases": [
-            "工作地",
-            "拟录工作地",
             "岗位地点"
           ],
           "match_patterns": []
@@ -333,10 +264,7 @@
       "lock_on_import": false,
       "sources": {
         "application": {
-          "excel_column": "当前环节",
-          "excel_aliases": [
-            "当前缓解"
-          ],
+          "excel_column": "当前缓解",
           "match_patterns": []
         },
         "interview_mgmt": {
@@ -416,46 +344,12 @@
       }
     },
     {
-      "field_key": "registration_status",
-      "ui_label": "登记状态",
-      "lock_on_import": false,
-      "sources": {
-        "application": {
-          "excel_column": "登记状态",
-          "match_patterns": []
-        }
-      }
-    },
-    {
-      "field_key": "resume_screening_status",
-      "ui_label": "简历筛选状态",
-      "lock_on_import": false,
-      "sources": {
-        "application": {
-          "excel_column": "简历筛选状态",
-          "match_patterns": []
-        }
-      }
-    },
-    {
-      "field_key": "qualification_status",
-      "ui_label": "资审状态",
-      "lock_on_import": false,
-      "sources": {
-        "application": {
-          "excel_column": "资审状态",
-          "match_patterns": []
-        }
-      }
-    },
-    {
       "field_key": "commercial_secret_status",
       "ui_label": "商业秘密签署状态",
       "lock_on_import": false,
       "sources": {
         "application": {
-          "excel_column": "商业秘密签署状态",
-          "excel_aliases": ["保密协议状态", "商业秘密状态"],
+          "excel_column": "商业秘密状态",
           "match_patterns": []
         }
       }
@@ -465,10 +359,6 @@
       "ui_label": "笔试状态",
       "lock_on_import": false,
       "sources": {
-        "application": {
-          "excel_column": "笔试状态",
-          "match_patterns": []
-        },
         "interview_mgmt": {
           "excel_column": "考试状态",
           "match_patterns": []
@@ -480,126 +370,11 @@
       "ui_label": "性格测评状态",
       "lock_on_import": false,
       "sources": {
-        "application": {
-          "excel_column": "性格测评状态",
-          "match_patterns": []
-        },
         "interview_mgmt": {
           "excel_column": "综测状态",
           "match_patterns": []
         }
       }
-    },
-    {
-      "field_key": "qualification_interview_status",
-      "ui_label": "资格面试状态",
-      "lock_on_import": false,
-      "sources": {
-        "application": {
-          "excel_column": "资格面试状态",
-          "match_patterns": []
-        }
-      }
-    },
-    {
-      "field_key": "tech_interview_status",
-      "ui_label": "技术面状态",
-      "lock_on_import": false,
-      "sources": {
-        "application": {
-          "excel_column": "技术面状态",
-          "match_patterns": []
-        }
-      }
-    },
-    {
-      "field_key": "manager_interview_status",
-      "ui_label": "主管面状态",
-      "lock_on_import": false,
-      "sources": {
-        "application": {
-          "excel_column": "主管面状态",
-          "match_patterns": []
-        }
-      }
-    },
-    {
-      "field_key": "approval_status",
-      "ui_label": "报批状态",
-      "lock_on_import": false,
-      "sources": {
-        "application": {
-          "excel_column": "报批状态",
-          "match_patterns": []
-        }
-      }
-    },
-    {
-      "field_key": "salary_status",
-      "ui_label": "谈薪状态",
-      "lock_on_import": false,
-      "sources": {
-        "application": {
-          "excel_column": "谈薪状态",
-          "match_patterns": []
-        }
-      }
-    },
-    {
-      "field_key": "offer_status",
-      "ui_label": "Offer状态",
-      "lock_on_import": false,
-      "sources": {
-        "application": {
-          "excel_column": "Offer状态",
-          "match_patterns": []
-        }
-      }
-    },
-    {
-      "field_key": "contract_signing_status",
-      "ui_label": "签约情况状态",
-      "lock_on_import": false,
-      "sources": {
-        "application": {
-          "excel_column": "签约情况状态",
-          "match_patterns": []
-        }
-      }
-    },
-    {
-      "field_key": "sign_status",
-      "ui_label": "签约状态",
-      "lock_on_import": false,
-      "sources": {
-        "application": {
-          "excel_column": "签约状态",
-          "match_patterns": []
-        }
-      }
-    },
-    {
-      "field_key": "onboarded",
-      "ui_label": "是否入职",
-      "lock_on_import": false,
-      "sources": {
-        "application": {
-          "excel_column": "是否入职",
-          "match_patterns": []
-        }
-      }
-    },
-    {
-      "field_key": "personality_test_result",
-      "ui_label": "测评结果",
-      "lock_on_import": false,
-      "sources": {}
-    },
-    {
-      "field_key": "qualification_interview_result",
-      "ui_label": "资格面试结果",
-      "lock_on_import": false,
-      "sources": {}
     },
     {
       "field_key": "tech_interview_result",
@@ -625,30 +400,6 @@
           "match_patterns": []
         }
       }
-    },
-    {
-      "field_key": "offer_send_time",
-      "ui_label": "Offer发放时间",
-      "lock_on_import": false,
-      "sources": {}
-    },
-    {
-      "field_key": "expected_onboard_time",
-      "ui_label": "预计入职时间",
-      "lock_on_import": false,
-      "sources": {}
-    },
-    {
-      "field_key": "onboard_risk",
-      "ui_label": "入职风险",
-      "lock_on_import": false,
-      "sources": {}
-    },
-    {
-      "field_key": "progress",
-      "ui_label": "当前进展",
-      "lock_on_import": false,
-      "sources": {}
     }
   ]
 }

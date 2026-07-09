@@ -119,7 +119,7 @@ call("DELETE", f"/api/users/{crt['id']}")
 
 # 2. 配置与分组
 s, cfg = call("GET", "/api/config")
-check("读取13个流程阶段", len(cfg["stages"]) == 13)
+check("读取14个流程阶段", len(cfg["stages"]) == 14)
 check("含新增流程阶段", {"personality_test", "qualification_interview", "contract_signing"} <= {s["key"] for s in cfg["stages"]})
 check("界面配置下发(每页15条)", cfg["app"]["page_size"] == 15)
 check("含登记与入职阶段", "registration" in cfg["stage_fields"] and "onboarding" in cfg["stage_fields"])
