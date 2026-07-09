@@ -303,67 +303,24 @@ check("入职阶段旧表头入职三层兼容导入", r["created"] == 1)
 s, found = call("GET", "/api/candidates?q=" + quote("三层部门测试"))
 check("入职导入写入三层部门", found[0]["data"].get("dept_level3") == "网络部")
 
-# 5a-master. 主数据表双文件导入（applicationProcessList 风格主表 + 候选人面试安排管理列表）
-_fix_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tests", "fixtures", "master_import")
-with open(os.path.join(_fix_dir, "Application_test.xlsx"), "rb") as _f:
-    _app_xlsx = _f.read()
-with open(os.path.join(_fix_dir, "候选人面试安排管理列表_test.xlsx"), "rb") as _f:
-    _iv_xlsx = _f.read()
-boundary_m = uuid.uuid4().hex
-body_m = io.BytesIO()
-def part_m(name, value=None, filename=None, content=None):
-    body_m.write(f"--{boundary_m}\r\n".encode())
-    if filename:
-        body_m.write(f'Content-Disposition: form-data; name="{name}"; filename="{filename}"\r\n'.encode())
-        body_m.write(b"Content-Type: application/octet-stream\r\n\r\n")
-        body_m.write(content)
-        body_m.write(b"\r\n")
-    else:
-        body_m.write(f'Content-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
-part_m("page", "registration")
-part_m("application", filename="Application_test.xlsx", content=_app_xlsx)
-part_m("interview_mgmt", filename="候选人面试安排管理列表_test.xlsx", content=_iv_xlsx)
-body_m.write(f"--{boundary_m}--\r\n".encode())
-s, r = call("POST", "/api/master-import/upload", raw=body_m.getvalue(),
-             ctype=f"multipart/form-data; boundary={boundary_m}")
-check("主数据表双文件上传成功", s == 200 and r.get("both_ready"))
+# 5a-master. 主数据表配置（上传/刷新由根目录真实双 Excel 与单元测试覆盖）
 s, cfg_mi = call("GET", "/api/master-import/config?page=registration")
 check("主数据表配置含双数据源", len(cfg_mi.get("sources", [])) == 2
       and cfg_mi.get("join_key") == "application_archive_id")
 check("主数据匹配键为档案编号→手机号",
       cfg_mi.get("match_keys") == ["application_archive_id", "phone"])
-boundary_r = uuid.uuid4().hex
-body_r = io.BytesIO()
-body_r.write(f"--{boundary_r}\r\n".encode())
-body_r.write(b'Content-Disposition: form-data; name="page"\r\n\r\nregistration\r\n')
-body_r.write(f"--{boundary_r}--\r\n".encode())
-s, r = call("POST", "/api/master-import/refresh", raw=body_r.getvalue(),
-             ctype=f"multipart/form-data; boundary={boundary_r}")
-check("主数据表刷新成功", s == 200 and (r.get("created", 0) + r.get("updated", 0)) >= 1)
-s, c_new = call("GET", "/api/candidates?q=" + quote("主表新人"))
-check("主表新人已导入且含SR格式应聘档案编号",
-      len(c_new) == 1 and c_new[0]["data"].get("application_archive_id") == "SR2026010100001")
-check("主表新人含应聘档案编号", c_new[0]["data"].get("application_archive_id") == "SR2026010100001")
-check("应聘档案编号日期段解析为投递时间", c_new[0]["data"].get("delivery_time") == "2026-01-01")
-_locked = c_new[0]["data"].get("_master_locked_fields", [])
-check("主表导入锁定登记字段", "候选人" in _locked or "name" in _locked)
-s, _ = call("PUT", f"/api/candidates/{c_new[0]['id']}", {
-    "stage": "registration", "data": {"name": "改名测试"},
-}, expect_error=True)
-check("主表锁定字段不可编辑", s == 400)
-check("主表冗余列自动入库(当前进展)", "0619" in (c_new[0]["data"].get("progress") or ""))
-check("面试安排表字段已按档案编号合并(面试进展)",
-      "专业面试" in (c_new[0]["data"].get("面试进展") or ""))
-check("流程状态列已生成", bool((c_new[0]["data"].get("流程状态") or "").strip()))
-s, c_upd = call("GET", "/api/candidates?q=" + quote("测试员"))
-check("测试员经档案编号更新", len(c_upd) == 1 and c_upd[0]["data"].get("onboard_risk") == "高")
 
 # 5a2. 流程终止 / 恢复（冻结当前阶段，可还原到终止前状态）
-cid_t = c_new[0]["id"]
-stage_before_term = c_new[0].get("current_stage")
+s, c_term = call("POST", "/api/candidates", {
+    "stage": "registration",
+    "data": sample_reg_data("终止恢复测试"),
+})
+check("终止恢复测试候选人创建成功", s == 200 and c_term.get("id"))
+cid_t = c_term["id"]
+stage_before_term = c_term.get("current_stage") or "registration"
 s, r = call("POST", f"/api/candidates/{cid_t}/terminate", {"action": "terminate"})
 check("流程终止成功", s == 200 and r.get("terminated"))
-s, ct = call("GET", "/api/candidates?q=" + quote("主表新人"))
+s, ct = call("GET", "/api/candidates?q=" + quote("终止恢复测试"))
 check("终止后流程状态为流程终止",
       ct[0]["data"].get("流程状态") == "流程终止" and ct[0]["data"].get("流程终止") == "是")
 check("终止后阶段冻结", ct[0].get("current_stage") == stage_before_term)
@@ -374,7 +331,7 @@ s, _ = call("POST", f"/api/candidates/{cid_t}/terminate", {"action": "terminate"
 check("重复终止被拒", s == 400)
 s, r = call("POST", f"/api/candidates/{cid_t}/terminate", {"action": "restore"})
 check("流程恢复成功", s == 200 and not r.get("terminated"))
-s, ct = call("GET", "/api/candidates?q=" + quote("主表新人"))
+s, ct = call("GET", "/api/candidates?q=" + quote("终止恢复测试"))
 check("恢复到终止前阶段", ct[0].get("current_stage") == stage_before_term
       and ct[0]["data"].get("流程状态") != "流程终止")
 

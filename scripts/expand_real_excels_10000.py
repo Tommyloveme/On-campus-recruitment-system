@@ -5,7 +5,7 @@
 - applicationProcessList20260626083908.xlsx
 - 候选人面试安排管理列表20260626083900.xlsx
 
-若根目录目标文件不存在，则以 tests/fixtures/master_import 下同名真实样例为模板创建。
+若根目录面试表不存在，则以 tests/fixtures/master_import 下同名样例为模板创建。
 按「应聘档案编号」upsert 固定 10000 条扩展候选人，重复运行不会重复追加。
 """
 from __future__ import annotations
@@ -17,7 +17,6 @@ from openpyxl import load_workbook
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "applicationProcessList20260626083908.xlsx"
 INTERVIEW = ROOT / "候选人面试安排管理列表20260626083900.xlsx"
-APP_TEMPLATE = ROOT / "tests" / "fixtures" / "master_import" / "applicationProcessList20260626083908.xlsx"
 INTERVIEW_TEMPLATE = ROOT / "tests" / "fixtures" / "master_import" / "候选人面试安排管理列表20260626083900.xlsx"
 TARGET_ROWS = 10000
 
@@ -35,8 +34,10 @@ STAGES = [
 ]
 
 
-def load_target(path: Path, template: Path):
+def load_target(path: Path, template: Path | None = None):
     src = path if path.exists() else template
+    if src is None or not Path(src).exists():
+        raise FileNotFoundError(f"目标文件不存在且无可用模板: {path}")
     return load_workbook(src)
 
 
@@ -143,7 +144,7 @@ def fill_interview(ws, row, hm, case):
     setv(ws, row, hm, ["面试结论"], "A" if case["label"] in ("技术面", "主管面", "offer策略") else "")
 
 
-def expand(path: Path, template: Path, filler):
+def expand(path: Path, filler, template: Path | None = None):
     wb = load_target(path, template)
     ws = wb.active
     hm = headers(ws)
@@ -159,8 +160,8 @@ def expand(path: Path, template: Path, filler):
 
 
 def main():
-    expand(APP, APP_TEMPLATE, fill_application)
-    expand(INTERVIEW, INTERVIEW_TEMPLATE, fill_interview)
+    expand(APP, fill_application)
+    expand(INTERVIEW, fill_interview, INTERVIEW_TEMPLATE)
 
 
 if __name__ == "__main__":
