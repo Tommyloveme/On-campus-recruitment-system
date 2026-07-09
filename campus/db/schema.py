@@ -358,6 +358,7 @@ def migrate(db):
     _migrate_chinese_field_keys(db)
     _migrate_pinyin_keys(db)
     _merge_dept_pl_columns(db)
+    _rename_dept_info_keys(db)
     _sync_candidate_index_columns(db)
     _seed_stage_history(db)
     _backfill_process_status(db)
@@ -677,31 +678,19 @@ def _ensure_feedback_module_acl(db):
             )
 
 
-#: 「部门」与「PL组」列合并：dept_key ← dept/PL（含英文 legacy 键兼容）
-_DEPT_PL_MERGE = (
-    ("拓源人部门", "sourcer_dept", ("拓源人PL组", "sourcer_pl_group")),
-    ("接口人部门", "interface_dept", ("接口人PL组", "interface_person_pl_group")),
-)
+#: 「部门」与「PL组」列合并：展示名已改为「拓源人信息/接口人信息」
+from campus.domain.employees import DEPT_INFO_ALIASES, ensure_dept_info_merged
+
+_DEPT_INFO_RENAME = tuple((old, cn) for cn, _en, old, _pl in DEPT_INFO_ALIASES)
 
 
 def _merge_dept_pl_dict(data):
     """在候选人 data dict 上就地合并部门+PL 两列，返回是否有改动（幂等）。"""
-    changed = False
-    for dept_cn, dept_leg, pl_keys in _DEPT_PL_MERGE:
-        pl = ""
-        for pk in pl_keys:
-            if pk in data:
-                pl = pl or str(data.pop(pk) or "").strip()
-                changed = True
-        dept_key = dept_leg if (dept_leg in data and dept_cn not in data) else dept_cn
-        dept = str(data.get(dept_key, "") or "").strip()
-        if pl and pl not in dept.split("/"):
-            data[dept_key] = f"{dept}/{pl}" if dept else pl
-    return changed
+    return ensure_dept_info_merged(data)
 
 
 def _merge_dept_pl_columns(db):
-    """历史数据迁移：拓源人/接口人「部门」「PL组」两列合并为部门列（部门/PL）。"""
+    """历史数据迁移：拓源人/接口人「部门」「PL组」两列合并为信息列（部门/PL）。"""
     for table, key_col in (("candidates", "id"), ("candidates_raw_manual", "phone")):
         for row in db.execute(f"SELECT {key_col}, data FROM {table}").fetchall():
             try:
@@ -717,6 +706,44 @@ def _merge_dept_pl_columns(db):
     db.execute(
         "DELETE FROM data_hub WHERE field_key IN "
         "('拓源人PL组', '接口人PL组', 'sourcer_pl_group', 'interface_person_pl_group')")
+
+
+def _rename_dept_info_keys(db):
+    """历史数据：拓源人部门/接口人部门 → 拓源人信息/接口人信息。"""
+    for table, key_col in (("candidates", "id"), ("candidates_raw_manual", "phone"),
+                           ("candidates_raw_master", "phone")):
+        for row in db.execute(f"SELECT {key_col}, data FROM {table}").fetchall():
+            try:
+                data = json.loads(row["data"])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            changed = False
+            # 主数据原始表可能是双命名空间
+            payloads = [data]
+            for ns in ("字段键", "fields", "字段"):
+                if isinstance(data.get(ns), dict):
+                    payloads.append(data[ns])
+            for payload in payloads:
+                for old_k, new_k in _DEPT_INFO_RENAME:
+                    if old_k not in payload:
+                        continue
+                    if new_k not in payload or not str(payload.get(new_k) or "").strip():
+                        payload[new_k] = payload[old_k]
+                    del payload[old_k]
+                    changed = True
+            if changed:
+                db.execute(f"UPDATE {table} SET data=? WHERE {key_col}=?",
+                           (json.dumps(data, ensure_ascii=False), row[key_col]))
+    for old_k, new_k in _DEPT_INFO_RENAME:
+        db.execute(
+            "UPDATE data_hub SET field_key=?, field_label=? WHERE field_key=? "
+            "AND NOT EXISTS (SELECT 1 FROM data_hub d2 WHERE d2.source=data_hub.source "
+            "AND d2.tab_key=data_hub.tab_key AND d2.resume_id=data_hub.resume_id AND d2.field_key=?)",
+            (new_k, new_k, old_k, new_k),
+        )
+        db.execute("DELETE FROM data_hub WHERE field_key=?", (old_k,))
 
 
 def _backfill_candidate_employee_names(db):

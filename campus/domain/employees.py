@@ -36,12 +36,70 @@ def user_dept_display(user_row):
 def user_dept_pl_display(user_row):
     """部门与 PL 合并展示：二层/三层/PL；无三层则 二层/PL（空段自动省略）。
 
-    候选人登记的「拓源人部门」「接口人部门」快照列统一使用该合并值。
+    候选人登记的「拓源人信息」「接口人信息」快照列统一使用该合并值。
     """
     keys = user_row.keys() if hasattr(user_row, "keys") else []
     pl = str((user_row["pl_group"] if "pl_group" in keys else "") or "").strip()
     dept = user_dept_display(user_row)
     return "/".join(p for p in (dept, pl) if p)
+
+
+def merge_dept_pl_text(dept, pl):
+    """把部门文本与 PL 拼成一列；PL 已在部门中则不重复追加。"""
+    dept = str(dept or "").strip()
+    pl = str(pl or "").strip()
+    if not pl:
+        return dept
+    if not dept:
+        return pl
+    parts = [p for p in dept.split("/") if p]
+    if pl in parts:
+        return "/".join(parts)
+    return f"{dept}/{pl}"
+
+
+#: 旧「部门」「PL组」→ 新「信息」列（读时兼容 / 写时归一）
+DEPT_INFO_ALIASES = (
+    # (canonical_cn, legacy_en, old_dept_cn, old_pl_keys)
+    ("拓源人信息", "sourcer_dept", "拓源人部门", ("拓源人PL组", "sourcer_pl_group")),
+    ("接口人信息", "interface_dept", "接口人部门", ("接口人PL组", "interface_person_pl_group")),
+)
+
+
+def ensure_dept_info_merged(data):
+    """就地把旧「部门+PL组」合并为「信息」列，返回是否有改动。"""
+    if not isinstance(data, dict):
+        return False
+    changed = False
+    for cn, leg, old_dept, pl_keys in DEPT_INFO_ALIASES:
+        pl = ""
+        for pk in pl_keys:
+            if pk in data:
+                pl = pl or str(data.pop(pk) or "").strip()
+                changed = True
+        # 当前值可能在新键 / 英文键 / 旧部门键
+        cur_key = None
+        for k in (cn, leg, old_dept):
+            if k in data:
+                cur_key = k
+                break
+        cur = str(data.get(cur_key, "") or "").strip() if cur_key else ""
+        merged = merge_dept_pl_text(cur, pl)
+        # 旧部门键迁到新键
+        if old_dept in data:
+            del data[old_dept]
+            changed = True
+        if merged:
+            if data.get(cn) != merged:
+                data[cn] = merged
+                changed = True
+            if leg in data and data.get(leg) != merged:
+                data[leg] = merged
+                changed = True
+        elif cur_key == old_dept and cn not in data:
+            data[cn] = cur
+            changed = True
+    return changed
 
 
 def parse_job_roles(raw):

@@ -190,12 +190,12 @@ s, r_auto = call("POST", "/api/candidates", {
 auto_id = r_auto["id"]
 s, auto_cands = call("GET", "/api/candidates?q=" + quote("自动带入测试"))
 auto_data = auto_cands[0]["data"]
-check("登记自动带入拓源人部门", auto_data.get("sourcer_dept") == "软件部")
+check("登记自动带入拓源人信息", auto_data.get("sourcer_dept") == "软件部")
 check("登记保存拓源人工号", auto_data.get("sourcer") == "hr01")
 check("登记保存接口人工号", auto_data.get("interface_person") == "hr02")
-check("登记接口人部门由工号解析", auto_data.get("interface_dept") == "软件部")
+check("登记接口人信息由工号解析", auto_data.get("interface_dept") == "软件部")
 s, lookup = call("GET", "/api/users/lookup-employee?username=hr02")
-check("工号查询接口人部门", lookup.get("found") and lookup.get("department") == "软件部")
+check("工号查询接口人信息", lookup.get("found") and lookup.get("department") == "软件部")
 s, sug = call("GET", "/api/users/suggest-employee?q=hr")
 check("拓源人/接口人联想匹配", sug.get("items") and any(x["username"] == "hr02" for x in sug["items"]))
 s, sug_many = call("GET", "/api/users/suggest-employee?q=")

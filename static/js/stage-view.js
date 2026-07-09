@@ -268,6 +268,31 @@ function candTerminated(c) {
   return (c.data["流程终止"] || c.data.process_terminated || "") === "是";
 }
 
+function mergeDeptPlText(dept, pl) {
+  dept = String(dept || "").trim();
+  pl = String(pl || "").trim();
+  if (!pl) return dept;
+  if (!dept) return pl;
+  const parts = dept.split("/").filter(Boolean);
+  if (parts.includes(pl)) return parts.join("/");
+  return `${dept}/${pl}`;
+}
+
+function candidateDeptInfoValue(c, isSourcer) {
+  const d = c.data || {};
+  const info = isSourcer
+    ? (d["拓源人信息"] || d.sourcer_dept || "")
+    : (d["接口人信息"] || d.interface_dept || "");
+  if (info) return info;
+  const dept = isSourcer
+    ? (d["拓源人部门"] || "")
+    : (d["接口人部门"] || "");
+  const pl = isSourcer
+    ? (d["拓源人PL组"] || d.sourcer_pl_group || "")
+    : (d["接口人PL组"] || d.interface_person_pl_group || "");
+  return mergeDeptPlText(dept, pl);
+}
+
 function candidateCellValue(c, f) {
   // 列表展示：拓源人/接口人读已存姓名字段（不实时查用户表）；编辑表单仍用工号
   if (f.key === "sourcer" || f.legacy_key === "sourcer") {
@@ -276,6 +301,14 @@ function candidateCellValue(c, f) {
   if (f.key === "interface_person" || f.legacy_key === "interface_person") {
     return c.data["接口人姓名"] || c.data.interface_person_name
       || c.data["接口人"] || c.data.interface_person || "";
+  }
+  if (f.key === "sourcer_dept" || f.legacy_key === "sourcer_dept"
+      || f.key === "拓源人信息" || f.key === "拓源人部门") {
+    return candidateDeptInfoValue(c, true);
+  }
+  if (f.key === "interface_dept" || f.legacy_key === "interface_dept"
+      || f.key === "接口人信息" || f.key === "接口人部门") {
+    return candidateDeptInfoValue(c, false);
   }
   return c.data[f.key];
 }
@@ -287,6 +320,12 @@ function candidateFilterValue(c, key) {
   if (key === "interface_person" || key === "接口人") {
     return c.data["接口人姓名"] || c.data.interface_person_name
       || c.data["接口人"] || c.data.interface_person || "";
+  }
+  if (key === "sourcer_dept" || key === "拓源人信息" || key === "拓源人部门") {
+    return candidateDeptInfoValue(c, true);
+  }
+  if (key === "interface_dept" || key === "接口人信息" || key === "接口人部门") {
+    return candidateDeptInfoValue(c, false);
   }
   return c.data[key] || "";
 }
@@ -672,7 +711,7 @@ const REGISTRATION_CREATE_FIELD_ORDER = [
 
 function registrationDeptFieldHtml(deptKey, value) {
   const f = fieldsForStage("registration").find(x => x.key === deptKey || x.legacy_key === deptKey);
-  const label = f ? f.label : (deptKey === "sourcer_dept" ? "拓源人部门" : "接口人部门");
+  const label = f ? f.label : (deptKey === "sourcer_dept" ? "拓源人信息" : "接口人信息");
   const v = (value || "").trim();
   return `
     <div class="emp-dept-row">
@@ -690,7 +729,7 @@ function registrationEmployeeFieldHtml(f, cand, locked) {
     ? (cand.data[empKey] || cand.data[isSourcer ? "拓源人" : "接口人"] || "")
     : "";
   const deptVal = cand
-    ? (cand.data[deptKey] || cand.data[isSourcer ? "拓源人部门" : "接口人部门"] || "")
+    ? candidateDeptInfoValue(cand, isSourcer)
     : "";
   // 姓名从已存字段读取（不实时查用户表）；输入框仍显示工号
   const nameVal = cand

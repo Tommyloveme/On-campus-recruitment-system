@@ -241,6 +241,9 @@ def merge_candidate_rows(db, edited_row, edited_data, target_row):
 
 def candidate_dict(row):
     data = normalize_record(json.loads(row["data"]))
+    # 读时把旧「部门+PL组」合并进「信息」列，避免列表/编辑丢 PL
+    from campus.domain.employees import ensure_dept_info_merged
+    ensure_dept_info_merged(data)
     keys = row.keys() if hasattr(row, "keys") else []
     return {
         "id": row["id"],

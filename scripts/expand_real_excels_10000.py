@@ -122,9 +122,9 @@ def fill_application(ws, row, hm, case):
     setv(ws, row, hm, ["二层部门", "录用二级部门"], "软件部")
     setv(ws, row, hm, ["三层部门", "录用三级部门"], "研发一组")
     setv(ws, row, hm, ["拓源人"], "hr01")
-    setv(ws, row, hm, ["拓源人部门"], "软件部")
+    setv(ws, row, hm, ["拓源人信息", "拓源人部门"], "软件部")
     setv(ws, row, hm, ["接口人"], "hr02")
-    setv(ws, row, hm, ["接口人部门"], "软件部")
+    setv(ws, row, hm, ["接口人信息", "接口人部门"], "软件部")
     setv(ws, row, hm, ["备注说明"], f"{case['label']}流程扩展测试")
 
 

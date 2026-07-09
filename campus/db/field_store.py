@@ -120,7 +120,10 @@ def resolve_path(path: str, reg=None) -> str:
 
 
 def field_get(record: dict | None, key_or_path: str, default=""):
-    """从记录读取字段（支持 legacy 英文、中文扁平键、嵌套路径）。"""
+    """从记录读取字段（支持 legacy 英文、中文扁平键、嵌套路径）。
+
+    拓源人信息/接口人信息：兼容旧「部门」+「PL组」两列，读时自动合并。
+    """
     if not record or not key_or_path:
         return default
     sk = resolve_path(key_or_path)
@@ -138,6 +141,18 @@ def field_get(record: dict | None, key_or_path: str, default=""):
     if leg2 in record:
         v = record.get(leg2)
         return default if v is None else v
+    # 旧「部门」+「PL组」→「信息」读时合并
+    from campus.domain.employees import DEPT_INFO_ALIASES, merge_dept_pl_text
+    for cn, en, old_dept, pl_keys in DEPT_INFO_ALIASES:
+        if key_or_path in (cn, en, old_dept) or sk in (cn, en, old_dept) or leg2 in (cn, en):
+            dept = str(record.get(old_dept) or record.get(en) or "").strip()
+            pl = ""
+            for pk in pl_keys:
+                pl = pl or str(record.get(pk) or "").strip()
+            merged = merge_dept_pl_text(dept, pl)
+            if merged:
+                return merged
+            break
     return default
 
 

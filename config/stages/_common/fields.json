@@ -45,8 +45,9 @@
     },
     {
       "key": "sourcer_dept",
-      "label": "拓源人部门",
-      "excel_column": "拓源人部门",
+      "label": "拓源人信息",
+      "excel_column": "拓源人信息",
+      "excel_aliases": ["拓源人部门"],
       "type": "text",
       "visible": true,
       "editable": false,
@@ -64,8 +65,9 @@
     },
     {
       "key": "interface_dept",
-      "label": "接口人部门",
-      "excel_column": "接口人部门",
+      "label": "接口人信息",
+      "excel_column": "接口人信息",
+      "excel_aliases": ["接口人部门"],
       "type": "text",
       "visible": true,
       "editable": false,

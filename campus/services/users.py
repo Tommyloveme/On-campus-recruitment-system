@@ -315,6 +315,9 @@ def apply_registration_employee_fields(db, data):
     部门快照为「部门/PL」合并列（user_dept_pl_display）。
     """
     from campus.db.field_store import field_get, field_set, resolve_path
+    from campus.domain.employees import ensure_dept_info_merged
+    # 先把旧「部门+PL组」并入信息列，避免后续写入被旧键干扰
+    ensure_dept_info_merged(data)
     sourcer = str(field_get(data, "sourcer") or "").strip()
     if sourcer:
         row = lookup_employee_for_registration(db, sourcer)
@@ -336,6 +339,7 @@ def apply_registration_employee_fields(db, data):
         data.pop(resolve_path("interface_person_name"), None)
         data.pop(resolve_path("interface_dept"), None)
     _drop_legacy_pl_keys(data)
+    ensure_dept_info_merged(data)
     return data
 
 
