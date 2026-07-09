@@ -6,7 +6,6 @@
     "phone",
     "interface_person",
     "interface_dept",
-    "interface_person_pl_group",
     "commercial_secret_status",
     "commercial_secret_time",
     "commercial_secret_handler"
@@ -21,8 +20,7 @@
     "commercial_secret_handler": true,
     "application_archive_id": true,
     "interface_person": true,
-    "interface_dept": true,
-    "interface_person_pl_group": true
+    "interface_dept": true
   },
   "editable": {
     "commercial_secret_status": true,

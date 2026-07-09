@@ -6,7 +6,6 @@
     "phone",
     "interface_person",
     "interface_dept",
-    "interface_person_pl_group",
     "resume_screening_status",
     "resume_screening_reviewer",
     "resume_screening_time"
@@ -21,8 +20,7 @@
     "resume_screening_time": true,
     "application_archive_id": true,
     "interface_person": true,
-    "interface_dept": true,
-    "interface_person_pl_group": true
+    "interface_dept": true
   },
   "editable": {
     "resume_screening_status": true,

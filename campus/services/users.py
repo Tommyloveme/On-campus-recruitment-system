@@ -13,7 +13,7 @@ from campus.db.connection import get_db, now_str
 from campus.domain.employees import (
     format_user_department,
     parse_job_roles,
-    user_dept_display,
+    user_dept_pl_display,
 )
 
 CHINESE_NAME_RE = re.compile(r"^[\u4e00-\u9fff]+$")
@@ -248,7 +248,7 @@ def _employee_brief(row):
     return {
         "username": row["username"],
         "display_name": row["display_name"],
-        "department": user_dept_display(row) or "",
+        "department": user_dept_pl_display(row) or "",
     }
 
 
@@ -296,8 +296,24 @@ def search_employees_for_registration(db, query, limit=5):
     return {"items": items, "total": total, "too_many": total > limit}
 
 
+#: 已合并进部门列的历史 PL组 独立键（存量数据清理用）
+LEGACY_PL_KEYS = ("拓源人PL组", "接口人PL组", "sourcer_pl_group", "interface_person_pl_group")
+
+
+def _drop_legacy_pl_keys(data):
+    removed = False
+    for k in LEGACY_PL_KEYS:
+        if k in data:
+            del data[k]
+            removed = True
+    return removed
+
+
 def apply_registration_employee_fields(db, data):
-    """根据拓源人/接口人工号写入姓名、部门（保存时解析一次并落库，列表不再实时查用户表）。"""
+    """根据拓源人/接口人工号写入姓名、部门（保存时解析一次并落库，列表不再实时查用户表）。
+
+    部门快照为「部门/PL」合并列（user_dept_pl_display）。
+    """
     from campus.db.field_store import field_get, field_set, resolve_path
     sourcer = str(field_get(data, "sourcer") or "").strip()
     if sourcer:
@@ -305,24 +321,21 @@ def apply_registration_employee_fields(db, data):
         if row:
             field_set(data, "sourcer", row["username"])
             field_set(data, "sourcer_name", row["display_name"] or "")
-            field_set(data, "sourcer_dept", user_dept_display(row))
-            field_set(data, "sourcer_pl_group", row["pl_group"] if "pl_group" in row.keys() else "")
+            field_set(data, "sourcer_dept", user_dept_pl_display(row))
     else:
         data.pop(resolve_path("sourcer_name"), None)
         data.pop(resolve_path("sourcer_dept"), None)
-        data.pop(resolve_path("sourcer_pl_group"), None)
     iface = str(field_get(data, "interface_person") or "").strip()
     if iface:
         row = lookup_employee_for_registration(db, iface)
         if row:
             field_set(data, "interface_person", row["username"])
             field_set(data, "interface_person_name", row["display_name"] or "")
-            field_set(data, "interface_dept", user_dept_display(row))
-            field_set(data, "interface_person_pl_group", row["pl_group"] if "pl_group" in row.keys() else "")
+            field_set(data, "interface_dept", user_dept_pl_display(row))
     else:
         data.pop(resolve_path("interface_person_name"), None)
         data.pop(resolve_path("interface_dept"), None)
-        data.pop(resolve_path("interface_person_pl_group"), None)
+    _drop_legacy_pl_keys(data)
     return data
 
 
@@ -342,32 +355,29 @@ def sync_registration_employee_snapshots(db, username):
     from campus.services.candidates import update_candidate_row
 
     display_name = user["display_name"] or ""
-    dept = user_dept_display(user)
-    pl_group = user["pl_group"] if "pl_group" in user.keys() else ""
+    dept = user_dept_pl_display(user)
     updated = 0
     for row in db.execute("SELECT * FROM candidates").fetchall():
         data = json.loads(row["data"])
         changed = False
-        if str(field_get(data, "sourcer") or "").strip() == username:
+        is_sourcer = str(field_get(data, "sourcer") or "").strip() == username
+        is_iface = str(field_get(data, "interface_person") or "").strip() == username
+        if is_sourcer:
             if field_get(data, "sourcer_name") != display_name:
                 field_set(data, "sourcer_name", display_name)
                 changed = True
             if field_get(data, "sourcer_dept") != dept:
                 field_set(data, "sourcer_dept", dept)
                 changed = True
-            if field_get(data, "sourcer_pl_group") != pl_group:
-                field_set(data, "sourcer_pl_group", pl_group)
-                changed = True
-        if str(field_get(data, "interface_person") or "").strip() == username:
+        if is_iface:
             if field_get(data, "interface_person_name") != display_name:
                 field_set(data, "interface_person_name", display_name)
                 changed = True
             if field_get(data, "interface_dept") != dept:
                 field_set(data, "interface_dept", dept)
                 changed = True
-            if field_get(data, "interface_person_pl_group") != pl_group:
-                field_set(data, "interface_person_pl_group", pl_group)
-                changed = True
+        if (is_sourcer or is_iface) and _drop_legacy_pl_keys(data):
+            changed = True
         if changed:
             update_candidate_row(db, row["id"], data)
             updated += 1
@@ -377,10 +387,10 @@ def sync_registration_employee_snapshots(db, username):
 def apply_registration_candidate_defaults(data, user):
     """登记阶段新增：隐藏主数据/手填项，部门由工号在保存时解析。"""
     from campus.db.field_store import resolve_path
-    for k in ("resume_id", "delivery_time", "work_location", "sourcer_dept", "interface_dept",
-              "sourcer_pl_group", "interface_person_pl_group"):
+    for k in ("resume_id", "delivery_time", "work_location", "sourcer_dept", "interface_dept"):
         data.pop(resolve_path(k), None)
         data.pop(k, None)
+    _drop_legacy_pl_keys(data)
     return data
 
 

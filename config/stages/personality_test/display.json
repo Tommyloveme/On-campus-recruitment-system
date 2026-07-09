@@ -6,7 +6,6 @@
     "phone",
     "interface_person",
     "interface_dept",
-    "interface_person_pl_group",
     "personality_test_book_time",
     "personality_test_time",
     "personality_test_status",
@@ -25,8 +24,7 @@
     "personality_test_remark": true,
     "application_archive_id": true,
     "interface_person": true,
-    "interface_dept": true,
-    "interface_person_pl_group": true
+    "interface_dept": true
   },
   "editable": {
     "personality_test_book_time": true,

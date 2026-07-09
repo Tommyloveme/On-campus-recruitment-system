@@ -6,7 +6,6 @@
     "phone",
     "interface_person",
     "interface_dept",
-    "interface_person_pl_group",
     "contract_signing_status",
     "contract_signing_time",
     "contract_signing_remark"
@@ -21,8 +20,7 @@
     "contract_signing_remark": true,
     "application_archive_id": true,
     "interface_person": true,
-    "interface_dept": true,
-    "interface_person_pl_group": true
+    "interface_dept": true
   },
   "editable": {
     "contract_signing_status": true,

@@ -6,7 +6,6 @@
     "phone",
     "interface_person",
     "interface_dept",
-    "interface_person_pl_group",
     "dept_level3",
     "sign_status",
     "expected_onboard_time",
@@ -35,8 +34,7 @@
     "progress": true,
     "application_archive_id": true,
     "interface_person": true,
-    "interface_dept": true,
-    "interface_person_pl_group": true
+    "interface_dept": true
   },
   "editable": {
     "dept_level3": true,

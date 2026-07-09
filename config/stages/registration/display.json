@@ -8,10 +8,8 @@
     "phone",
     "sourcer",
     "sourcer_dept",
-    "sourcer_pl_group",
     "interface_person",
     "interface_dept",
-    "interface_person_pl_group",
     "education",
     "school",
     "major",
@@ -21,7 +19,9 @@
     "registration_remark"
   ],
   "frozen_column_count": 5,
-  "keep_visible_in_range": ["delivery_time"],
+  "keep_visible_in_range": [
+    "delivery_time"
+  ],
   "default_sort": {
     "key": "registration_time",
     "dir": "desc"
@@ -30,7 +30,9 @@
     "from": "dept_level3",
     "through": "manager_interview_result"
   },
-  "hidden_keys": ["progress"],
+  "hidden_keys": [
+    "progress"
+  ],
   "visible": {
     "registration_time": true,
     "delivery_time": true,
@@ -40,10 +42,8 @@
     "phone": true,
     "sourcer": true,
     "sourcer_dept": true,
-    "sourcer_pl_group": true,
     "interface_person": true,
     "interface_dept": true,
-    "interface_person_pl_group": true,
     "education": true,
     "school": true,
     "major": true,

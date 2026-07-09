@@ -39,7 +39,7 @@
     },
     {
       "key": "pl_group",
-      "label": "PL组",
+      "label": "PL",
       "type": "text",
       "required": false,
       "builtin": true

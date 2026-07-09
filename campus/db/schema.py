@@ -18,7 +18,7 @@ from werkzeug.security import generate_password_hash
 from campus.core.roles_store import role_bypass, role_perms
 from campus.core.settings import DB_PATH, FEEDBACK_DIR, RESUME_DIR
 from campus.db.connection import now_str
-from campus.domain.employees import user_dept_display
+from campus.domain.employees import user_dept_pl_display
 from campus.domain.stage_routing import compute_current_stage
 
 SCHEMA = """
@@ -357,6 +357,7 @@ def migrate(db):
     _ensure_new_stage_module_acl(db)
     _migrate_chinese_field_keys(db)
     _migrate_pinyin_keys(db)
+    _merge_dept_pl_columns(db)
     _sync_candidate_index_columns(db)
     _seed_stage_history(db)
     _backfill_process_status(db)
@@ -676,6 +677,48 @@ def _ensure_feedback_module_acl(db):
             )
 
 
+#: 「部门」与「PL组」列合并：dept_key ← dept/PL（含英文 legacy 键兼容）
+_DEPT_PL_MERGE = (
+    ("拓源人部门", "sourcer_dept", ("拓源人PL组", "sourcer_pl_group")),
+    ("接口人部门", "interface_dept", ("接口人PL组", "interface_person_pl_group")),
+)
+
+
+def _merge_dept_pl_dict(data):
+    """在候选人 data dict 上就地合并部门+PL 两列，返回是否有改动（幂等）。"""
+    changed = False
+    for dept_cn, dept_leg, pl_keys in _DEPT_PL_MERGE:
+        pl = ""
+        for pk in pl_keys:
+            if pk in data:
+                pl = pl or str(data.pop(pk) or "").strip()
+                changed = True
+        dept_key = dept_leg if (dept_leg in data and dept_cn not in data) else dept_cn
+        dept = str(data.get(dept_key, "") or "").strip()
+        if pl and pl not in dept.split("/"):
+            data[dept_key] = f"{dept}/{pl}" if dept else pl
+    return changed
+
+
+def _merge_dept_pl_columns(db):
+    """历史数据迁移：拓源人/接口人「部门」「PL组」两列合并为部门列（部门/PL）。"""
+    for table, key_col in (("candidates", "id"), ("candidates_raw_manual", "phone")):
+        for row in db.execute(f"SELECT {key_col}, data FROM {table}").fetchall():
+            try:
+                data = json.loads(row["data"])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            if _merge_dept_pl_dict(data):
+                db.execute(f"UPDATE {table} SET data=? WHERE {key_col}=?",
+                           (json.dumps(data, ensure_ascii=False), row[key_col]))
+    # 总表中的独立 PL组 行不再有对应列，直接清理
+    db.execute(
+        "DELETE FROM data_hub WHERE field_key IN "
+        "('拓源人PL组', '接口人PL组', 'sourcer_pl_group', 'interface_person_pl_group')")
+
+
 def _backfill_candidate_employee_names(db):
     """历史候选人：补全拓源人/接口人中文姓名与部门（列表展示用）。"""
     for row in db.execute("SELECT id, data FROM candidates").fetchall():
@@ -691,7 +734,7 @@ def _backfill_candidate_employee_names(db):
             if (data.get(name_key) or "").strip() and (data.get(dept_key) or "").strip():
                 continue
             u = db.execute(
-                "SELECT username, display_name, department, dept_level2, dept_level3 "
+                "SELECT username, display_name, department, dept_level2, dept_level3, pl_group "
                 "FROM users WHERE username=?",
                 (emp,),
             ).fetchone()
@@ -701,7 +744,7 @@ def _backfill_candidate_employee_names(db):
                 data[name_key] = u["display_name"] or ""
                 changed = True
             if not (data.get(dept_key) or "").strip():
-                data[dept_key] = user_dept_display(u)
+                data[dept_key] = user_dept_pl_display(u)
                 changed = True
         if changed:
             db.execute(

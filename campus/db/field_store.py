@@ -319,10 +319,9 @@ def build_field_registry(save: bool = False) -> dict:
         path_index[".".join(path)] = storage
 
     # 系统派生字段（非 Excel 列，由服务端补全的展示字段）
+    # 注：拓源人/接口人 PL 已合并进「部门」列（部门/PL），不再单列
     for k, label, cat in (("sourcer_name", "拓源人姓名", "登记拓源"),
-                          ("sourcer_pl_group", "拓源人PL组", "登记拓源"),
                           ("interface_person_name", "接口人姓名", "登记拓源"),
-                          ("interface_person_pl_group", "接口人PL组", "登记拓源"),
                           ("process_status", "流程状态", "流程状态"),
                           ("process_terminated", "流程终止", "流程状态")):
         if k not in fields and label not in used_storage:

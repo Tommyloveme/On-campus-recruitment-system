@@ -6,7 +6,6 @@
     "phone",
     "interface_person",
     "interface_dept",
-    "interface_person_pl_group",
     "interview_position",
     "tech_interview_book_time",
     "tech_interview_time",
@@ -27,8 +26,7 @@
     "tech_interview_result": true,
     "application_archive_id": true,
     "interface_person": true,
-    "interface_dept": true,
-    "interface_person_pl_group": true
+    "interface_dept": true
   },
   "editable": {
     "interview_position": true,

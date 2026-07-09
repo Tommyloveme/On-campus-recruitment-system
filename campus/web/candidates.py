@@ -219,11 +219,11 @@ def api_candidate_update(cid):
         if ref_err:
             return jsonify({"error": ref_err, "code": "user_not_registered"}), 400
         new = apply_registration_employee_fields(db, new)
-        # 拓源人/接口人保存时会自动带入姓名、部门、PL组；这些快照字段也要同步到总表，
-        # 否则其他流程页面读取总表/UI缓存时仍可能看到旧值。
+        # 拓源人/接口人保存时会自动带入姓名、部门（部门/PL 合并列）；
+        # 这些快照字段也要同步到总表，否则其他流程页面读取总表/UI缓存时仍可能看到旧值。
         for k in (
-            "sourcer_name", "sourcer_dept", "sourcer_pl_group",
-            "interface_person_name", "interface_dept", "interface_person_pl_group",
+            "sourcer_name", "sourcer_dept",
+            "interface_person_name", "interface_dept",
         ):
             if k in new and k not in changed_keys:
                 changed_keys.append(k)

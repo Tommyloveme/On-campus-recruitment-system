@@ -11,7 +11,7 @@ from flask import Blueprint, g, jsonify, request
 from campus.core.roles_store import role_keys, role_label
 from campus.core.settings import APP_CONFIG
 from campus.db.connection import get_db
-from campus.domain.employees import user_dept_display
+from campus.domain.employees import user_dept_display, user_dept_pl_display
 from campus.services.audit import add_log
 from campus.services.users import (
     apply_role_to_user,
@@ -112,7 +112,8 @@ def api_lookup_employee():
         "found": True,
         "username": d["username"],
         "display_name": d["display_name"],
-        "department": user_dept_display(row),
+        # 登记页部门快照为「部门/PL」合并列
+        "department": user_dept_pl_display(row),
     })
 
 

@@ -6,7 +6,6 @@
     "phone",
     "interface_person",
     "interface_dept",
-    "interface_person_pl_group",
     "qualification_interview_book_time",
     "qualification_interview_time",
     "qualification_interviewer",
@@ -27,8 +26,7 @@
     "qualification_interview_remark": true,
     "application_archive_id": true,
     "interface_person": true,
-    "interface_dept": true,
-    "interface_person_pl_group": true
+    "interface_dept": true
   },
   "editable": {
     "qualification_interview_book_time": true,

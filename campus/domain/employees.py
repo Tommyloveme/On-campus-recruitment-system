@@ -33,6 +33,17 @@ def user_dept_display(user_row):
     return format_user_department(dept_level2, dept_level3) or (department or "").strip()
 
 
+def user_dept_pl_display(user_row):
+    """部门与 PL 合并展示：二层/三层/PL；无三层则 二层/PL（空段自动省略）。
+
+    候选人登记的「拓源人部门」「接口人部门」快照列统一使用该合并值。
+    """
+    keys = user_row.keys() if hasattr(user_row, "keys") else []
+    pl = str((user_row["pl_group"] if "pl_group" in keys else "") or "").strip()
+    dept = user_dept_display(user_row)
+    return "/".join(p for p in (dept, pl) if p)
+
+
 def parse_job_roles(raw):
     """解析 users.job_roles JSON 为岗位列表。"""
     if raw is None:
