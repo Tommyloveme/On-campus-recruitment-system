@@ -7,7 +7,8 @@ const CHART_COLORS = [
   "#ec4899", "#84cc16", "#0ea5e9", "#f97316", "#14b8a6", "#64748b",
 ];
 
-async function renderCharts() {
+async function renderCharts(opts = {}) {
+  const force = !!(opts && opts.force);
   const fields = allFieldsFlat().filter(f => f.type === "select" || f.type === "date");
   const fieldOpts = (selected) =>
     fields.map(f =>
@@ -22,7 +23,11 @@ async function renderCharts() {
         <div class="pagehead-title">数据图表</div>
         <div class="pagehead-sub">按任意维度与系列组合生成分布图表，支持柱状 / 堆叠 / 条形 / 环形 / 饼图与数据透视表</div>
       </div>
-      <div class="pagehead-side"><span id="ch-count" class="badge badge-blue"></span></div>
+      <div class="pagehead-side">
+        <button class="btn btn-sm" id="ch-refresh" title="强制从服务器同步最新数据">刷新</button>
+        <span class="cache-status" id="ch-cache-status"></span>
+        <span id="ch-count" class="badge badge-blue"></span>
+      </div>
     </div>
     <div class="card page-section">
       <div class="page-section-body">
@@ -60,9 +65,55 @@ async function renderCharts() {
     </div>
     </div>`;
 
-  charts.list = await api("/api/candidates");
+  function updateChartsCacheStatus() {
+    const el = $("#ch-cache-status");
+    if (!el) return;
+    const entry = dashCache.charts;
+    el.textContent = entry.loadedAt
+      ? `上次刷新：${formatRefreshTime(entry.loadedAt)}`
+      : "尚未加载";
+    el.className = "cache-status" + (entry.stale ? " stale" : "");
+  }
+
+  async function loadChartsData(forceLoad) {
+    const entry = dashCache.charts;
+    if (!forceLoad && dashCacheFresh(entry) && entry.data) {
+      charts.list = entry.data;
+      updateChartsCacheStatus();
+      return;
+    }
+    if (!forceLoad && entry.data) {
+      charts.list = entry.data;
+      updateChartsCacheStatus();
+      api("/api/candidates").then(list => {
+        dashCache.charts = { data: list, loadedAt: Date.now(), stale: false };
+        charts.list = list;
+        updateChartsCacheStatus();
+        drawChart();
+      }).catch(() => {});
+      return;
+    }
+    charts.list = await api("/api/candidates");
+    dashCache.charts = { data: charts.list, loadedAt: Date.now(), stale: false };
+    updateChartsCacheStatus();
+  }
+
+  await loadChartsData(force);
   ["ch-dim", "ch-ser", "ch-type", "ch-gran"].forEach(id =>
     $("#" + id).addEventListener("change", drawChart));
+  $("#ch-refresh")?.addEventListener("click", async () => {
+    const btn = $("#ch-refresh");
+    if (btn) { btn.disabled = true; btn.textContent = "同步中…"; }
+    try {
+      await loadChartsData(true);
+      drawChart();
+      toast("图表数据已同步");
+    } catch (e) {
+      toast(e.message || "刷新失败", true);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = "刷新"; }
+    }
+  });
   drawChart();
 }
 

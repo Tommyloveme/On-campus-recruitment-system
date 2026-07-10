@@ -28,6 +28,8 @@ from campus.services.master_import_store import (
     detect_source_key_by_headers,
     get_stored_files,
     load_meta,
+    load_progress,
+    save_progress,
     save_upload,
 )
 from campus.web.guards import login_required
@@ -207,6 +209,11 @@ def api_master_import_config():
         "last_refresh_stats": meta.get("last_refresh_stats"),
         "current_stage_field": cfg.get("current_stage_field", "current_stage"),
         "global_import": bool(cfg.get("global_import", True)),
+        "merge_priority_note": (
+            "两表按应聘档案编号关联；同列名且均有值时，优先采用 Application 主表"
+            "（applicationProcessList）内容，面试安排管理表仅补空。"
+        ),
+        "source_keys": cfg.get("source_keys") or [],
     })
 
 
@@ -218,8 +225,11 @@ def api_master_import_upload():
     try:
         cfg = load_master_import_config(page)
     except ValueError as e:
+        log.warning("主数据上传配置无效 %s page=%s err=%s", who(g.user), page, e)
         return jsonify({"error": str(e)}), 400
 
+    log.info("主数据上传开始 %s page=%s files=%s",
+             who(g.user), page, [f.filename for f in request.files.getlist("file")])
     uploaded = []
     errors = []
     for key in cfg.get("source_keys", []):
@@ -229,8 +239,14 @@ def api_master_import_upload():
         try:
             save_upload(page, key, f, f.filename, cfg)
             uploaded.append({"key": key, "filename": f.filename})
+            log.info("主数据上传成功 %s key=%s file=%s", who(g.user), key, f.filename)
         except ValueError as e:
+            log.warning("主数据上传校验失败 %s key=%s file=%s err=%s",
+                        who(g.user), key, f.filename, e)
             errors.append(str(e))
+        except Exception:
+            log.exception("主数据上传异常 %s key=%s file=%s", who(g.user), key, f.filename)
+            errors.append(f"上传「{f.filename}」失败")
 
     # 通用入口：file 字段可携带多个文件，按文件名 → 表头特征自动识别数据源
     for f in request.files.getlist("file"):
@@ -247,19 +263,28 @@ def api_master_import_upload():
                 header_row = next(ws.iter_rows(max_row=1, values_only=True), ())
                 detected = detect_source_key_by_headers(header_row, cfg)
             except Exception:
+                log.exception("主数据上传识别表头失败 %s file=%s", who(g.user), f.filename)
                 detected = None
         if detected:
             try:
                 f.stream.seek(0)
                 save_upload(page, detected, f, f.filename, cfg, enforce_pattern=False)
                 uploaded.append({"key": detected, "filename": f.filename})
+                log.info("主数据上传成功 %s key=%s file=%s", who(g.user), detected, f.filename)
             except ValueError as e:
+                log.warning("主数据上传校验失败 %s key=%s file=%s err=%s",
+                            who(g.user), detected, f.filename, e)
                 errors.append(str(e))
+            except Exception:
+                log.exception("主数据上传异常 %s key=%s file=%s", who(g.user), detected, f.filename)
+                errors.append(f"上传「{f.filename}」失败")
         else:
-            errors.append(
+            msg = (
                 f"无法识别文件「{f.filename}」，请使用 applicationProcessList*.xlsx "
                 f"或 候选人面试安排管理列表*.xlsx"
             )
+            log.warning("主数据上传无法识别 %s file=%s", who(g.user), f.filename)
+            errors.append(msg)
 
     if not uploaded and errors:
         return jsonify({"error": "；".join(errors)}), 400
@@ -272,7 +297,8 @@ def api_master_import_upload():
             f"{g.user['display_name']} 上传主数据表："
             + "、".join(u["filename"] for u in uploaded), module=page)
     get_db().commit()
-    log.info("主数据表上传 %s page=%s files=%s", who(g.user), page, uploaded)
+    log.info("主数据表上传完成 %s page=%s uploaded=%s errors=%s",
+             who(g.user), page, uploaded, errors or None)
     return jsonify({
         "ok": True,
         "uploaded": uploaded,
@@ -288,6 +314,14 @@ def api_master_import_upload():
     })
 
 
+@bp.get("/api/master-import/progress")
+@login_required
+def api_master_import_progress():
+    """主数据导入进度（前端轮询）。"""
+    page = request.args.get("page", "registration")
+    return jsonify(load_progress(page))
+
+
 @bp.post("/api/master-import/refresh")
 @login_required
 def api_master_import_refresh():
@@ -299,17 +333,36 @@ def api_master_import_refresh():
     try:
         cfg = load_master_import_config(page)
     except ValueError as e:
+        log.warning("主数据刷新配置无效 %s page=%s err=%s", who(g.user), page, e)
         return jsonify({"error": str(e)}), 400
 
     if not both_files_ready(page, cfg):
+        log.warning("主数据刷新缺文件 %s page=%s", who(g.user), page)
         return jsonify({"error": "请先上传主数据表（applicationProcessList*.xlsx / 候选人面试安排管理列表*.xlsx 任一）"}), 400
 
+    if not is_admin(g.user):
+        log.warning("主数据刷新权限拒绝 %s page=%s", who(g.user), page)
+        return jsonify({"error": "主数据表刷新仅系统管理员可执行"}), 403
+
+    running = load_progress(page)
+    if running.get("status") == "running":
+        return jsonify({"error": "已有导入任务正在进行，请稍候", "code": "import_busy"}), 409
+
     db = get_db()
+    log.info("主数据刷新请求 %s page=%s", who(g.user), page)
+    save_progress(page, status="running", phase="start", message="准备刷新…",
+                  percent=0, current=0, total=0, created=0, updated=0, skipped=0, error=None)
     try:
         created, updated, skipped, stats = run_dual_master_refresh(
             db, cfg, is_admin, g.user)
     except ValueError as e:
+        log.warning("主数据刷新业务失败 %s page=%s err=%s", who(g.user), page, e)
+        save_progress(page, status="error", message=str(e), error=str(e))
         return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        log.exception("主数据刷新异常 %s page=%s", who(g.user), page)
+        save_progress(page, status="error", message=f"主数据刷新失败：{e}", error=str(e))
+        return jsonify({"error": f"主数据刷新失败：{e}"}), 500
 
     add_log(g.user, "import",
             f"{g.user['display_name']} 主数据表刷新：新增{created}人，更新{updated}人"

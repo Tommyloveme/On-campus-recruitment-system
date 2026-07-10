@@ -36,6 +36,7 @@ function invalidateCandidateCaches() {
   for (const ss of stageStates.values()) {
     ss.stale = true;
   }
+  if (typeof invalidateDashboardCaches === "function") invalidateDashboardCaches();
 }
 
 function candidatesListUrl(stageKey) {

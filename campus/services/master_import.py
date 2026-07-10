@@ -3,17 +3,36 @@
 
 配置加载在 campus.core.master_import_config；上传文件存储在
 campus.services.master_import_store。
+
+性能策略：
+- Excel 多文件并行解析（ThreadPoolExecutor）
+- 行级预处理（规范化/阶段判定/合并）多线程并行
+- SQLite 写入保持单线程（WAL 下多写反而锁竞争），批量 executemany + 分段 commit
 """
 import fnmatch
 import json
+import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
+from campus.core.logging_util import log
 from campus.core.master_import_config import (
     load_master_import_config,
     registration_locked_fields,
 )
+from campus.core.settings import load_app_config
 from campus.db.field_store import field_get, field_set, legacy_to_storage, normalize_record
+
+
+def _import_tuning():
+    cfg = (load_app_config().get("master_import") or {})
+    cpu = os.cpu_count() or 4
+    return {
+        "parse_workers": max(1, int(cfg.get("parse_workers") or min(2, cpu))),
+        "prepare_workers": max(1, int(cfg.get("prepare_workers") or min(4, cpu))),
+        "write_batch_size": max(50, int(cfg.get("write_batch_size") or 300)),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -183,16 +202,32 @@ def _select_workbook_sheet(wb, source_cfg, source_label=""):
 
 def parse_excel_file(path, source_cfg):
     from openpyxl import load_workbook
+    label = source_cfg.get("label") or source_cfg.get("key") or path
+    log.info("主数据解析开始 source=%s path=%s", source_cfg.get("key"), path)
     # read_only 流式解析：万行大表比常规模式快数倍且省内存
-    wb = load_workbook(path, data_only=True, read_only=True)
+    try:
+        wb = load_workbook(path, data_only=True, read_only=True)
+    except Exception:
+        log.exception("主数据解析打开失败 source=%s path=%s", source_cfg.get("key"), path)
+        raise ValueError(f"无法打开「{label}」，请确认文件为有效的 .xlsx")
     try:
         sheet = _select_workbook_sheet(wb, source_cfg)
         rows_iter = sheet.iter_rows(values_only=True)
         header = next(rows_iter, None)
         if header is None:
+            log.warning("主数据解析空表 source=%s", source_cfg.get("key"))
             return []
         col_map = parse_master_header(source_cfg, header)
-        return [row_to_data(source_cfg, col_map, raw) for raw in rows_iter]
+        rows = [row_to_data(source_cfg, col_map, raw) for raw in rows_iter]
+        log.info("主数据解析完成 source=%s rows=%d mapped_cols=%d",
+                 source_cfg.get("key"), len(rows), len(col_map))
+        return rows
+    except ValueError:
+        log.exception("主数据解析校验失败 source=%s", source_cfg.get("key"))
+        raise
+    except Exception:
+        log.exception("主数据解析异常 source=%s", source_cfg.get("key"))
+        raise ValueError(f"解析「{label}」失败，请检查表头与工作表配置")
     finally:
         wb.close()
 
@@ -411,12 +446,115 @@ def match_candidate(index, data, match_keys=None):
 
 
 def _index_candidate(index, row, match_keys=None):
-    data = json.loads(row["data"])
+    data = json.loads(row["data"]) if isinstance(row["data"], str) else row["data"]
     for i in row_identity(data, match_keys):
         index[i] = row
 
 
-def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn):
+def _row_proxy(cid, data, phone=""):
+    """轻量行对象，避免 insert/update 后再 SELECT。"""
+    return {
+        "id": cid,
+        "data": json.dumps(data, ensure_ascii=False) if not isinstance(data, str) else data,
+        "phone": phone or None,
+    }
+
+
+def _prepare_import_row(raw, match_keys, index, can_edit, compute_stage_fn, cfg):
+    """单行预处理（可并行）：规范化、阶段判定、与库内记录合并。返回动作描述。"""
+    from campus.services.candidates import normalize_candidate_phone
+
+    data = normalize_record(dict(raw))
+    phone = normalize_candidate_phone(field_get(data, "phone"))
+    if phone and not phone_looks_valid(phone):
+        phone = ""
+        field_set(data, "phone", "")
+    elif phone:
+        field_set(data, "phone", phone)
+
+    if not field_get(data, "name") or not row_identity(data, match_keys):
+        return {"action": "skip", "reason": "no_id"}
+
+    if not can_edit:
+        return {"action": "skip", "reason": "no_perm"}
+
+    compute_stage_fn(data, cfg)
+    match = match_candidate(index, data, match_keys)
+    if match:
+        old = json.loads(match["data"]) if isinstance(match["data"], str) else dict(match["data"])
+        merged = merge_master_import_data(old, data, cfg)
+        compute_stage_fn(merged, cfg)
+        if merged == old:
+            return {"action": "noop", "match_id": match["id"], "data": data, "phone": phone}
+        raw_phone = phone or normalize_candidate_phone(field_get(old, "phone") or "")
+        return {
+            "action": "update",
+            "match_id": match["id"],
+            "data": data,
+            "merged": merged,
+            "phone": phone,
+            "raw_phone": raw_phone,
+            "changed": True,
+        }
+
+    payload = merge_master_import_data({}, data, cfg)
+    compute_stage_fn(payload, cfg)
+    return {
+        "action": "insert",
+        "data": data,
+        "merged": payload,
+        "phone": phone,
+        "raw_phone": phone,
+        "changed": True,
+    }
+
+
+def _prepare_import_rows_parallel(rows_data, match_keys, index, can_edit,
+                                  compute_stage_fn, cfg, workers, progress_cb=None):
+    """多线程预处理全部导入行，保持原顺序；分块提交避免一次性创建过多 Future。"""
+    total = len(rows_data)
+    if total == 0:
+        return []
+    workers = max(1, min(workers, total))
+    prepared = [None] * total
+
+    if workers == 1:
+        for i, raw in enumerate(rows_data):
+            prepared[i] = _prepare_import_row(
+                raw, match_keys, index, can_edit, compute_stage_fn, cfg)
+            if progress_cb and ((i + 1) % max(1, total // 50) == 0 or i + 1 == total):
+                pct = 35 + int(10 * (i + 1) / total)
+                progress_cb(phase="prepare",
+                            message=f"正在预处理 {i + 1}/{total}",
+                            percent=min(45, pct), current=i + 1, total=total)
+        return prepared
+
+    log.info("主数据预处理并行 workers=%d rows=%d", workers, total)
+    chunk = max(200, total // (workers * 8) or 200)
+    done = 0
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for start in range(0, total, chunk):
+            end = min(total, start + chunk)
+            futs = {
+                pool.submit(
+                    _prepare_import_row, rows_data[i], match_keys, index,
+                    can_edit, compute_stage_fn, cfg): i
+                for i in range(start, end)
+            }
+            for fut in as_completed(futs):
+                i = futs[fut]
+                prepared[i] = fut.result()
+                done += 1
+                if progress_cb and (done % max(1, total // 50) == 0 or done == total):
+                    pct = 35 + int(10 * done / total)
+                    progress_cb(phase="prepare",
+                                message=f"正在预处理 {done}/{total}",
+                                percent=min(45, pct), current=done, total=total)
+    return prepared
+
+
+def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn,
+                      progress_cb=None):
     from campus.services.candidates import (
         insert_candidate_row,
         normalize_candidate_phone,
@@ -427,109 +565,229 @@ def apply_master_rows(rows_data, db, cfg, can_edit_fn, user, compute_stage_fn):
     from campus.services.candidate_pipeline import record_master
     from campus.services.data_hub import SOURCE_MASTER, hub_resume_key, record_hub_fields
 
+    tuning = _import_tuning()
     created = updated = skipped = 0
+    skip_no_id = skip_no_perm = 0
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     match_keys = cfg.get("match_keys") or MATCH_KEYS_DEFAULT
     index = build_candidate_identity_index(db, match_keys)
     hub_labels = master_field_label_map(cfg.get("field_mappings") or {})
     hub_tab = cfg.get("page", "registration")
     user_name = user["display_name"] if user else ""
+    total = len(rows_data)
+    can_edit = bool(can_edit_fn(user))
+    log.info("主数据写入开始 rows=%d existing_index=%d prepare_workers=%d batch=%d",
+             total, len(index), tuning["prepare_workers"], tuning["write_batch_size"])
 
-    for data in rows_data:
-        data = normalize_record(dict(data))
-        phone = normalize_candidate_phone(field_get(data, "phone"))
-        if phone and not phone_looks_valid(phone):
-            # 掩码号码（+86 XXXXXXXXXXX 等）不写入电话字段，避免撞唯一约束
-            phone = ""
-            field_set(data, "phone", "")
-        elif phone:
-            field_set(data, "phone", phone)
-        # 需要姓名 + 至少一个身份键（应聘档案编号/电话）才能唯一化建档
-        if not field_get(data, "name") or not row_identity(data, match_keys):
+    if progress_cb:
+        progress_cb(phase="prepare", message="正在并行预处理…",
+                    percent=35, current=0, total=total,
+                    created=0, updated=0, skipped=0)
+
+    # 导入期加速：放宽同步、加大页缓存（结束后由连接关闭自然恢复）
+    try:
+        db.execute("PRAGMA synchronous = NORMAL")
+        db.execute("PRAGMA temp_store = MEMORY")
+        db.execute("PRAGMA cache_size = -64000")  # ~64MB
+    except Exception:
+        pass
+
+    prepared = _prepare_import_rows_parallel(
+        rows_data, match_keys, index, can_edit, compute_stage_fn, cfg,
+        tuning["prepare_workers"], progress_cb=progress_cb)
+
+    if progress_cb:
+        progress_cb(phase="write", message="正在写入候选人…",
+                    percent=45, current=0, total=total)
+
+    batch_size = tuning["write_batch_size"]
+    step = max(1, min(500, total // 100 or 1)) if total else 1
+
+    for i, prep in enumerate(prepared, start=1):
+        action = (prep or {}).get("action")
+        if action == "skip":
             skipped += 1
-            continue
-
-        compute_stage_fn(data, cfg)
-        match = match_candidate(index, data, match_keys)
-
-        can_edit = can_edit_fn(user)
-        if not can_edit:
-            skipped += 1
-            continue
-
-        old = json.loads(match["data"]) if match else None
-        if match:
-            merged = merge_master_import_data(old, data, cfg)
-            compute_stage_fn(merged, cfg)
-            changed = merged != old
-        else:
-            merged = None
-            changed = True
-
-        # 重复刷新时大部分行没有任何变化：跳过总表/原始表回写，
-        # 否则每行数十个字段的 UPSERT 是重复导入的最大耗时点
-        if changed:
+            if prep.get("reason") == "no_id":
+                skip_no_id += 1
+            else:
+                skip_no_perm += 1
+        elif action == "noop":
+            pass
+        elif action == "update":
+            data = prep["data"]
+            merged = prep["merged"]
             record_hub_fields(db, SOURCE_MASTER, hub_tab, hub_resume_key(data),
                               data, hub_labels, user_name)
-            cn_labels = {hub_labels.get(k, k): v for k, v in data.items()
-                         if not k.startswith("_")}
-            raw_phone = phone or (normalize_candidate_phone(
-                field_get(old, "phone")) if old else "")
+            raw_phone = prep.get("raw_phone") or ""
             if raw_phone:
+                cn_labels = {hub_labels.get(k, k): v for k, v in data.items()
+                             if not k.startswith("_")}
                 record_master(db, raw_phone, data, labels=cn_labels, ts=now)
-
-        if match:
-            if changed:
-                update_candidate_row(db, match["id"], merged, ts=now)
-                updated += 1
-                match = db.execute("SELECT * FROM candidates WHERE id=?", (match["id"],)).fetchone()
-            _index_candidate(index, match, match_keys)
-        else:
-            payload = merge_master_import_data({}, data, cfg)
+            update_candidate_row(db, prep["match_id"], merged, ts=now)
+            updated += 1
+            phone = prep.get("phone") or normalize_candidate_phone(
+                field_get(merged, "phone") or "")
+            _index_candidate(index, _row_proxy(prep["match_id"], merged, phone), match_keys)
+        elif action == "insert":
+            data = prep["data"]
+            payload = prep["merged"]
+            record_hub_fields(db, SOURCE_MASTER, hub_tab, hub_resume_key(data),
+                              data, hub_labels, user_name)
+            raw_phone = prep.get("raw_phone") or ""
+            if raw_phone:
+                cn_labels = {hub_labels.get(k, k): v for k, v in data.items()
+                             if not k.startswith("_")}
+                record_master(db, raw_phone, data, labels=cn_labels, ts=now)
             cid = insert_candidate_row(db, payload, group_id=None, ts=now)
-            row = db.execute("SELECT * FROM candidates WHERE id=?", (cid,)).fetchone()
-            _index_candidate(index, row, match_keys)
             created += 1
+            phone = prep.get("phone") or normalize_candidate_phone(
+                field_get(payload, "phone") or "")
+            _index_candidate(index, _row_proxy(cid, payload, phone), match_keys)
+
+        if i % batch_size == 0:
+            db.commit()
+
+        if i % 5000 == 0 or i == total:
+            log.info("主数据写入进度 %d/%d +%d ~%d skip%d",
+                     i, total, created, updated, skipped)
+        if progress_cb and (i % step == 0 or i == total):
+            pct = 45 + int(50 * i / total) if total else 95
+            progress_cb(phase="write",
+                        message=f"正在写入候选人 {i}/{total}",
+                        percent=min(95, pct), current=i, total=total,
+                        created=created, updated=updated, skipped=skipped)
+
+    db.commit()
+    log.info("主数据写入完成 +%d ~%d skip%d (no_id=%d no_perm=%d)",
+             created, updated, skipped, skip_no_id, skip_no_perm)
     return created, updated, skipped
+
+
+def _parse_one_source(key, path, source_cfg):
+    rows = parse_excel_file(path, source_cfg)
+    return key, rows, source_cfg.get("label") or key
 
 
 def run_dual_master_refresh(db, cfg, can_edit_fn, user, compute_stage_fn=None):
     """读取全部已上传数据源，按唯一键（应聘档案编号→手机号）合并后刷新候选人。
 
-    数据源顺序（index.json 的 source_keys）即合并优先级：靠前的表先入底，
-    后续表只补空值，不覆盖冲突值。任一数据源就绪即可单独刷新。
+    合并优先级：Application 主表优先于面试安排管理表——两表同列且均有值时，
+    保留 Application 主表内容，面试表仅补空。source_keys 顺序与此一致。
     """
+    import time
     from campus.domain.stage_routing import compute_current_stage
-    from campus.services.master_import_store import both_files_ready, get_stored_files, load_meta, save_meta
+    from campus.services.master_import_store import (
+        both_files_ready, get_stored_files, load_meta, save_meta, save_progress,
+    )
 
     compute_stage_fn = compute_stage_fn or compute_current_stage
+    t0 = time.perf_counter()
+    tuning = _import_tuning()
 
     page = cfg.get("page", "registration")
     if not both_files_ready(page, cfg):
         raise ValueError("请先上传主数据表（applicationProcessList*.xlsx / 候选人面试安排管理列表*.xlsx 任一）")
 
+    def progress(**kw):
+        save_progress(page, status="running", **kw)
+
     files = get_stored_files(page, cfg)
     source_map = {s["key"]: s for s in cfg["sources"]}
     match_keys = cfg.get("match_keys") or MATCH_KEYS_DEFAULT
+    join_key = cfg.get("join_key") or "application_archive_id"
+    source_keys = list(cfg.get("source_keys") or [])
 
-    all_rows = []
-    per_source = {}
-    for key in cfg.get("source_keys", []):
+    log.info("主数据刷新开始 page=%s sources=%s join_key=%s match_keys=%s parse_workers=%d",
+             page, source_keys, join_key, match_keys, tuning["parse_workers"])
+    progress(phase="start", message="开始刷新…", percent=1,
+             current=0, total=0, created=0, updated=0, skipped=0, error=None)
+
+    ready = []
+    for key in source_keys:
         info = files.get(key) or {}
         if info.get("ready") and info.get("path") and key in source_map:
-            rows = parse_excel_file(info["path"], source_map[key])
-            per_source[f"{key}_rows"] = len(rows)
-            all_rows.extend(rows)
-    rows_data = merge_rows_by_identity(all_rows, match_keys)
+            ready.append((key, info["path"], source_map[key]))
 
-    created, updated, skipped = apply_master_rows(
-        rows_data, db, cfg, can_edit_fn, user, compute_stage_fn)
+    parsed = {}
+    per_source = {}
+    if not ready:
+        raise ValueError("请先上传主数据表")
+
+    progress(phase="parse", message="正在并行解析 Excel…", percent=5)
+    workers = max(1, min(tuning["parse_workers"], len(ready)))
+    try:
+        if workers == 1:
+            results = [_parse_one_source(k, p, s) for k, p, s in ready]
+        else:
+            log.info("主数据 Excel 并行解析 workers=%d files=%d", workers, len(ready))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futs = [pool.submit(_parse_one_source, k, p, s) for k, p, s in ready]
+                results = [f.result() for f in futs]
+    except Exception as e:
+        log.exception("主数据刷新解析失败")
+        save_progress(page, status="error", phase="parse",
+                      message="解析失败", error=str(e), percent=10)
+        raise
+
+    for idx, (key, rows, label) in enumerate(results):
+        parsed[key] = rows
+        per_source[f"{key}_rows"] = len(rows)
+        progress(phase="parse",
+                 message=f"已解析「{label}」{len(rows)} 行",
+                 percent=5 + int(25 * (idx + 1) / max(1, len(results))))
+
+    progress(phase="merge", message="正在合并双表数据…", percent=30)
+
+    # Application 主表优先：有双表时用 join（主表为底、面试表补空）；单表则直接唯一化
+    primary = source_keys[0] if source_keys else "application"
+    secondary_keys = [k for k in source_keys[1:] if k in parsed]
+    if primary in parsed and secondary_keys:
+        rows_data = list(parsed[primary])
+        for sk in secondary_keys:
+            # 逐表以主表为底合并，保证同列冲突时主表胜出
+            rows_data = join_master_rows(
+                rows_data, parsed[sk], join_key=join_key, match_keys=match_keys)
+        log.info("主数据双表合并 primary=%s secondary=%s merged=%d",
+                 primary, secondary_keys, len(rows_data))
+    elif primary in parsed:
+        rows_data = merge_rows_by_identity(parsed[primary], match_keys)
+        log.info("主数据单表合并 source=%s merged=%d", primary, len(rows_data))
+    else:
+        # 仅上传了非主表（如仅面试表）
+        all_rows = []
+        for key in source_keys:
+            all_rows.extend(parsed.get(key) or [])
+        rows_data = merge_rows_by_identity(all_rows, match_keys)
+        log.info("主数据非主表合并 sources=%s merged=%d", list(parsed), len(rows_data))
+
+    progress(phase="merge", message=f"合并完成，共 {len(rows_data)} 条待写入",
+             percent=35, total=len(rows_data))
+
+    try:
+        created, updated, skipped = apply_master_rows(
+            rows_data, db, cfg, can_edit_fn, user, compute_stage_fn,
+            progress_cb=progress)
+    except Exception as e:
+        log.exception("主数据写入失败 page=%s rows=%d", page, len(rows_data))
+        save_progress(page, status="error", phase="write",
+                      message="写入失败", error=str(e), percent=90)
+        raise
 
     meta = load_meta(page)
     meta["last_refresh"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     meta["last_refresh_stats"] = {
         "created": created, "updated": updated, "skipped": skipped,
         "merged_rows": len(rows_data), **per_source,
+        "parse_workers": tuning["parse_workers"],
+        "prepare_workers": tuning["prepare_workers"],
     }
     save_meta(page, meta)
+    elapsed = time.perf_counter() - t0
+    save_progress(page, status="done", phase="done",
+                  message=f"完成：新增 {created}，更新 {updated}"
+                          + (f"，跳过 {skipped}" if skipped else ""),
+                  percent=100, current=len(rows_data), total=len(rows_data),
+                  created=created, updated=updated, skipped=skipped, error=None)
+    log.info("主数据刷新完成 page=%s +%d ~%d skip%d merged=%d elapsed=%.1fs",
+             page, created, updated, skipped, len(rows_data), elapsed)
     return created, updated, skipped, meta["last_refresh_stats"]

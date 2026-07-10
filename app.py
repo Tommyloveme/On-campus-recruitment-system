@@ -35,9 +35,16 @@ if __name__ == "__main__":
         print(f"错误：端口 {port} 已有服务在运行，请先停止旧实例（或修改 config/app_config.json 中的端口）。")
         sys.exit(1)
     threading.Thread(target=backup_scheduler, daemon=True).start()
-    log.info("服务启动 port=%d threads=%d log_level=%s", port, threads,
-             os.environ.get("LOG_LEVEL") or APP_CONFIG.get("logging", {}).get("level", "INFO"))
+    channel_timeout = int(os.environ.get(
+        "CHANNEL_TIMEOUT",
+        APP_CONFIG.get("server", {}).get("channel_timeout_sec", 1800)))
+    log.info("服务启动 port=%d threads=%d log_level=%s upload_limit=%s channel_timeout=%ds",
+             port, threads,
+             os.environ.get("LOG_LEVEL") or APP_CONFIG.get("logging", {}).get("level", "INFO"),
+             ("unlimited" if not APP_CONFIG.get("server", {}).get("max_upload_mb")
+              else f"{APP_CONFIG.get('server', {}).get('max_upload_mb')}MB"),
+             channel_timeout)
     print(f"校招全流程管理系统已启动: http://127.0.0.1:{port} （waitress，{threads} 工作线程）")
     from waitress import serve
     serve(app, host="0.0.0.0", port=port, threads=threads,
-          connection_limit=1024, channel_timeout=120)
+          connection_limit=1024, channel_timeout=channel_timeout)

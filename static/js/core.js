@@ -31,8 +31,11 @@ async function api(url, options = {}) {
       showLogin();
       throw new Error("登录已失效");
     }
-    const msg = (body && body.error) ||
+    let msg = (body && body.error) ||
       (res.status === 403 ? "无权限执行该操作" : `操作失败 (${res.status})`);
+    if (res.status === 413) {
+      msg = (body && body.error) || "上传文件过大，请减小文件或联系管理员提高上传上限";
+    }
     const err = new Error(msg);
     err.status = res.status;
     if (body) {
@@ -294,6 +297,34 @@ function exportTableCsv(tableEl, filename) {
   a.download = `${filename || "表格导出"}_${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+/** 数据看板 / 总览 / 图表 共享缓存（与候选人列表缓存独立） */
+const DASH_CACHE_TTL_MS = 60_000;
+const dashCache = {
+  overview: { data: null, loadedAt: 0, stale: true },
+  charts: { data: null, loadedAt: 0, stale: true },
+  pivot: new Map(),
+};
+
+function invalidateDashboardCaches() {
+  dashCache.overview.stale = true;
+  dashCache.charts.stale = true;
+  for (const v of dashCache.pivot.values()) v.stale = true;
+}
+
+function dashCacheFresh(entry) {
+  return entry && !entry.stale && entry.loadedAt > 0
+    && (Date.now() - entry.loadedAt) < DASH_CACHE_TTL_MS;
+}
+
+function formatRefreshTime(ts) {
+  if (!ts) return "尚未加载";
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "尚未加载";
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} `
+    + `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 function showLogin() {

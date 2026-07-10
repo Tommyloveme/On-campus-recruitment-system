@@ -10,6 +10,7 @@ from campus.core.settings import BASE_DIR
 
 MASTER_DATA_DIR = os.path.join(BASE_DIR, "data", "master_import")
 META_FILENAME = "meta.json"
+PROGRESS_FILENAME = "progress.json"
 
 
 def page_dir(page):
@@ -18,6 +19,10 @@ def page_dir(page):
 
 def meta_path(page):
     return os.path.join(page_dir(page), META_FILENAME)
+
+
+def progress_path(page):
+    return os.path.join(page_dir(page), PROGRESS_FILENAME)
 
 
 def _now():
@@ -36,6 +41,54 @@ def save_meta(page, meta):
     os.makedirs(page_dir(page), exist_ok=True)
     with open(meta_path(page), "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
+
+
+def load_progress(page):
+    path = progress_path(page)
+    if not os.path.exists(path):
+        return {
+            "page": page,
+            "status": "idle",
+            "phase": "",
+            "message": "",
+            "percent": 0,
+            "current": 0,
+            "total": 0,
+            "created": 0,
+            "updated": 0,
+            "skipped": 0,
+            "error": None,
+            "updated_at": None,
+        }
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {"page": page, "status": "idle", "percent": 0, "message": ""}
+
+
+def save_progress(page, **fields):
+    """写入导入进度（独立文件，供前端轮询；不依赖 DB 事务）。"""
+    os.makedirs(page_dir(page), exist_ok=True)
+    cur = load_progress(page)
+    cur.update(fields)
+    cur["page"] = page
+    cur["updated_at"] = _now()
+    path = progress_path(page)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(cur, f, ensure_ascii=False)
+    os.replace(tmp, path)
+    return cur
+
+
+def clear_progress(page):
+    path = progress_path(page)
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
 
 
 def filename_matches(source_key, original_name, cfg):

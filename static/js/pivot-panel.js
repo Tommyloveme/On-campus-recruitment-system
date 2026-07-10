@@ -161,6 +161,8 @@ async function renderPivotPanel(rootEl, opts = {}) {
           </select>
         </div>
         <div class="spacer"></div>
+        <button class="btn btn-sm" data-pv-refresh title="强制从服务器同步最新数据">刷新</button>
+        <span class="cache-status" data-pv-cache-status></span>
         <button class="btn btn-sm" data-pv-export>导出 CSV</button>
         <span class="badge badge-blue" data-pv-count></span>
       </div>
@@ -183,15 +185,68 @@ async function renderPivotPanel(rootEl, opts = {}) {
 
   const $$ = sel => rootEl.querySelector(sel);
   let lastGrid = null;   // 导出 CSV 用
+  const cacheKey = stageKey || "registration";
 
-  async function loadData() {
-    // 登记页看板使用登记列表可见的全量候选人；其他流程看当前流程候选人
+  function updatePivotCacheStatus() {
+    const el = $$("[data-pv-cache-status]");
+    if (!el) return;
+    const entry = dashCache.pivot.get(cacheKey);
+    if (!entry || !entry.loadedAt) {
+      el.textContent = "尚未加载";
+      el.className = "cache-status";
+      return;
+    }
+    el.textContent = `上次刷新：${formatRefreshTime(entry.loadedAt)}`;
+    el.className = "cache-status" + (entry.stale ? " stale" : "");
+  }
+
+  async function fetchPivotList() {
     const url = !stageKey || stageKey === "registration"
       ? "/api/candidates"
       : `/api/candidates?stage=${encodeURIComponent(stageKey)}&mode=reached`;
-    st.list = await api(url);
+    const list = await api(url);
+    dashCache.pivot.set(cacheKey, { list, loadedAt: Date.now(), stale: false });
+    return list;
+  }
+
+  async function loadData(opts = {}) {
+    const force = !!(opts && opts.force);
+    const entry = dashCache.pivot.get(cacheKey);
+    if (!force && dashCacheFresh(entry)) {
+      st.list = entry.list;
+      updatePivotCacheStatus();
+      draw();
+      return;
+    }
+    if (!force && entry && entry.list) {
+      st.list = entry.list;
+      updatePivotCacheStatus();
+      draw();
+      fetchPivotList().then(list => {
+        st.list = list;
+        updatePivotCacheStatus();
+        draw();
+      }).catch(() => {});
+      return;
+    }
+    updatePivotCacheStatus();
+    st.list = await fetchPivotList();
+    updatePivotCacheStatus();
     draw();
   }
+
+  $$("[data-pv-refresh]")?.addEventListener("click", async () => {
+    const btn = $$("[data-pv-refresh]");
+    if (btn) { btn.disabled = true; btn.textContent = "同步中…"; }
+    try {
+      await loadData({ force: true });
+      toast("看板数据已同步");
+    } catch (e) {
+      toast(e.message || "刷新失败", true);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = "刷新"; }
+    }
+  });
 
   /* ---------- 行/列多字段区（Excel 式叠加） ---------- */
 

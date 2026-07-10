@@ -1,5 +1,5 @@
 {
-  "comment": "候选人登记页主数据导入。真实业务表 applicationProcessList*.xlsx 与 候选人面试安排管理列表*.xlsx 按应聘档案编号关联；字段与 Excel 映射见 field_mappings.json（隔离层，外部表头变化只需改映射）；界面统一展示应聘档案编号，内部兼容历史 resume_id；候选人唯一化按 match_keys 优先级匹配（应聘档案编号 → 手机号），与手动登记数据合并为 candidates 预处理表，后续所有操作基于该表。",
+  "comment": "候选人登记页主数据导入。真实业务表 applicationProcessList*.xlsx 与 候选人面试安排管理列表*.xlsx 按应聘档案编号关联；两表同列冲突时优先 Application 主表，面试表仅补空；字段与 Excel 映射见 field_mappings.json（隔离层，外部表头变化只需改映射）；界面统一展示应聘档案编号，内部兼容历史 resume_id；候选人唯一化按 match_keys 优先级匹配（应聘档案编号 → 手机号），与手动登记数据合并为 candidates 预处理表，后续所有操作基于该表。",
   "page": "registration",
   "import_mode": "dual_file",
   "current_stage_field": "current_stage",

@@ -68,13 +68,47 @@ function ovFilteredCandidates() {
   return list;
 }
 
-async function renderOverview() {
+async function renderOverview(opts = {}) {
+  const force = !!(opts && opts.force);
+  const entry = dashCache.overview;
+
+  const applyAndRender = (groups) => {
+    ovState.grp = groups[0] || { stats: {}, candidates: [], dashboard: {}, stage_dwell: [], sla_config: {} };
+    if (!opts.keepFilters) {
+      ovState.filters = [];
+      ovState.stageFilter = "";
+    }
+    ovRenderShell();
+  };
+
+  if (!force && dashCacheFresh(entry) && entry.data) {
+    applyAndRender(entry.data);
+    return;
+  }
+
+  if (!force && entry.data) {
+    applyAndRender(entry.data);
+    api("/api/overview").then(groups => {
+      dashCache.overview = { data: groups, loadedAt: Date.now(), stale: false };
+      if (state.tab === "overview") applyAndRender(groups);
+    }).catch(() => {});
+    return;
+  }
+
   $("#main").innerHTML = `<div class="empty">加载中…</div>`;
   const groups = await api("/api/overview");
-  ovState.grp = groups[0] || { stats: {}, candidates: [], dashboard: {}, stage_dwell: [], sla_config: {} };
-  ovState.filters = [];
-  ovState.stageFilter = "";
-  ovRenderShell();
+  dashCache.overview = { data: groups, loadedAt: Date.now(), stale: false };
+  applyAndRender(groups);
+}
+
+function updateOverviewCacheStatus() {
+  const el = document.querySelector("[data-ov-cache-status]");
+  if (!el) return;
+  const entry = dashCache.overview;
+  el.textContent = entry.loadedAt
+    ? `上次刷新：${formatRefreshTime(entry.loadedAt)}`
+    : "尚未加载";
+  el.className = "cache-status" + (entry.stale ? " stale" : "");
 }
 
 /* ---------- 页面骨架（筛选置顶 + 各联动区块占位） ---------- */
@@ -87,7 +121,11 @@ function ovRenderShell() {
         <div class="pagehead-title">全局总览</div>
         <div class="pagehead-sub">跨流程的候选人分布、停留时长与通过率概览；顶部按登记字段组合筛选后所有数据联动刷新</div>
       </div>
-      <div class="pagehead-side"><span class="badge badge-blue" data-ov-listcount></span></div>
+      <div class="pagehead-side">
+        <button class="btn btn-sm" data-ov-refresh title="强制从服务器同步最新数据">刷新</button>
+        <span class="cache-status" data-ov-cache-status></span>
+        <span class="badge badge-blue" data-ov-listcount></span>
+      </div>
     </div>
 
     <div class="card page-section">
@@ -153,6 +191,18 @@ function ovRenderShell() {
     ovState.stageFilter = e.target.value;
     ovRefresh();
   });
+  document.querySelector("[data-ov-refresh]")?.addEventListener("click", async () => {
+    const btn = document.querySelector("[data-ov-refresh]");
+    if (btn) { btn.disabled = true; btn.textContent = "同步中…"; }
+    try {
+      await renderOverview({ force: true, keepFilters: true });
+      toast("总览数据已同步");
+    } catch (e) {
+      toast(e.message || "刷新失败", true);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = "刷新"; }
+    }
+  });
   document.querySelector("[data-ov-addfilter]").addEventListener("click", () => {
     const flds = ovFields();
     ovState.filters.push({ key: flds[0]?.key || "候选人", op: "contains", val: "" });
@@ -171,6 +221,9 @@ function ovRenderShell() {
   });
 
   ovRenderFilters();
+  const stageSel = document.querySelector("[data-ov-stagesel]");
+  if (stageSel) stageSel.value = ovState.stageFilter || "";
+  updateOverviewCacheStatus();
 }
 
 /* ---------- 条件筛选 UI ---------- */
