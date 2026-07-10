@@ -2,6 +2,10 @@
 "use strict";
 
 const stageStates = new Map();
+/** 列表缓存软过期（毫秒）：切回页面时先展示缓存，后台静默刷新 */
+const CAND_CACHE_TTL_MS = 60_000;
+let _preloadTimer = null;
+let _preloadRunning = false;
 
 function defaultStageSort(stageKey) {
   const cfg = stageTableCfg(stageKey).default_sort;
@@ -19,9 +23,137 @@ function getStageState(stageKey) {
       duplicatePhones: null,
       colWidths: {},
       colWidthsTouched: false,
+      loadedAt: 0,
+      stale: true,
+      loading: null,
     });
   }
   return stageStates.get(stageKey);
+}
+
+/** 标记各阶段列表缓存失效；写操作后调用，下次进入会强制同步最新数据 */
+function invalidateCandidateCaches() {
+  for (const ss of stageStates.values()) {
+    ss.stale = true;
+  }
+}
+
+function candidatesListUrl(stageKey) {
+  // registration：全量；其他环节：mode=reached 使进入后续流程的候选人仍在前序页驻留可见
+  if (stageKey === "registration") return "/api/candidates";
+  return `/api/candidates?stage=${encodeURIComponent(stageKey)}&mode=reached`;
+}
+
+function cacheIsFresh(ss) {
+  return !ss.stale && ss.loadedAt > 0 && (Date.now() - ss.loadedAt) < CAND_CACHE_TTL_MS;
+}
+
+function applyFetchedList(stageKey, list) {
+  const ss = getStageState(stageKey);
+  ss.list = list;
+  ss.loadedAt = Date.now();
+  ss.stale = false;
+  if (stageKey === "registration") {
+    ss.allCandidates = ss.list;
+    ss.duplicatePhones = computeDuplicatePhones(ss.list);
+  } else {
+    ss.allCandidates = null;
+    ss.duplicatePhones = null;
+  }
+  const ids = new Set(ss.list.map(c => c.id));
+  ss.selected.forEach(id => { if (!ids.has(id)) ss.selected.delete(id); });
+}
+
+async function fetchCandidateListPayload(stageKey) {
+  const list = await api(candidatesListUrl(stageKey));
+  let uiValues = {};
+  if (stageUiColumns(stageKey).length) {
+    try {
+      uiValues = (await api(`/api/data-hub/ui-values?tab=${stageKey}`)).values || {};
+    } catch { uiValues = {}; }
+  }
+  return { list, uiValues };
+}
+
+/** 从服务端拉取并写入缓存；同阶段并发请求合并为一次 */
+async function refreshCandidateTable(stageKey) {
+  const ss = getStageState(stageKey);
+  if (ss.loading) return ss.loading;
+  ss.loading = (async () => {
+    try {
+      const { list, uiValues } = await fetchCandidateListPayload(stageKey);
+      applyFetchedList(stageKey, list);
+      if (stageUiColumns(stageKey).length) ss.uiValues = uiValues;
+      if (state.tab === stageKey && $("#cand-tbody")) {
+        renderCandidateRows(stageKey);
+        autoFitCandColumns(stageKey);
+        applyCandFrozenColumns(stageKey);
+        updateCacheStatusUI(stageKey);
+      }
+    } finally {
+      ss.loading = null;
+    }
+  })();
+  return ss.loading;
+}
+
+function updateCacheStatusUI(stageKey) {
+  const el = $("#cand-cache-status");
+  if (!el) return;
+  const ss = getStageState(stageKey);
+  if (ss.loading) {
+    el.textContent = "同步中…";
+    el.className = "cache-status syncing";
+    return;
+  }
+  if (!ss.loadedAt) {
+    el.textContent = "";
+    el.className = "cache-status";
+    return;
+  }
+  const ageSec = Math.max(0, Math.round((Date.now() - ss.loadedAt) / 1000));
+  const label = ageSec < 5 ? "刚刚同步" : (ageSec < 60 ? `${ageSec}秒前同步` : `${Math.floor(ageSec / 60)}分钟前同步`);
+  el.textContent = ss.stale ? `${label} · 有更新待刷新` : label;
+  el.className = "cache-status" + (ss.stale ? " stale" : "");
+}
+
+/** 后台预加载其他可见流程页，切换时直接命中缓存 */
+function scheduleStagePreload(priorityKey) {
+  clearTimeout(_preloadTimer);
+  _preloadTimer = setTimeout(() => { void runStagePreload(priorityKey); }, 400);
+}
+
+async function runStagePreload(priorityKey) {
+  if (_preloadRunning) return;
+  const keys = (state.stages || [])
+    .map(s => s.key)
+    .filter(k => typeof moduleVisible === "function" && moduleVisible(k)
+      && typeof moduleReadable === "function" && moduleReadable(k));
+  if (!keys.length) return;
+  const idx = keys.indexOf(priorityKey);
+  const ordered = [];
+  if (idx >= 0) {
+    if (keys[idx + 1]) ordered.push(keys[idx + 1]);
+    if (keys[idx - 1]) ordered.push(keys[idx - 1]);
+  }
+  keys.forEach(k => { if (k !== priorityKey && !ordered.includes(k)) ordered.push(k); });
+
+  _preloadRunning = true;
+  try {
+    for (const key of ordered) {
+      if (state.tab !== priorityKey && state.tab !== key) {
+        /* 用户已切走，仍继续预热其余页 */
+      }
+      const ss = getStageState(key);
+      if (cacheIsFresh(ss) || ss.loading) continue;
+      try {
+        await refreshCandidateTable(key);
+      } catch (_) { /* 预加载失败不影响当前页 */ }
+      await new Promise(r => setTimeout(r, 80));
+    }
+  } finally {
+    _preloadRunning = false;
+  }
 }
 
 async function renderStageView(stageKey) {
@@ -118,6 +250,8 @@ async function renderStageList(stageKey) {
     <div class="toolbar">
       <input type="text" id="cand-search" placeholder="全局搜索：姓名 / 电话 / 部门 / 任意字段…">
       <button class="btn btn-sm" id="btn-clear-filter">清空筛选</button>
+      <button class="btn btn-sm" id="btn-cand-refresh" title="强制从服务器同步最新数据">刷新</button>
+      <span id="cand-cache-status" class="cache-status"></span>
       <div class="spacer"></div>
       ${showBatchDelete ? `<button class="btn btn-danger" id="btn-batch-del" disabled>删除选中 (0)</button>` : ""}
       ${showExportExcel ? `<button class="btn" id="btn-export-excel" disabled>导出选中Excel (0)</button>` : ""}
@@ -151,6 +285,13 @@ async function renderStageList(stageKey) {
   if (showExportResume) $("#btn-export-resume").addEventListener("click", exportSelectedResumes);
   if (showResume) $("#resume-input").addEventListener("change", onResumeFilePicked);
   $("#btn-export-excel")?.addEventListener("click", () => exportSelectedExcel(stageKey));
+  $("#btn-cand-refresh")?.addEventListener("click", async () => {
+    updateCacheStatusUI(stageKey);
+    try {
+      await loadCandidateTable(stageKey, { force: true });
+      toast("已同步最新数据");
+    } catch (e) { toast(e.message || "刷新失败", true); }
+  });
   enableColumnResize(stageKey);
   const onFilterChange = () => { ss.page = 1; renderCandidateRows(stageKey); };
   $("#cand-search").addEventListener("input", debounce(onFilterChange, 250));
@@ -184,31 +325,40 @@ async function renderStageList(stageKey) {
 
   await loadCandidateTable(stageKey);
   applyCandFrozenColumns(stageKey);
+  scheduleStagePreload(stageKey);
 }
 
-async function loadCandidateTable(stageKey) {
+/**
+ * 加载候选人列表。
+ * - 有新鲜缓存：直接渲染（切页秒开）
+ * - 有过期缓存：先渲染缓存，再后台静默同步（保证更新可追上）
+ * - 无缓存 / force：阻塞拉取
+ */
+async function loadCandidateTable(stageKey, opts = {}) {
+  const force = !!(opts && opts.force);
   const ss = getStageState(stageKey);
-  // 候选人登记作为总入口展示所有流程候选人；其他流程固定按当前流程加载
-  ss.list = stageKey === "registration"
-    ? await api("/api/candidates")
-    : await api(`/api/candidates?stage=${stageKey}`);
-  if (stageUiColumns(stageKey).length) {
-    try {
-      ss.uiValues = (await api(`/api/data-hub/ui-values?tab=${stageKey}`)).values || {};
-    } catch { ss.uiValues = {}; }
+  const hasCache = ss.loadedAt > 0 && Array.isArray(ss.list);
+
+  if (!force && cacheIsFresh(ss)) {
+    renderCandidateRows(stageKey);
+    autoFitCandColumns(stageKey);
+    applyCandFrozenColumns(stageKey);
+    updateCacheStatusUI(stageKey);
+    return;
   }
-  if (stageKey === "registration") {
-    ss.allCandidates = ss.list;
-    ss.duplicatePhones = computeDuplicatePhones(ss.list);
-  } else {
-    ss.allCandidates = null;
-    ss.duplicatePhones = null;
+
+  if (!force && hasCache) {
+    renderCandidateRows(stageKey);
+    autoFitCandColumns(stageKey);
+    applyCandFrozenColumns(stageKey);
+    updateCacheStatusUI(stageKey);
+    refreshCandidateTable(stageKey).catch(() => {});
+    return;
   }
-  const ids = new Set(ss.list.map(c => c.id));
-  ss.selected.forEach(id => { if (!ids.has(id)) ss.selected.delete(id); });
-  renderCandidateRows(stageKey);
-  autoFitCandColumns(stageKey);
-  applyCandFrozenColumns(stageKey);
+
+  updateCacheStatusUI(stageKey);
+  await refreshCandidateTable(stageKey);
+  updateCacheStatusUI(stageKey);
 }
 
 function filteredCandidates(stageKey) {
@@ -401,6 +551,13 @@ function renderCandidateRows(stageKey) {
             inner = `<span class="cell-phone-dup">${esc(candidateCellValue(c, f) || "")}</span>`;
           } else if (f.key === "流程状态" && candTerminated(c)) {
             inner = `<span class="badge badge-red" title="已流程终止，可在候选人登记页恢复">流程终止</span>`;
+          } else if ((f.legacy_key === "name" || f.key === "候选人" || f.key === "姓名")
+              && stageKey !== "registration"
+              && c.current_stage && c.current_stage !== stageKey) {
+            const curLabel = (state.stages.find(s => s.key === c.current_stage) || {}).label
+              || c.current_stage;
+            const name = candidateCellValue(c, f) || "";
+            inner = `${esc(name)} <span class="badge badge-passed" title="已进入后续环节：${esc(curLabel)}">已流转</span>`;
           } else {
             inner = cellHtml(f, candidateCellValue(c, f));
           }
@@ -481,7 +638,8 @@ function renderCandidateRows(stageKey) {
     const doFlow = async (id, direction) => {
       try {
         await api(`/api/candidates/${id}/stage-transition`, { method: "POST", json: { direction } });
-        await loadCandidateTable(stageKey);
+        invalidateCandidateCaches();
+        await loadCandidateTable(stageKey, { force: true });
       } catch (e) { alert(e.message || "流转失败"); }
     };
     tbody.querySelectorAll("[data-flownext]").forEach(b =>
@@ -497,7 +655,8 @@ function renderCandidateRows(stageKey) {
       const r = await api(`/api/candidates/${id}/terminate`, { method: "POST", json: { action } });
       toast(action === "terminate" ? "已终止流程（可随时恢复）"
         : `已恢复到终止前状态（${(state.stages.find(s => s.key === r.current_stage) || {}).label || r.current_stage}）`);
-      await loadCandidateTable(stageKey);
+      invalidateCandidateCaches();
+      await loadCandidateTable(stageKey, { force: true });
     } catch (e) { toast(e.message, true); }
   };
   tbody.querySelectorAll("[data-terminate]").forEach(b =>
@@ -1242,7 +1401,8 @@ function openCandidateModal(cand, stageKey) {
       }
       toast(isNew ? "候选人已新增" : "已保存");
       closeModal();
-      loadCandidateTable(stageKey);
+      invalidateCandidateCaches();
+      loadCandidateTable(stageKey, { force: true });
     } catch (e) {
       toast(e.message, true);
     }
@@ -1270,7 +1430,8 @@ function openProgressModal(c, stageKey) {
       });
       toast(r.changed ? "进展已更新" : "内容无变化");
       closeModal();
-      await loadCandidateTable(stageKey);
+      invalidateCandidateCaches();
+      await loadCandidateTable(stageKey, { force: true });
     } catch (e) { toast(e.message, true); }
   });
 }
@@ -1310,7 +1471,8 @@ function deleteCandidate(cand, stageKey) {
       await api(`/api/candidates/${cand.id}`, { method: "DELETE" });
       toast("已删除");
       closeModal();
-      loadCandidateTable(stageKey);
+      invalidateCandidateCaches();
+      loadCandidateTable(stageKey, { force: true });
     } catch (e) { toast(e.message, true); }
   });
 }
@@ -1329,7 +1491,8 @@ function batchDeleteSelected(stageKey) {
       toast(`已删除 ${r.deleted} 名` + (r.skipped ? `，跳过 ${r.skipped} 名` : ""));
       closeModal();
       ss.selected.clear();
-      await loadCandidateTable(stageKey);
+      invalidateCandidateCaches();
+      await loadCandidateTable(stageKey, { force: true });
     } catch (e) { toast(e.message, true); }
   });
 }
@@ -1343,7 +1506,8 @@ async function onResumeFilePicked() {
   try {
     await api(`/api/candidates/${ss.uploadTarget}/resume`, { method: "POST", body: fd });
     toast("简历已保存");
-    await loadCandidateTable("registration");
+    invalidateCandidateCaches();
+    await loadCandidateTable("registration", { force: true });
   } catch (e) { toast(e.message, true); }
   ss.uploadTarget = null;
 }
@@ -1358,7 +1522,8 @@ function deleteResume(c, stageKey) {
       await api(`/api/candidates/${c.id}/resume`, { method: "DELETE" });
       toast("简历已删除");
       closeModal();
-      await loadCandidateTable(stageKey);
+      invalidateCandidateCaches();
+      await loadCandidateTable(stageKey, { force: true });
     } catch (e) { toast(e.message, true); }
   });
 }

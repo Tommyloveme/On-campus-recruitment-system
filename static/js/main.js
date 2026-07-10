@@ -13,6 +13,26 @@ const TOOL_TABS = {
 /** 分组 id -> 子菜单 tab id 列表（用于展开与高亮） */
 const NAV_GROUP_CHILDREN = {};
 
+/** 导航图标：模块 key → SVG symbol id */
+const NAV_ICONS = {
+  registration: "icon-brand",
+  recruit_flow: "icon-flow",
+  offer_strategy: "icon-shield",
+  data_board: "icon-overview",
+  admin_board: "icon-log",
+  overview: "icon-overview",
+  charts: "icon-chart",
+  permissions: "icon-shield",
+  op_logs: "icon-log",
+  backups: "icon-backup",
+  feedback: "icon-feedback",
+};
+
+function navIconHtml(key) {
+  const id = NAV_ICONS[key] || "icon-flow";
+  return `<svg class="icon nav-icon" aria-hidden="true"><use href="#${id}"></use></svg>`;
+}
+
 /** 模块有效权限（来自 /api/permissions/modules，含 visible/readable/writable）。 */
 let modulePerms = [];
 
@@ -102,7 +122,7 @@ function buildSidebar() {
       return `
         <div class="nav-entry">
           <button class="nav-row nav-leaf" data-tab="${section.id}">
-            <span class="nav-slot" aria-hidden="true"></span>
+            <span class="nav-slot">${navIconHtml(section.id)}</span>
             <span class="nav-label">${esc(section.label)}</span>
           </button>
         </div>`;
@@ -117,7 +137,7 @@ function buildSidebar() {
       <div class="nav-entry nav-group${expanded ? " expanded" : ""}" data-group="${section.id}">
         <button type="button" class="nav-row nav-parent" data-group="${section.id}" aria-expanded="${expanded}">
           <span class="nav-slot nav-chevron" aria-hidden="true"></span>
-          <span class="nav-label">${esc(section.label)}</span>
+          <span class="nav-label">${navIconHtml(section.id)}<span>${esc(section.label)}</span></span>
         </button>
         <div class="nav-children">${children}</div>
       </div>`;

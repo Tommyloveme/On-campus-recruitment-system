@@ -104,6 +104,7 @@ async function openMasterImportModal() {
       toast(`刷新完成：新增 ${r.created}，更新 ${r.updated}${r.skipped ? "，跳过 " + r.skipped : ""}`);
       closeModal();
       stageStates.clear();
+      invalidateCandidateCaches();
       if (state.tab && !TOOL_TABS[state.tab]) renderStageView(state.tab);
     } catch (e) {
       toast(e.message, true);

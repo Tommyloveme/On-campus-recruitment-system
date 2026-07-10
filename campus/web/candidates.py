@@ -42,18 +42,40 @@ from campus.web.guards import login_required
 bp = Blueprint("candidates", __name__)
 
 
+def _stage_keys_reached(stage_key):
+    """本环节及之后所有环节的 key（用于列表「驻留」：进入后续流程后仍在前序页可见）。"""
+    from campus.core.stage_config import load_stages_meta
+    stages = load_stages_meta()
+    order_map = {s["key"]: s["order"] for s in stages}
+    min_order = order_map.get(stage_key)
+    if min_order is None:
+        return [stage_key]
+    return [s["key"] for s in stages if s["order"] >= min_order]
+
+
 @bp.get("/api/candidates")
 @login_required
 def api_candidates():
     db = get_db()
     q = (request.args.get("q") or "").strip()
     stage_filter = request.args.get("stage")
+    # mode=reached（默认）：已到达本环节或更后环节的候选人都可见（信息驻留）
+    # mode=current：仅当前所处环节（旧行为，供统计等场景）
+    mode = (request.args.get("mode") or "reached").strip().lower()
     # 阶段过滤直接下推 SQL（current_stage 为带索引的同步列），
     # 避免大数据量时对全表做 JSON 反序列化。
     if stage_filter:
-        rows = db.execute(
-            "SELECT * FROM candidates WHERE current_stage=? ORDER BY updated_at DESC",
-            (stage_filter,)).fetchall()
+        if mode == "current":
+            rows = db.execute(
+                "SELECT * FROM candidates WHERE current_stage=? ORDER BY updated_at DESC",
+                (stage_filter,)).fetchall()
+        else:
+            keys = _stage_keys_reached(stage_filter)
+            placeholders = ",".join("?" * len(keys))
+            rows = db.execute(
+                f"SELECT * FROM candidates WHERE current_stage IN ({placeholders}) "
+                "ORDER BY updated_at DESC",
+                keys).fetchall()
     else:
         rows = db.execute("SELECT * FROM candidates ORDER BY updated_at DESC").fetchall()
     # 共享池：所有登录用户可见
@@ -61,8 +83,8 @@ def api_candidates():
     result = [candidate_dict(r) for r in rows]
     if q:
         result = [c for c in result if any(q in str(v) for v in c["data"].values())]
-    log.debug("候选人列表 %s 返回%d条 q=%s stage=%s",
-              who(g.user), len(result), q or "-", stage_filter or "-")
+    log.debug("候选人列表 %s 返回%d条 q=%s stage=%s mode=%s",
+              who(g.user), len(result), q or "-", stage_filter or "-", mode)
     return jsonify(result)
 
 

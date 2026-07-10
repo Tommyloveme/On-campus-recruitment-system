@@ -32,10 +32,11 @@ body {
 .login-logo {
   width: 56px; height: 56px; margin: 0 auto;
   display: flex; align-items: center; justify-content: center;
-  border-radius: 16px; color: #fff; font-size: 24px; font-weight: 800; letter-spacing: .02em;
+  border-radius: 16px; color: #fff;
   background: linear-gradient(135deg, #0f2a66 0%, #1d4ed8 65%, #38bdf8 100%);
   box-shadow: 0 8px 20px rgba(29, 78, 216, .35);
 }
+.login-logo .icon { width: 28px; height: 28px; }
 .login-card h1 { font-size: 20px; text-align: center; margin-top: 14px; }
 .login-sub { text-align: center; color: var(--muted); font-size: 12px; margin: 4px 0 24px; }
 .login-error { color: var(--danger); font-size: 13px; margin-bottom: 12px; text-align: center; }
@@ -125,8 +126,29 @@ body {
 .brand-mark {
   width: 28px; height: 28px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  border-radius: 8px; color: #fff; font-size: 13px; font-weight: 800;
+  border-radius: 8px; color: #fff;
   background: linear-gradient(135deg, #0f2a66 0%, #1d4ed8 65%, #38bdf8 100%);
+}
+.brand-mark .icon { width: 16px; height: 16px; }
+
+.icon {
+  width: 1em; height: 1em;
+  display: inline-block; vertical-align: -0.125em;
+  fill: none; stroke: currentColor;
+  flex-shrink: 0;
+}
+.icon-lg { width: 1.5em; height: 1.5em; }
+.nav-icon {
+  width: 16px; height: 16px; color: #64748b;
+  transition: color .15s ease;
+}
+.nav-row:hover .nav-icon,
+.nav-row.active .nav-icon,
+.nav-group.has-active > .nav-parent .nav-icon { color: var(--primary); }
+.nav-group.expanded > .nav-parent .nav-icon { color: var(--primary); }
+.nav-label {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-width: 0;
 }
 .userbox { display: flex; align-items: center; gap: 12px; color: var(--muted); white-space: nowrap; }
 
@@ -434,6 +456,14 @@ th.sortable:hover { color: var(--primary); }
 .badge-green  { background: #dcfce7; color: #15803d; }
 .badge-yellow { background: #fef3c7; color: #b45309; }
 .badge-red    { background: #fee2e2; color: #b91c1c; }
+.badge-passed { background: #e0e7ff; color: #4338ca; font-size: 11px; padding: 1px 7px; margin-left: 4px; vertical-align: middle; }
+
+.cache-status {
+  font-size: 12px; color: var(--muted); white-space: nowrap;
+  min-height: 1em;
+}
+.cache-status.syncing { color: var(--primary); }
+.cache-status.stale { color: var(--warning); }
 
 /* ---------- 弹窗 ---------- */
 .modal-mask {
