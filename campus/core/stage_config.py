@@ -1,5 +1,16 @@
 # -*- coding: utf-8 -*-
-"""阶段与字段配置加载（高内聚：所有阶段/字段配置读取逻辑集中于此）。"""
+"""阶段与字段配置加载（高内聚：所有阶段/字段配置读取逻辑集中于此）。
+
+配置目录对应关系（加字段/加阶段只改 JSON，无需改代码或数据库）：
+- config/stages.json                   阶段清单与顺序（load_stages_meta）
+- config/stages/_common/fields.json    全阶段公共字段
+- config/stages/<stage>/fields.json    各阶段业务字段（load_stage_fields）
+- config/stages/<stage>/display.json   表格列可见/可编辑（UI 列配置）
+
+消费方：campus/web/*（接口校验与序列化）、campus/domain/stage_routing.py
+（阶段判定）、campus/db/field_store.py（字段注册表生成）、前端 /api/config。
+新增阶段还需在 campus/core/modules.py 登记模块（权限门禁用）。
+"""
 import copy
 import json
 import os

@@ -1,9 +1,26 @@
 # -*- coding: utf-8 -*-
-"""本机网络探测与 Windows waitress 兼容补丁。"""
+"""本机网络探测与 Windows waitress 兼容补丁。
+
+被 app.py（服务启动）与 scripts/manage.py（维测脚本）共用，是端口/访问地址
+判定的唯一实现，避免两处各写一份 127.0.0.1 探测逻辑。
+
+背景：部分 Windows 环境（VPN/TUN/安全软件）会让 127.0.0.1 的 TCP connect 超时
+（WinError 10060），而 waitress 启动时依赖一对 127.0.0.1 loopback socket 做线程
+唤醒（waitress/trigger.py），导致服务无法启动。本模块提供探测 + 触发器补丁 +
+启动重试三层兜底。
+"""
 import errno
 import os
 import socket
 import time
+
+
+def get_port():
+    """服务端口：环境变量 PORT 优先，其次 config/app_config.json 的 server.port。"""
+    if os.environ.get("PORT"):
+        return int(os.environ["PORT"])
+    from campus.core.settings import APP_CONFIG
+    return int(APP_CONFIG.get("server", {}).get("port", 8000))
 
 
 def _primary_local_ip():

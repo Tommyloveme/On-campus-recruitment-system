@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
-"""一次性冒烟测试脚本：覆盖登录/权限/CRUD/Excel导入/简历/分组配置/并发/日志/总览。"""
+"""一次性冒烟测试脚本：覆盖登录/权限/CRUD/Excel导入/简历/分组配置/并发/日志/总览。
+
+用法（需先启动服务，见 start.bat / scripts/manage.py start）：
+    python smoke_test.py                 # 默认连 http://127.0.0.1:8000
+    PORT=8002 python smoke_test.py       # 指定端口（替代原 run_smoke.py 包装脚本）
+    SMOKE_BASE=http://192.168.1.4:8000 python smoke_test.py  # 完整指定地址
+"""
 import io
 import json
 import os
@@ -12,7 +18,7 @@ import zipfile
 
 from openpyxl import Workbook
 
-BASE = "http://127.0.0.1:8000"
+BASE = os.environ.get("SMOKE_BASE") or f"http://127.0.0.1:{os.environ.get('PORT', '8000')}"
 cj = http.cookiejar.CookieJar()
 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
 

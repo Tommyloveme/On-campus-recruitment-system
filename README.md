@@ -50,10 +50,13 @@ chmod +x start.sh
 │   └── web/                # L4 HTTP 接口层：Blueprint 路由 + guards 鉴权装饰器
 ├── config/                 # JSON 业务配置（阶段/字段/角色/主数据导入/运行配置）
 ├── static/                 # 前端 SPA（原生 HTML/CSS/JS，无构建依赖）
-├── scripts/                # 维测脚本（status/stop/restart + 演示数据生成）
+├── scripts/                # 维测脚本（status/stop/restart + 演示/压测数据生成）
+├── tests/                  # 单元测试（python -m unittest discover -s tests）
 ├── tools/gen_manual.py     # 操作手册 PDF 生成脚本（输出 static/manual.pdf）
 ├── docs/维测指导手册.md     # 架构、配置、接口、数据库、排障与测试指导
+├── docs/database.md        # 数据库分层与字段中文键设计
 ├── smoke_test.py           # 全量冒烟测试
+├── pip/pip.ini             # 项目级 pip 镜像（启动脚本自动引用）
 ├── data/                   # 运行时数据（数据库/简历/备份/日志，自动创建）
 ├── start.bat / start.sh    # 双平台启动脚本
 └── requirements.txt
@@ -77,6 +80,8 @@ chmod +x start.sh
 ## 测试
 
 ```bash
+python -m unittest discover -s tests   # 单元测试（无需启动服务）
+
 python app.py --demo     # 终端1：带演示数据启动
 python smoke_test.py     # 终端2：全量冒烟（130+ 断言，全部 PASS 即可发布）
 ```

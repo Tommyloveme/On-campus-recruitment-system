@@ -1,5 +1,15 @@
 # -*- coding: utf-8 -*-
-"""候选人 CRUD 与批量操作。"""
+"""候选人 CRUD 与批量操作（终止流程、手动阶段流转）。
+
+写路径关联（三处需要同步，勿只改其一）：
+1. candidates 预处理表     — services/candidates.py update_candidate_row
+2. candidates_raw_manual   — services/candidate_pipeline.py record_manual（原始留痕）
+3. data_hub 汇总表         — services/data_hub.py record_hub_fields（跨表导出用）
+
+阶段展示：current_stage 由 domain/stage_routing.py compute_current_stage 推导，
+各阶段页面按该列过滤；手动流转写入 manual_stage 后优先生效。
+权限：读/写门禁走 services/acl.py（can_see/can_edit/can_delete_candidate）。
+"""
 import json
 from datetime import datetime
 

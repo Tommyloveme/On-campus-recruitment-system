@@ -1,4 +1,10 @@
-/* 校招全流程管理系统 - 核心模块（API、状态、权限、工具） */
+/* 校招全流程管理系统 - 核心模块（API、状态、权限、工具）
+ *
+ * 前端为无构建原生 SPA，加载顺序见 static/index.html 底部 <script> 列表：
+ * core.js 必须最先加载（定义全局 state 与 api()），其余模块（main/stage-view/
+ * overview/permissions/...）均依赖本文件。权限判断与后端 campus/services/acl.py
+ * 的模块四权限（visibility/read/write/manage）保持一致，数据来自 /api/me。
+ */
 "use strict";
 
 const state = {

@@ -1,0 +1,8 @@
+{
+  "name": "on-campus-recruitment-system-ui-tests",
+  "private": true,
+  "description": "仅供 tests/verify_perm_sticky.mjs 等 Playwright UI 回归脚本使用；后端运行不依赖 Node",
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}

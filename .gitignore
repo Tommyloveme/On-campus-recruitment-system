@@ -7,6 +7,9 @@ venv/
 # 运行时数据（数据库、会话密钥）
 data/
 
+# Node 依赖（仅 tests/verify_perm_sticky.mjs 等 UI 脚本需要，npm install 即可恢复）
+node_modules/
+
 # IDE / 系统
 .idea/
 .vscode/

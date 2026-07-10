@@ -11,7 +11,7 @@ import threading
 
 from campus import create_app
 from campus.core.logging_util import log
-from campus.core.net_util import patch_waitress_trigger, port_is_open, resolve_access_url, serve_waitress
+from campus.core.net_util import get_port, port_is_open, resolve_access_url, serve_waitress
 from campus.core.settings import APP_CONFIG
 from campus.db.schema import init_db
 from campus.services.backups import backup_scheduler
@@ -21,7 +21,7 @@ app = create_app()
 
 if __name__ == "__main__":
     init_db(demo="--demo" in sys.argv)
-    port = int(os.environ.get("PORT", APP_CONFIG["server"]["port"]))
+    port = get_port()  # 与 scripts/manage.py 同源（campus/core/net_util.py）
     threads = int(os.environ.get("THREADS", APP_CONFIG["server"]["threads"]))
     if port_is_open(port):
         log.error("端口 %d 已被占用，启动中止", port)
@@ -38,7 +38,7 @@ if __name__ == "__main__":
               else f"{APP_CONFIG.get('server', {}).get('max_upload_mb')}MB"),
              channel_timeout)
     access_url = resolve_access_url(port)
-    patch_waitress_trigger()
     print(f"校招全流程管理系统已启动: {access_url} （waitress，{threads} 工作线程）")
+    # serve_waitress 内部处理 Windows 回环不可用（WinError 10060）的触发器补丁与重试
     serve_waitress(app, host="0.0.0.0", port=port, threads=threads,
                    connection_limit=1024, channel_timeout=channel_timeout)

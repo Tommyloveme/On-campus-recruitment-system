@@ -12,11 +12,9 @@
 端口读取 config/app_config.json 的 server.port（环境变量 PORT 优先）。
 数据库为 SQLite WAL 模式，强制停止不会损坏数据。
 """
-import json
 import os
 import re
 import signal
-import socket
 import subprocess
 import sys
 import time
@@ -25,16 +23,11 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 IS_WIN = os.name == "nt"
 LOG_PATH = os.path.join(BASE_DIR, "data", "server.log")
 
+# 端口/回环探测统一走 campus/core/net_util.py（app.py 同源），
+# 避免维测脚本与服务端各自实现一套 127.0.0.1 逻辑（Windows 回环可能不可用）。
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
-from campus.core.net_util import port_is_open, resolve_access_url
-
-
-def get_port():
-    if os.environ.get("PORT"):
-        return int(os.environ["PORT"])
-    with open(os.path.join(BASE_DIR, "config", "app_config.json"), encoding="utf-8") as f:
-        return int(json.load(f).get("server", {}).get("port", 8000))
+from campus.core.net_util import get_port, port_is_open, resolve_access_url
 
 
 def port_open(port):

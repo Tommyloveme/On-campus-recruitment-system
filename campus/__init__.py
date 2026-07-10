@@ -1,5 +1,18 @@
 # -*- coding: utf-8 -*-
-"""校招系统后端模块。"""
+"""校招系统后端包：create_app() 应用工厂（app.py 与测试共用的唯一入口）。
+
+五层架构（依赖只允许自上而下，详见 docs/维测指导手册.md §1.2）：
+
+    L4 campus/web       HTTP 接口层：Blueprint 路由 + guards 门禁装饰器
+    L3 campus/services  业务服务层：acl / candidates / master_import / ...
+    L2 campus/db        数据访问层：connection（WAL 连接）/ schema / field_store
+    L1 campus/domain    领域规则层：stage_routing / rule_engine / interview_slots
+    L0 campus/core      基础层：settings / modules / stage_config / net_util / ...
+
+- 路由注册：campus/web/__init__.py register_routes()
+- 数据库初始化（建表/迁移/演示数据）：campus/db/schema.py init_db()，由 app.py 调用
+- 上传大小限制：config/app_config.json server.max_upload_mb（<=0 不限制）
+"""
 import os
 import secrets
 
