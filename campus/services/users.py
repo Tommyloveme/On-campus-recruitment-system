@@ -23,6 +23,14 @@ def security_config():
     return load_app_config().get("security", {})
 
 
+def default_password_for_username(username):
+    """新建用户默认密码：普通用户默认同工号；保留账号（如 admin）使用配置默认密码。"""
+    uname = (username or "").strip()
+    if uname in reserved_accounts():
+        return security_config().get("default_password", "123456")
+    return uname or security_config().get("default_password", "123456")
+
+
 def reserved_accounts():
     sec = security_config()
     accounts = set(sec.get("reserved_accounts", []))
@@ -62,6 +70,18 @@ def normalize_job_roles_payload(body):
     return []
 
 
+def _builtin_column_value(builtin, key, existing_row=None):
+    """写入 users 表列：配置中已移除的字段在更新时保留库内原值。"""
+    if key in builtin:
+        return builtin.get(key, "")
+    if existing_row is not None:
+        try:
+            return existing_row[key] if existing_row[key] is not None else ""
+        except (KeyError, IndexError, TypeError):
+            pass
+    return ""
+
+
 def persist_user_columns(db, uid, fields, role, password=None, is_create=False, username=None, job_roles=None):
     """根据解析后的 fields（builtin/custom）写入用户表列与 extra JSON。"""
     b = fields["builtin"]
@@ -78,20 +98,27 @@ def persist_user_columns(db, uid, fields, role, password=None, is_create=False, 
             "supervisor, department, dept_level2, dept_level3, pl_group, job_roles, extra, log_level, created_at) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (username, b.get("display_name", ""), generate_password_hash(password),
-             role, b.get("supervisor", ""), b.get("department", ""),
-             b.get("dept_level2", ""), b.get("dept_level3", ""), b.get("pl_group", ""),
-             jr, extra, log_level, now_str()),
+             role, _builtin_column_value(b, "supervisor"), _builtin_column_value(b, "department", None),
+             _builtin_column_value(b, "dept_level2"), _builtin_column_value(b, "dept_level3"),
+             _builtin_column_value(b, "pl_group"), jr, extra, log_level, now_str()),
         )
     else:
         from campus.core.roles_store import role_log_level
+        existing = db.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
         log_level = role_log_level(role)
         sql = (
             "UPDATE users SET display_name=?, role=?, supervisor=?, department=?, "
             "dept_level2=?, dept_level3=?, pl_group=?, extra=?, log_level=?"
         )
-        params = [b.get("display_name", ""), role, b.get("supervisor", ""), b.get("department", ""),
-                  b.get("dept_level2", ""), b.get("dept_level3", ""), b.get("pl_group", ""),
-                  extra, log_level]
+        params = [
+            b.get("display_name", ""), role,
+            _builtin_column_value(b, "supervisor", existing),
+            _builtin_column_value(b, "department", existing),
+            _builtin_column_value(b, "dept_level2", existing),
+            _builtin_column_value(b, "dept_level3", existing),
+            _builtin_column_value(b, "pl_group", existing),
+            extra, log_level,
+        ]
         if job_roles is not None:
             sql += ", job_roles=?"
             params.append(jr)
@@ -203,14 +230,25 @@ def user_dict(u):
 
 
 def apply_role_to_user(db, uid, role_key):
-    """应用角色到用户：当前权限统一由角色/组模板实时决定。
+    """应用角色到用户：将角色 perms 写入 module_acl（覆盖该用户原有模块权限）并同步日志等级。"""
+    from campus.core.roles_store import role_log_level, role_perms
+    from campus.db.connection import now_str
 
-    历史 module_acl 不再作为运行时权限来源；这里仅清理用户直授权并同步日志等级。
-    """
-    from campus.core.roles_store import role_log_level
     db.execute("DELETE FROM module_acl WHERE subject_type='user' AND subject_id=?", (uid,))
+    now = now_str()
+    cnt = 0
+    for mk, flags in (role_perms(role_key) or {}).items():
+        db.execute(
+            "INSERT INTO module_acl (subject_type, subject_id, module_key, "
+            "perm_visibility, perm_read, perm_write, perm_manage, perm_features, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            ("user", uid, mk,
+             1 if flags.get("v") else 0, 1 if flags.get("r") else 0,
+             1 if flags.get("w") else 0, 1 if flags.get("m") else 0, "", now),
+        )
+        cnt += 1
     db.execute("UPDATE users SET log_level=? WHERE id=?", (role_log_level(role_key), uid))
-    return 0
+    return cnt
 
 
 def lookup_employee_by_username(db, username):

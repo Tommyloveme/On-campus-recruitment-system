@@ -6,10 +6,9 @@ config/user_fields.json 配置；唯一性由工号(username)决定。
 """
 import sqlite3
 
-from flask import Blueprint, g, jsonify, request
+from flask import Blueprint, g, jsonify, request, send_file
 
 from campus.core.roles_store import role_keys, role_label
-from campus.core.settings import APP_CONFIG
 from campus.db.connection import get_db
 from campus.domain.employees import user_dept_display, user_dept_pl_display
 from campus.services.audit import add_log
@@ -17,6 +16,7 @@ from campus.services.users import (
     apply_role_to_user,
     builtin_fields,
     custom_fields,
+    default_password_for_username,
     lookup_employee_for_registration,
     normalize_job_roles_payload,
     parse_extra,
@@ -55,7 +55,7 @@ def _user_full(db, row):
 @bp.get("/api/users")
 @admin_required
 def api_users():
-    """用户列表（仅系统管理员）。支持按关键字过滤（工号/姓名/主管/部门）。"""
+    """用户列表（仅系统管理员）。支持按关键字过滤（工号/姓名/部门）。"""
     db = get_db()
     q = (request.args.get("q") or "").strip().lower()
     rows = db.execute("SELECT * FROM users ORDER BY id").fetchall()
@@ -64,9 +64,51 @@ def api_users():
         out = [u for u in out
                if q in (u["username"] or "").lower()
                or q in (u["display_name"] or "").lower()
-               or q in (u.get("supervisor") or "").lower()
                or q in (u.get("dept_display") or "").lower()]
     return jsonify(out)
+
+
+@bp.get("/api/users/import/template")
+@admin_required
+def api_users_import_template():
+    from campus.services.user_import import build_user_import_template
+    buf = build_user_import_template()
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name="用户导入模板.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@bp.get("/api/users/export")
+@admin_required
+def api_users_export():
+    from campus.services.user_import import export_users_workbook
+    buf = export_users_workbook(get_db())
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name="用户列表.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@bp.post("/api/users/import")
+@admin_required
+def api_users_import():
+    if "file" not in request.files:
+        return jsonify({"error": "请选择 Excel 文件"}), 400
+    from campus.services.user_import import import_users_from_workbook
+    try:
+        stats = import_users_from_workbook(get_db(), request.files["file"])
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    add_log(g.user, "import",
+            f"{g.user['display_name']} 批量导入用户 +{stats['created']} ~{stats['updated']} skip{stats['skipped']}",
+            module="permissions", level=1)
+    get_db().commit()
+    return jsonify({"ok": True, **stats})
 
 
 @bp.get("/api/users/suggest-employee")
@@ -124,7 +166,9 @@ def api_user_create():
     username = (b.get("username") or b.get("employee_id") or "").strip()
     if not username:
         return jsonify({"error": "用户名（工号）不能为空"}), 400
-    password = b.get("password") or APP_CONFIG["security"]["default_password"]
+    password = (b.get("password") or "").strip()
+    if not password:
+        password = default_password_for_username(username)
     role = (b.get("role") or "user").strip()
     if role not in role_keys():
         return jsonify({"error": f"角色不合法：{role}"}), 400
@@ -276,6 +320,8 @@ def api_user_delete(uid):
     user = db.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
     if not user:
         return jsonify({"error": "用户不存在"}), 404
+    if user["username"] in ("admin", "guest"):
+        return jsonify({"error": "内置账号不可删除"}), 400
     db.execute("DELETE FROM interview_bookings WHERE booked_by=?", (uid,))
     db.execute("DELETE FROM interview_bookings WHERE interviewer_id=?", (uid,))
     db.execute("DELETE FROM interviewer_availability WHERE user_id=?", (uid,))

@@ -41,6 +41,7 @@ body {
 .login-sub { text-align: center; color: var(--muted); font-size: 12px; margin: 4px 0 24px; }
 .login-error { color: var(--danger); font-size: 13px; margin-bottom: 12px; text-align: center; }
 .login-switch { text-align: center; margin-top: 16px; font-size: 13px; color: var(--muted); }
+.login-guest-btn { margin-top: 10px; }
 .login-switch a { color: var(--primary); text-decoration: none; }
 .checkbox-group { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 6px; }
 .checkbox-item { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
@@ -793,6 +794,8 @@ th.sortable:hover { color: var(--primary); }
 .perm-grid-left thead .perm-col-filter { padding: 1px 2px; font-size: 10px; min-width: 0 !important; }
 .perm-grid-right { width: max-content; min-width: 100%; }
 .perm-grid th, .perm-grid td { white-space: nowrap; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; }
+.perm-grid th.sortable { cursor: pointer; user-select: none; }
+.perm-grid th.sortable:hover { color: var(--primary); }
 .perm-grid thead th .th-resize {
   position: absolute; top: 0; right: -3px; bottom: 0; width: 7px;
   cursor: col-resize; z-index: 4;

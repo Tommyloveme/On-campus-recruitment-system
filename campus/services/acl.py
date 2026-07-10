@@ -112,25 +112,48 @@ def _merge_module_rows(rows):
 
 
 def effective_module_perms(db, user, module_key):
-    """用户对模块的有效权限：由用户所属角色/组权限模板决定；admin 直通全权。"""
+    """用户对模块的有效权限：优先读用户 module_acl；无记录时回退角色模板。admin 直通全权。"""
     if user is None:
         return _empty_perms()
     if permission_settings()["admin_bypass"] and is_admin(user):
         return _full_perms()
 
+    try:
+        uid = int(user["id"])
+    except (TypeError, KeyError, ValueError):
+        uid = None
+
     cache = _cache()
-    mkey = ("module", module_key)
+    mkey = ("module", uid, module_key)
     if mkey in cache:
         return cache[mkey]
 
-    perms = role_perms(user["role"])
+    rows = []
+    if uid is not None:
+        rows = db.execute(
+            "SELECT * FROM module_acl WHERE subject_type=? AND subject_id=?",
+            (SUBJECT_TYPE_USER, uid),
+        ).fetchall()
+
     final = _empty_perms()
-    for mk in module_ancestor_chain(module_key) or [module_key]:
-        flags = perms.get(mk) or {}
-        final["visibility"] |= 1 if flags.get("v") else 0
-        final["read"] |= 1 if flags.get("r") else 0
-        final["write"] |= 1 if flags.get("w") else 0
-        final["manage"] |= 1 if flags.get("m") else 0
+    if rows:
+        by_mod = {}
+        for r in rows:
+            by_mod.setdefault(r["module_key"], []).append(r)
+        for mk in module_ancestor_chain(module_key) or [module_key]:
+            if mk in by_mod:
+                merged = _merge_module_rows(by_mod[mk])
+                for k in PERM_KEYS:
+                    final[k] |= merged[k]
+    else:
+        perms = role_perms(user["role"])
+        for mk in module_ancestor_chain(module_key) or [module_key]:
+            flags = perms.get(mk) or {}
+            final["visibility"] |= 1 if flags.get("v") else 0
+            final["read"] |= 1 if flags.get("r") else 0
+            final["write"] |= 1 if flags.get("w") else 0
+            final["manage"] |= 1 if flags.get("m") else 0
+
     cache[mkey] = final
     return final
 

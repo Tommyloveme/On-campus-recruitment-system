@@ -114,10 +114,120 @@
       "log_level": 10
     },
     {
+      "key": "guest",
+      "label": "访客",
+      "builtin": true,
+      "perms": {
+        "approval": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "contract_signing": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "feedback": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "manager_interview": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "offer": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "offer_strategy": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "onboarding": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "personality_test": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "qualification": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "qualification_interview": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "recruit_flow": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "registration": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "resume_screening": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "salary": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "tech_interview": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
+        "written_test": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        }
+      },
+      "log_level": 10
+    },
+    {
       "key": "interviewer",
       "label": "面试官",
       "builtin": true,
       "perms": {
+        "feedback": {
+          "v": 1,
+          "r": 1,
+          "w": 0,
+          "m": 0
+        },
         "manager_interview": {
           "v": 1,
           "r": 1,
@@ -148,10 +258,10 @@
           "w": 0,
           "m": 0
         },
-        "feedback": {
+        "registration": {
           "v": 1,
           "r": 1,
-          "w": 0,
+          "w": 1,
           "m": 0
         }
       },
@@ -227,8 +337,7 @@
     {
       "key": "hr",
       "label": "人事",
-      "builtin": false,
-      "bypass": false,
+      "builtin": true,
       "perms": {
         "registration": {
           "v": 1,

@@ -389,7 +389,28 @@ def migrate(db):
     _sync_candidate_index_columns(db)
     _seed_stage_history(db)
     _backfill_process_status(db)
+    _ensure_guest_user(db)
     db.commit()
+
+
+def _ensure_guest_user(db):
+    """确保内置访客账号 guest / guest 存在（幂等）。"""
+    if db.execute("SELECT id FROM users WHERE username='guest'").fetchone():
+        return
+    from campus.core.roles_store import role_log_level
+    from campus.services.users import apply_role_to_user
+
+    now = now_str()
+    db.execute(
+        "INSERT INTO users (username, display_name, password_hash, role, supervisor, department, "
+        "dept_level2, dept_level3, pl_group, job_roles, extra, log_level, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("guest", "访客", generate_password_hash("guest"), "guest",
+         "", "", "", "", "", "[]", "{}", role_log_level("guest"), now),
+    )
+    uid = db.execute("SELECT id FROM users WHERE username='guest'").fetchone()["id"]
+    apply_role_to_user(db, uid, "guest")
+    print("已创建内置访客账号: guest / guest")
 
 
 def _backfill_process_status(db):
@@ -926,6 +947,8 @@ def init_db(demo=False):
         )
         db.commit()
         print("已创建默认管理员账号: admin / admin123")
+    _ensure_guest_user(db)
+    db.commit()
     if demo:
         seed_demo(db)
     db.close()

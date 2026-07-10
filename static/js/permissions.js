@@ -15,6 +15,8 @@ let permGridPage = 1;
 let permGridPageSize = defaultPageSize();
 let roleGridPage = 1;
 let roleGridPageSize = defaultPageSize();
+let permUserSort = null;
+let roleSort = { key: "r_perm_count", dir: -1 };
 
 const PERM_FLAGS = [
   ["v", "perm_visibility", "可见", "#2563eb"],
@@ -53,6 +55,8 @@ async function renderPermissions() {
   }
   permFilters = {};
   roleFilters = {};
+  permUserSort = null;
+  roleSort = { key: "r_perm_count", dir: -1 };
   permLoadColWidths();
   $("#main").innerHTML = `
     <div class="perm-page">
@@ -74,9 +78,11 @@ async function renderPermissions() {
           <div class="perm-section-title">用户信息管理
             <span class="perm-section-sub">用户仅维护账号、角色归属、日志等级与附属信息；模块权限统一由角色/组决定</span></div>
           <div class="perm-head-actions">
+            <button class="btn btn-sm" id="perm-user-template" title="下载用户批量导入模板">导入模板</button>
+            <button class="btn btn-sm" id="perm-user-import" title="按模板批量导入用户">批量导入</button>
+            <button class="btn btn-sm" id="perm-user-export" title="导出全部用户">批量导出</button>
             <button class="btn btn-primary btn-sm" id="perm-add-user">+ 新增用户</button>
             <button class="btn btn-sm" id="perm-batch-edit" disabled>批量修改附属信息</button>
-            <button class="btn btn-sm" id="perm-export">导出角色/组权限</button>
           </div>
         </div>
         <div class="perm-batch-bar">
@@ -141,7 +147,9 @@ async function renderPermissions() {
 
   $("#perm-add-user").addEventListener("click", () => openUserModal(null));
   $("#perm-batch-edit").addEventListener("click", openBatchEditModal);
-  $("#perm-export").addEventListener("click", () => { window.location.href = "/api/module-acl/export"; });
+  $("#perm-user-template").addEventListener("click", () => { window.location.href = "/api/users/import/template"; });
+  $("#perm-user-export").addEventListener("click", () => { window.location.href = "/api/users/export"; });
+  $("#perm-user-import").addEventListener("click", openUserImportModal);
   $("#role-add").addEventListener("click", () => openRoleModal(null));
   $("#role-batch-apply").addEventListener("click", () => roleBatchApply(false));
   $("#role-batch-revoke").addEventListener("click", () => roleBatchApply(true));
@@ -188,6 +196,122 @@ function permColumns() {
   cols.push({ id: "log_level", kind: "log_level", label: "日志等级" });
   cols.push({ id: "actions", kind: "actions", label: "操作" });
   return cols;
+}
+
+function permSortArrow(sortState, key) {
+  if (!sortState || sortState.key !== key) return "";
+  return sortState.dir === 1 ? " ↑" : " ↓";
+}
+
+function permSortableTh(label, sortKey, sortState, extraClass = "") {
+  if (!sortKey) return `<th class="${extraClass}" title="${esc(label)}">${esc(label)}</th>`;
+  return `<th class="sortable perm-sort-th ${extraClass}" data-sort-key="${sortKey}" title="点击排序">${esc(label)}<span class="sort-arrow">${permSortArrow(sortState, sortKey)}</span></th>`;
+}
+
+function togglePermGridSort(grid, key, cols) {
+  const st = grid === "role" ? roleSort : permUserSort;
+  let next;
+  if (!st || st.key !== key) next = { key, dir: 1 };
+  else if (st.dir === 1) next = { key, dir: -1 };
+  else next = null;
+  if (grid === "role") {
+    roleSort = next;
+    roleGridPage = 1;
+    renderRoleGridBody(cols);
+    renderRoleGridHead(cols);
+  } else {
+    permUserSort = next;
+    permGridPage = 1;
+    renderPermGridBody(cols);
+    renderPermGridHead(cols);
+  }
+}
+
+function compareSortValues(va, vb, dir) {
+  if (va === vb) return 0;
+  const aEmpty = va === "" || va == null;
+  const bEmpty = vb === "" || vb == null;
+  if (aEmpty && bEmpty) return 0;
+  if (aEmpty) return 1;
+  if (bEmpty) return -1;
+  if (typeof va === "number" && typeof vb === "number") return dir * (va - vb);
+  return dir * String(va).localeCompare(String(vb), "zh");
+}
+
+function rolePermCount(role) {
+  if (role.bypass) return 99999;
+  let n = 0;
+  for (const flags of Object.values(role.perms || {})) {
+    if (flags && (flags.v || flags.r || flags.w || flags.m)) n++;
+  }
+  return n;
+}
+
+function modulePermScore(flags, bypass) {
+  if (bypass) return 999;
+  return (flags.v ? 8 : 0) + (flags.r ? 4 : 0) + (flags.w ? 2 : 0) + (flags.m ? 1 : 0);
+}
+
+function sortPermUsers(list, sortState) {
+  if (!sortState) return list;
+  const { key, dir } = sortState;
+  return [...list].sort((a, b) => {
+    let va, vb;
+    if (key.startsWith("mod_")) {
+      const mk = key.slice(4);
+      va = modulePermScore(aclOf(a.id, mk), false);
+      vb = modulePermScore(aclOf(b.id, mk), false);
+    } else if (key.startsWith("f_")) {
+      va = a[key.slice(2)] ?? "";
+      vb = b[key.slice(2)] ?? "";
+    } else if (key === "role") {
+      va = permRoleLabel(a);
+      vb = permRoleLabel(b);
+    } else if (key === "log_level") {
+      const ra = (permOptions.roles || []).find(r => r.key === a.role);
+      const rb = (permOptions.roles || []).find(r => r.key === b.role);
+      va = ra?.log_level ?? a.log_level ?? 10;
+      vb = rb?.log_level ?? b.log_level ?? 10;
+    } else {
+      va = a[key] ?? "";
+      vb = b[key] ?? "";
+    }
+    return compareSortValues(va, vb, dir);
+  });
+}
+
+function sortPermRoles(list, sortState) {
+  if (!sortState) return list;
+  const { key, dir } = sortState;
+  return [...list].sort((a, b) => {
+    let va, vb;
+    if (key === "r_perm_count") {
+      va = rolePermCount(a);
+      vb = rolePermCount(b);
+    } else if (key.startsWith("mod_")) {
+      const mk = key.slice(4);
+      va = modulePermScore(rolePermOf(a.key, mk), a.bypass);
+      vb = modulePermScore(rolePermOf(b.key, mk), b.bypass);
+    } else if (key === "r_label") { va = a.label; vb = b.label; }
+    else if (key === "r_key") { va = a.key; vb = b.key; }
+    else if (key === "r_bypass") { va = a.bypass ? 1 : 0; vb = b.bypass ? 1 : 0; }
+    else if (key === "r_log_level") { va = a.log_level ?? 10; vb = b.log_level ?? 10; }
+    else if (key === "r_builtin") { va = a.builtin ? 1 : 0; vb = b.builtin ? 1 : 0; }
+    else return 0;
+    return compareSortValues(va, vb, dir);
+  });
+}
+
+function bindPermGridSortHeaders(grid, cols) {
+  const sel = grid === "role"
+    ? "#role-grid-left .perm-sort-th, #role-grid-right .perm-sort-th"
+    : "#perm-grid-left .perm-sort-th, #perm-grid-right .perm-sort-th";
+  document.querySelectorAll(sel).forEach(th => {
+    th.addEventListener("click", e => {
+      if (e.target.closest(".th-resize")) return;
+      togglePermGridSort(grid, th.dataset.sortKey, cols);
+    });
+  });
 }
 
 function cellValue(u, col) {
@@ -470,12 +594,13 @@ function permLabelRow(cols) {
   return cols.map(c => {
     if (c.kind === "check") return `<th class="col-check perm-col-check"><input type="checkbox" id="perm-check-all" title="全选"></th>`;
     if (c.kind === "actions") return `<th class="perm-actions-col">操作</th>`;
-    if (c.id === "username") return `<th class="col-username mono" title="${esc(c.label)}">${esc(c.label)}</th>`;
-    if (c.id === "display_name") return `<th class="col-name" title="${esc(c.label)}">${esc(c.label)}</th>`;
+    if (c.id === "username") return permSortableTh(c.label, "username", permUserSort, "col-username mono");
+    if (c.id === "display_name") return permSortableTh(c.label, "display_name", permUserSort, "col-name");
     const modCls = c.kind === "module" ? ` col-module perm-mod-head${c.module.type === "section" ? " is-section" : ""}` : "";
     const fieldCls = c.kind === "field" ? " col-field" : "";
     const roleCls = c.kind === "role" ? " col-role-h" : "";
-    return `<th class="${modCls}${fieldCls}${roleCls}" title="${esc(c.label)}">${esc(c.label)}</th>`;
+    const sortKey = c.kind === "field" ? `f_${c.field.key}` : c.kind === "module" ? `mod_${c.module.key}` : c.kind === "role" ? "role" : c.kind === "log_level" ? "log_level" : null;
+    return permSortableTh(c.label, sortKey, permUserSort, `${modCls}${fieldCls}${roleCls}`.trim());
   }).join("");
 }
 
@@ -510,7 +635,7 @@ function permRowCells(u, cols) {
     if (c.kind === "check") return `<td class="col-check perm-col-check"><input type="checkbox" class="perm-row-check" value="${u.id}"></td>`;
     if (c.kind === "actions") return `<td class="perm-actions-col"><div class="perm-actions">
       <button class="btn btn-sm" data-uedit="${u.id}">编辑</button>
-      ${u.id !== state.me.id ? `<button class="btn btn-sm btn-danger" data-udel="${u.id}">删除</button>` : ""}</div></td>`;
+      ${u.id !== state.me.id && !["admin", "guest"].includes(u.username) ? `<button class="btn btn-sm btn-danger" data-udel="${u.id}">删除</button>` : ""}</div></td>`;
     if (c.kind === "role") {
       const rdef = (permOptions.roles || []).find(r => r.key === u.role);
       const label = rdef ? rdef.label : (ROLE_NAMES[u.role] || u.role || "—");
@@ -569,6 +694,21 @@ function syncPermGridLayout() {
   }
 }
 
+function renderPermGridHead(cols) {
+  const { frozen, scroll } = permSplitCols(cols);
+  const left = $("#perm-grid-left");
+  const right = $("#perm-grid-right");
+  if (left?.tHead) left.tHead.innerHTML = `<tr>${permLabelRow(frozen)}</tr><tr class="perm-filter-row">${permFilterRow(frozen)}</tr>`;
+  if (right?.tHead) right.tHead.innerHTML = `<tr>${permLabelRow(scroll)}</tr><tr class="perm-filter-row">${permFilterRow(scroll)}</tr>`;
+  bindPermColFilters(cols);
+  bindPermGridSortHeaders("user", cols);
+  const checkAll = $("#perm-check-all");
+  if (checkAll) checkAll.addEventListener("change", e => {
+    document.querySelectorAll(".perm-row-check").forEach(cb => cb.checked = e.target.checked);
+    refreshPermBatchBtn();
+  });
+}
+
 function renderPermGrid() {
   const cols = permColumns();
   permRecomputeDefaultColWidths(cols);
@@ -582,6 +722,7 @@ function renderPermGrid() {
   applyPermColWidths(cols);
   bindPermColFilters(cols);
   bindPermColResize(cols);
+  bindPermGridSortHeaders("user", cols);
   const checkAll = $("#perm-check-all");
   if (checkAll) checkAll.addEventListener("change", e => {
     document.querySelectorAll(".perm-row-check").forEach(cb => cb.checked = e.target.checked);
@@ -592,7 +733,8 @@ function renderPermGrid() {
 
 function renderPermGridBody(cols) {
   const { frozen, scroll } = permSplitCols(cols);
-  const usersAll = permUsersCache.filter(u => rowPassesFilter(u, cols));
+  let usersAll = permUsersCache.filter(u => rowPassesFilter(u, cols));
+  usersAll = sortPermUsers(usersAll, permUserSort);
   permGridPage = paginateMeta(usersAll.length, permGridPage, permGridPageSize).page;
   const pg = paginateSlice(usersAll, permGridPage, permGridPageSize);
   const users = pg.items;
@@ -832,8 +974,8 @@ function openUserModal(user) {
       <div class="form-item"><label>工号（登录账号） *</label>
         <input id="uf-username" value="${user ? esc(user.username) : ""}" ${isNew ? "" : "disabled"}></div>
       <div class="form-item"><label>系统角色</label><select id="uf-role">${roleOptions}</select></div>
-      <div class="form-item"><label>密码 ${isNew ? "（默认 123456）" : "（留空则不修改）"}</label>
-        <input id="uf-password" type="text" ${isNew ? `value="123456"` : ""}></div>
+      <div class="form-item"><label>密码 ${isNew ? "（留空则默认同工号）" : "（留空则不修改）"}</label>
+        <input id="uf-password" type="text"></div>
       ${fieldRows}
     </div>
     ${jobRolesCheckboxHtml(user?.job_roles, user?.role || "user")}
@@ -845,9 +987,10 @@ function openUserModal(user) {
     const role = $("#uf-role").value;
     const payload = {
       username: $("#uf-username").value.trim(),
-      password: $("#uf-password").value,
       role,
     };
+    const pwd = $("#uf-password").value.trim();
+    if (pwd) payload.password = pwd;
     if (role === "interviewer") {
       payload.job_roles = [...document.querySelectorAll(".uf-job-role:checked")].map(cb => cb.value);
     } else {
@@ -905,6 +1048,48 @@ function openBatchEditModal() {
   });
 }
 
+function openUserImportModal() {
+  openModal("批量导入用户", `
+    <p class="muted" style="font-size:13px;line-height:1.6;margin:0 0 12px">
+      请先下载「导入模板」填写后上传。新用户默认密码与工号相同；密码列留空时亦按工号设置。
+      已存在工号将更新资料与角色（不填密码则不修改原密码）。</p>
+    <div class="form-item">
+      <label>Excel 文件（.xlsx）</label>
+      <input type="file" id="user-import-file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+    </div>
+    <div id="user-import-result" class="muted" style="font-size:12px;margin-top:8px"></div>`,
+    `<button class="btn" onclick="closeModal()">取消</button>
+     <button class="btn btn-primary" id="user-import-go">开始导入</button>`);
+  $("#user-import-go").addEventListener("click", async () => {
+    const file = $("#user-import-file").files?.[0];
+    if (!file) { toast("请选择文件", true); return; }
+    const btn = $("#user-import-go");
+    const resultEl = $("#user-import-result");
+    btn.disabled = true;
+    btn.textContent = "导入中…";
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/users/import", { method: "POST", body: fd, credentials: "same-origin" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || `导入失败 (${res.status})`);
+      const errTxt = (body.errors || []).length ? `<br>提示：${esc((body.errors || []).slice(0, 5).join("；"))}` : "";
+      resultEl.innerHTML = `新增 ${body.created || 0}，更新 ${body.updated || 0}，跳过 ${body.skipped || 0}${errTxt}`;
+      toast(`导入完成：新增 ${body.created || 0}，更新 ${body.updated || 0}`);
+      await loadPermData();
+      renderPermGrid();
+      renderRoleGrid();
+      refreshPermBatchBtn();
+    } catch (e) {
+      toast(e.message, true);
+      resultEl.textContent = e.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "开始导入";
+    }
+  });
+}
+
 /* ---------- 角色管理（与用户矩阵同构：Excel 式表格 + 内联勾选 + 批量授权） ---------- */
 
 const ROLE_FROZEN_COUNT = 3;
@@ -923,6 +1108,7 @@ function roleColumns() {
     { id: "r_bypass", kind: "bool", label: "全权" },
     { id: "r_log_level", kind: "log_level", label: "日志等级" },
     { id: "r_builtin", kind: "bool", label: "内置" },
+    { id: "r_perm_count", kind: "perm_count", label: "权限数" },
     { id: "r_actions", kind: "actions", label: "操作" },
   ];
   for (const m of permModuleCols) cols.push({ id: `rm_${m.key}`, kind: "module", module: m, label: m.label });
@@ -935,6 +1121,7 @@ function roleCellValue(role, col) {
   if (col.id === "r_bypass") return role.bypass ? "1" : "0";
   if (col.id === "r_log_level") return String(role.log_level ?? (role.bypass ? 1 : 10));
   if (col.id === "r_builtin") return role.builtin ? "1" : "0";
+  if (col.id === "r_perm_count") return String(rolePermCount(role));
   return "";
 }
 
@@ -1017,6 +1204,10 @@ function roleRecomputeDefaultColWidths(cols) {
     } else if (col.kind === "log_level") {
       maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
       maxW = Math.max(maxW, permMeasureText("L10", false, 12) + cellPad + 28);
+    } else if (col.id === "r_perm_count") {
+      maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
+      maxW = Math.max(maxW, permMeasureText("全权", false) + cellPad);
+      maxW = Math.max(maxW, permMeasureText("99", true) + cellPad);
     } else if (col.kind === "actions") {
       maxW = Math.max(maxW, permMeasureHeader(header) + cellPad);
       maxW = Math.max(maxW, permMeasureActions() + cellPad);
@@ -1124,10 +1315,14 @@ function roleLabelRow(cols) {
   return cols.map(c => {
     if (c.kind === "check") return `<th class="col-check perm-col-check"><input type="checkbox" id="role-check-all" title="全选"></th>`;
     if (c.kind === "actions") return `<th class="perm-actions-col">操作</th>`;
-    if (c.id === "r_key") return `<th class="col-username mono" title="${esc(c.label)}">${esc(c.label)}</th>`;
-    if (c.id === "r_label") return `<th class="col-name" title="${esc(c.label)}">${esc(c.label)}</th>`;
+    if (c.id === "r_key") return permSortableTh(c.label, "r_key", roleSort, "col-username mono");
+    if (c.id === "r_label") return permSortableTh(c.label, "r_label", roleSort, "col-name");
     const modCls = c.kind === "module" ? ` col-module perm-mod-head${c.module.type === "section" ? " is-section" : ""}` : "";
-    return `<th class="${modCls}" title="${esc(c.label)}">${esc(c.label)}</th>`;
+    const sortKey = c.id === "r_perm_count" ? "r_perm_count"
+      : c.kind === "module" ? `mod_${c.module.key}`
+      : c.kind === "bool" ? c.id
+      : c.kind === "log_level" ? "r_log_level" : null;
+    return permSortableTh(c.label, sortKey, roleSort, modCls);
   }).join("");
 }
 
@@ -1135,6 +1330,7 @@ function roleFilterRow(cols) {
   return cols.map(c => {
     if (c.kind === "check") return `<th class="col-check perm-col-check"></th>`;
     if (c.kind === "actions") return `<th class="perm-actions-col"></th>`;
+    if (c.id === "r_perm_count") return `<th></th>`;
     if (c.kind === "bool") {
       const opts = c.id === "r_bypass"
         ? `<option value="">全部</option><option value="1">全权</option><option value="0">普通</option>`
@@ -1167,6 +1363,11 @@ function roleRowCells(role, cols) {
       ${LOG_LEVELS.map(l => `<option value="${l}" ${String(role.log_level ?? 10) === String(l) ? "selected" : ""}>L${l}</option>`).join("")}
     </select></td>`;
     if (c.id === "r_builtin") return `<td><span class="badge badge-${role.builtin ? "gray" : "blue"}">${role.builtin ? "内置" : "自定义"}</span></td>`;
+    if (c.id === "r_perm_count") {
+      const n = rolePermCount(role);
+      const label = role.bypass ? "全权" : String(n);
+      return `<td class="mono" title="${role.bypass ? "全权角色" : `已配置 ${n} 个模块权限`}">${esc(label)}</td>`;
+    }
     if (c.kind === "module") {
       if (role.bypass) return `<td class="col-module perm-mod-cell"><span class="perm-dash" title="全权角色">—</span></td>`;
       const a = rolePermOf(role.key, c.module.key);
@@ -1214,6 +1415,16 @@ function syncRoleGridLayout() {
   }
 }
 
+function renderRoleGridHead(cols) {
+  const { frozen, scroll } = roleSplitCols(cols);
+  const left = $("#role-grid-left");
+  const right = $("#role-grid-right");
+  if (left?.tHead) left.tHead.innerHTML = `<tr>${roleLabelRow(frozen)}</tr><tr class="perm-filter-row">${roleFilterRow(frozen)}</tr>`;
+  if (right?.tHead) right.tHead.innerHTML = `<tr>${roleLabelRow(scroll)}</tr><tr class="perm-filter-row">${roleFilterRow(scroll)}</tr>`;
+  bindRoleColFilters(cols);
+  bindPermGridSortHeaders("role", cols);
+}
+
 function renderRoleGrid() {
   const cols = roleColumns();
   roleRecomputeDefaultColWidths(cols);
@@ -1228,6 +1439,7 @@ function renderRoleGrid() {
   applyRoleColWidths(cols);
   bindRoleColFilters(cols);
   bindRoleColResize(cols);
+  bindPermGridSortHeaders("role", cols);
   const checkAll = $("#role-check-all");
   if (checkAll) checkAll.addEventListener("change", e => {
     document.querySelectorAll(".role-row-check").forEach(cb => cb.checked = e.target.checked);
@@ -1237,7 +1449,8 @@ function renderRoleGrid() {
 
 function renderRoleGridBody(cols) {
   const { frozen, scroll } = roleSplitCols(cols);
-  const rolesAll = rolesCache().filter(r => rowPassesRoleFilter(r, cols));
+  let rolesAll = rolesCache().filter(r => rowPassesRoleFilter(r, cols));
+  rolesAll = sortPermRoles(rolesAll, roleSort);
   roleGridPage = paginateMeta(rolesAll.length, roleGridPage, roleGridPageSize).page;
   const pg = paginateSlice(rolesAll, roleGridPage, roleGridPageSize);
   const roles = pg.items;

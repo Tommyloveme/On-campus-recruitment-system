@@ -81,7 +81,12 @@ function closeModal() {
 }
 
 const ROLE_NAMES = {
-  admin: "系统管理员", user: "普通用户",
+  admin: "系统管理员",
+  user: "普通用户",
+  guest: "访客",
+  interviewer: "面试官",
+  manager: "主管",
+  hr: "人事",
 };
 const isAdmin = () => state.me && (state.me.is_admin === true || state.me.role === "admin");
 const canEdit = () => {
@@ -436,6 +441,11 @@ async function doLogin() {
 
 $("#login-btn").addEventListener("click", doLogin);
 $("#login-password").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
+$("#login-guest-btn")?.addEventListener("click", () => {
+  $("#login-username").value = "guest";
+  $("#login-password").value = "guest";
+  doLogin();
+});
 $("#logout-btn").addEventListener("click", async () => {
   await api("/api/logout", { method: "POST" });
   showLogin();

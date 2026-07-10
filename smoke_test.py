@@ -86,23 +86,23 @@ check("自助注册接口已关闭(404)", s == 404)
 # 管理员统一创建测试用户（角色仅 admin/user；新建用户无任何模块权限，由管理员在权限矩阵授予）
 test_emp = f"{uuid.uuid4().int % 100000000:08d}"
 s, _ = call("POST", "/api/users", {
-    "username": test_emp, "display_name": "Test", "supervisor": "张主管",
-    "dept_level2": "软件部", "password": "123456", "role": "user",
+    "username": test_emp, "display_name": "Test",
+    "dept_level2": "软件部", "role": "user",
 }, expect_error=True)
 check("管理员创建用户姓名须中文", s == 400)
 s, _ = call("POST", "/api/users", {
-    "username": "admin", "display_name": "假管理员", "supervisor": "张主管",
-    "dept_level2": "软件部", "password": "123456", "role": "user",
+    "username": "admin", "display_name": "假管理员",
+    "dept_level2": "软件部", "role": "user",
 }, expect_error=True)
 check("重复账号创建被拒", s == 400)
 s, crt = call("POST", "/api/users", {
-    "username": test_emp, "display_name": "管理员创建", "supervisor": "张主管",
+    "username": test_emp, "display_name": "管理员创建",
     "dept_level2": "软件部", "dept_level3": "块存储",
-    "password": "123456", "role": "user",
+    "role": "user",
 })
 check("管理员创建用户成功(含自定义附属字段)", s == 200 and crt.get("ok"))
-s, me_reg = call("POST", "/api/login", {"username": test_emp, "password": "123456"})
-check("管理员创建的用户可登录", s == 200 and me_reg["display_name"] == "管理员创建")
+s, me_reg = call("POST", "/api/login", {"username": test_emp, "password": test_emp})
+check("管理员创建的用户可登录(默认密码同工号)", s == 200 and me_reg["display_name"] == "管理员创建")
 check("新建用户角色为user", me_reg["role"] == "user")
 # 新建 user 角色用户默认应用角色权限模板（角色与权限捆绑），故可见登记模块
 s, mods_new = call("GET", "/api/permissions/modules")
@@ -116,7 +116,7 @@ def find_mod(mods_resp, key):
     return None
 check("新建user角色用户默认获登记模块权限", find_mod(mods_new, "registration")["visible"] is True)
 s, me_up = call("PUT", "/api/profile", {
-    "display_name": "管理员创建改", "supervisor": "王主管", "dept_level2": "软件部",
+    "display_name": "管理员创建改", "dept_level2": "软件部",
 })
 check("用户可更新个人资料", me_up["display_name"] == "管理员创建改")
 # 清理本节创建的临时用户（需管理员权限）
@@ -153,6 +153,17 @@ with opener.open(req) as r:
     tpl_headers = [c.value for c in load_workbook(io.BytesIO(r.read())).active[1]]
 check("登记导入模板不含简历编号", tpl_headers[0] == "候选人" and "简历编号" not in tpl_headers and "三层部门" not in tpl_headers)
 
+# 登记测试依赖 hr01/hr02 账号（演示数据或管理员预先创建）
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+for uname, dname in (("hr01", "招聘专员小王"), ("hr02", "招聘专员小李")):
+    s, users = call("GET", "/api/users")
+    if not any(u["username"] == uname for u in users):
+        call("POST", "/api/users", {
+            "username": uname, "display_name": dname,
+            "dept_level2": "软件部", "role": "user",
+            "password": "123456",
+        })
+
 # 3. 候选人 CRUD（清理可能残留的测试数据）
 for n in ("测试员", "导入甲", "导入乙", "三层部门测试", "自动带入测试", "无效接口人"):
     s, old = call("GET", f"/api/candidates?q={quote(n)}")
@@ -177,13 +188,13 @@ hr01 = next((u for u in users if u["username"] == "hr01"), None)
 if hr01:
     call("PUT", f"/api/users/{hr01['id']}", {
         "display_name": "招聘专员小王", "role": hr01["role"],
-        "supervisor": "李主管", "dept_level2": "软件部",
+        "dept_level2": "软件部",
     })
 hr02 = next((u for u in users if u["username"] == "hr02"), None)
 if hr02:
     call("PUT", f"/api/users/{hr02['id']}", {
         "display_name": "招聘专员小李", "role": hr02["role"],
-        "supervisor": "王主管", "dept_level2": "软件部",
+        "dept_level2": "软件部",
     })
 call("POST", "/api/login", {"username": "hr01", "password": "123456"})
 s, r_auto = call("POST", "/api/candidates", {
@@ -495,15 +506,17 @@ check("普通用户无用户管理权限", s == 403)
 
 # 9. 纯模块授权：无任何模块授权的用户无权限；按用户授予模块权限
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+s, roles_resp = call("GET", "/api/roles")
+if not any(r["key"] == "t_isolated_role" for r in roles_resp["roles"]):
+    call("POST", "/api/roles", {"key": "t_isolated_role", "label": "隔离测试", "perms": {}})
 s, users = call("GET", "/api/users")
 for u in users:
     if u["username"] in ("t_user", "t_isolated"):
         call("DELETE", f"/api/users/{u['id']}")
-# 创建一个隔离用户（显式不应用角色权限，故无任何模块权限）
+# 创建一个隔离用户（使用空权限角色）
 s, r_iso = call("POST", "/api/users", {"username": "t_isolated", "display_name": "隔离用户",
-                                       "password": "pw123", "role": "user",
-                                       "supervisor": "张主管", "dept_level2": "软件部",
-                                       "apply_role": False})
+                                       "password": "pw123", "role": "t_isolated_role",
+                                       "dept_level2": "软件部"})
 check("创建隔离用户", s == 200 and r_iso.get("ok"))
 iso_id = r_iso["id"]
 
@@ -521,7 +534,7 @@ for u in users:
         call("DELETE", f"/api/users/{u['id']}")
 s, _ = call("POST", "/api/users", {"username": "t_admin2", "display_name": "测试管理员",
                                    "password": "pw123", "role": "admin",
-                                   "supervisor": "张主管", "dept_level2": "软件部"})
+                                   "dept_level2": "软件部"})
 check("系统管理员可创建管理员", s == 200)
 
 # 9b. 按用户授予模块读权限：授予 hr02 overview 读 → hr02 可访问总览
@@ -634,10 +647,37 @@ check("已取消用户分组/资源分组/模板概念",
       "user_groups" not in perm_opts and "resource_groups" not in perm_opts
       and "permission_templates" not in perm_opts and "user_group_templates" not in perm_opts)
 check("附属信息字段由配置下发", any(f["key"] == "dept_level2" and f.get("type") == "select" for f in perm_opts["user_fields"]))
+check("附属信息不含主管字段", not any(f["key"] == "supervisor" for f in perm_opts["user_fields"]))
+check("角色含访客guest", any(r["key"] == "guest" for r in perm_opts.get("roles", [])))
+req_tpl = urllib.request.Request(BASE + "/api/users/import/template")
+with opener.open(req_tpl) as r:
+    user_tpl_headers = [c.value for c in load_workbook(io.BytesIO(r.read())).active[1]]
+check("用户导入模板含工号与角色", user_tpl_headers[:3] == ["工号", "姓名", "角色"] and "主管" not in user_tpl_headers)
+
+# 11a1. 访客角色：与普通用户相同可见性，仅读权限
+s, users_guest0 = call("GET", "/api/users")
+for u in users_guest0:
+    if u["username"] == "guest01":
+        call("DELETE", f"/api/users/{u['id']}")
+s, r_guest = call("POST", "/api/users", {
+    "username": "guest01", "display_name": "访客用户",
+    "dept_level2": "软件部", "role": "guest",
+})
+check("创建访客用户", s == 200 and r_guest.get("ok"))
+call("POST", "/api/login", {"username": "guest01", "password": "guest01"})
+s, mods_guest = call("GET", "/api/permissions/modules")
+check("访客可见登记模块", find_mod(mods_guest, "registration")["visible"] is True)
+check("访客登记模块只读", find_mod(mods_guest, "registration")["writable"] is False)
+s, _ = call("POST", "/api/candidates", {
+    "stage": "registration", "data": sample_reg_data("访客新增"),
+}, expect_error=True)
+check("访客不可新增候选人", s == 403)
+call("POST", "/api/login", {"username": "admin", "password": "admin123"})
+call("DELETE", f"/api/users/{r_guest['id']}")
 
 # 11b. 准备测试用户 perm_a（显式不应用角色权限，保持无任何模块权限，用于后续逐项授权测试）
 call("POST", "/api/users", {"username": "perm_a", "display_name": "权限甲", "role": "user",
-                            "supervisor": "张主管", "dept_level2": "软件部", "password": "123456",
+                            "dept_level2": "软件部",
                             "apply_role": False})
 s, users = call("GET", "/api/users")
 perm_a = next(u for u in users if u["username"] == "perm_a")
@@ -690,7 +730,7 @@ s, _ = call("PUT", f"/api/candidates/{mod_cid}",
 check("admin 推进候选人到技术面", s == 200)
 
 # perm_a 视角：tech_interview 可见可写 → 可更新
-call("POST", "/api/login", {"username": "perm_a", "password": "123456"})
+call("POST", "/api/login", {"username": "perm_a", "password": "perm_a"})
 s, mods_a = call("GET", "/api/permissions/modules")
 ti = find_mod(mods_a, "tech_interview")
 check("perm_a 可见可写 tech_interview", ti["visible"] is True and ti["writable"] is True)
@@ -703,7 +743,7 @@ call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 s, _ = call("PUT", f"/api/candidates/{mod_cid}",
             {"stage": "manager_interview", "data": {"manager_interview_time": "2026-07-03 10:00"}})
 check("admin 推进到主管面", s == 200)
-call("POST", "/api/login", {"username": "perm_a", "password": "123456"})
+call("POST", "/api/login", {"username": "perm_a", "password": "perm_a"})
 s, _ = call("PUT", f"/api/candidates/{mod_cid}",
             {"stage": "manager_interview", "data": {"manager_interview_time": "2026-07-04 10:00"}},
             expect_error=True)
@@ -718,7 +758,7 @@ call("PUT", "/api/module-acl", {
     "subject_type": "user", "subject_id": perm_a["id"], "module_key": "recruit_flow",
     "perm_visibility": 1, "perm_read": 1, "perm_write": 0, "perm_manage": 0,
 })
-call("POST", "/api/login", {"username": "perm_a", "password": "123456"})
+call("POST", "/api/login", {"username": "perm_a", "password": "perm_a"})
 s, mods_a3 = call("GET", "/api/permissions/modules")
 qual = find_mod(mods_a3, "qualification")
 check("子模块继承板块读权限", qual["visible"] is True and qual["readable"] is True and qual["writable"] is False)
@@ -733,7 +773,7 @@ s, _ = call("POST", "/api/module-acl/batch", {"mode": "set", "entries": entries_
 check("批量授 manage 需二次确认", s == 400)
 s, bset = call("POST", "/api/module-acl/batch", {"mode": "set", "entries": entries_set, "confirm": True})
 check("模块批量填充执行成功", s == 200 and bset["affected"] == 1)
-call("POST", "/api/login", {"username": "perm_a", "password": "123456"})
+call("POST", "/api/login", {"username": "perm_a", "password": "perm_a"})
 s, mods_a4 = call("GET", "/api/permissions/modules")
 ob = find_mod(mods_a4, "onboarding")
 check("perm_a 批量获 onboarding 写+管理", ob["writable"] is True)
@@ -749,7 +789,7 @@ s, prev = call("POST", "/api/module-acl/batch", {"mode": "revoke", "entries": en
 check("模块批量撤销预览", s == 200 and prev["dry_run"] and prev["preview"]["entry_count"] == 3)
 s, bres = call("POST", "/api/module-acl/batch", {"mode": "revoke", "entries": entries_rev, "dry_run": False})
 check("模块批量撤销执行", s == 200 and bres["affected"] == 3)
-call("POST", "/api/login", {"username": "perm_a", "password": "123456"})
+call("POST", "/api/login", {"username": "perm_a", "password": "perm_a"})
 s, mods_a5 = call("GET", "/api/permissions/modules")
 check("perm_a 撤销后无任何模块可见", find_mod(mods_a5, "registration")["visible"] is False
       and find_mod(mods_a5, "tech_interview")["visible"] is False)
@@ -796,7 +836,7 @@ check("角色编辑已持久化", _tr["label"] == "测试角色改" and _tr["per
 # 应用角色权限到用户：把 perm_a 的角色改为 test_role 并应用其权限模板（覆盖原有模块权限）
 s, r_ap = call("PUT", f"/api/users/{perm_a['id']}", {"role": "test_role", "apply_role": True})
 check("切换用户角色并应用权限", s == 200)
-call("POST", "/api/login", {"username": "perm_a", "password": "123456"})
+call("POST", "/api/login", {"username": "perm_a", "password": "perm_a"})
 s, mods_ap = call("GET", "/api/permissions/modules")
 check("perm_a 应用测试角色后可见主管面写",
       find_mod(mods_ap, "manager_interview")["writable"] is True)

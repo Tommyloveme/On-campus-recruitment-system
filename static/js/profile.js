@@ -23,25 +23,33 @@ function userProfileConfig() {
   return window.accountOptions || accountOptions;
 }
 
-function renderDeptLevelSelects(l2El, l3El, l2Val, l3Val) {
-  if (!l2El || !l3El) return;
+function profileFieldInputHtml(f, val) {
+  const v = val ?? "";
+  if (f.type === "select") {
+    const opts = ["", ...(f.options || [])].map(o =>
+      `<option value="${esc(o)}" ${o === v ? "selected" : ""}>${o === "" ? "（未填写）" : esc(o)}</option>`).join("");
+    return `<select id="profile-${f.key}">${opts}</select>`;
+  }
+  return `<input id="profile-${f.key}" value="${esc(v)}">`;
+}
+
+function renderDeptLevelSelect(l2El, l2Val) {
+  if (!l2El) return;
   const f2 = findField("dept_level2");
-  const f3 = findField("dept_level3");
   const l2Opts = (f2 && f2.options) || [];
-  const l3Opts = (f3 && f3.options) || [];
   l2El.innerHTML = "<option value=\"\">请选择</option>" +
     l2Opts.map(o => `<option value="${esc(o)}"${o === l2Val ? " selected" : ""}>${esc(o)}</option>`).join("");
-  l3El.innerHTML = "<option value=\"\">（可选）</option>" +
-    l3Opts.map(o => `<option value="${esc(o)}"${o === l3Val ? " selected" : ""}>${esc(o)}</option>`).join("");
 }
 
 function collectUserProfilePayload() {
-  return {
-    display_name: $("#profile-display").value.trim(),
-    supervisor: $("#profile-supervisor").value.trim(),
-    dept_level2: $("#profile-dept-level2").value,
-    dept_level3: $("#profile-dept-level3").value.trim(),
-  };
+  const payload = { display_name: $("#profile-display").value.trim() };
+  for (const f of (userProfileConfig().user_fields || [])) {
+    if (f.key === "display_name") continue;
+    const el = $(`#profile-${f.key}`);
+    if (!el) continue;
+    payload[f.key] = f.type === "select" ? el.value : el.value.trim();
+  }
+  return payload;
 }
 
 function bindPasswordToggles(root = document) {
@@ -61,8 +69,17 @@ function bindPasswordToggles(root = document) {
 
 function openProfileModal() {
   const showSysRole = isAdmin();
-  const l2 = state.me.dept_level2 || "";
-  const l3 = state.me.dept_level3 || "";
+  const fields = (userProfileConfig().user_fields || []).filter(f => f.key !== "display_name");
+  const fieldRows = fields.map(f => {
+    const val = state.me[f.key] ?? "";
+    if (f.key === "dept_level2") {
+      return `<div class="form-item"><label>${esc(f.label)}${f.required ? " *" : ""}</label>
+        <select id="profile-dept_level2"></select></div>`;
+    }
+    const hint = f.pattern === "chinese" ? `<p class="field-hint">${esc(f.label)}须为中文</p>` : "";
+    return `<div class="form-item"><label>${esc(f.label)}${f.required ? " *" : ""}</label>
+      ${profileFieldInputHtml(f, val)}${hint}</div>`;
+  }).join("");
   openModal("我的账户", `
     <div class="form-grid" style="grid-template-columns:1fr 1fr">
       <div class="form-item"><label>工号</label>
@@ -70,13 +87,7 @@ function openProfileModal() {
       <div class="form-item"><label>姓名 *</label>
         <input id="profile-display" value="${esc(state.me.display_name)}">
         <p class="field-hint">姓名须为中文</p></div>
-      <div class="form-item"><label>主管 *</label>
-        <input id="profile-supervisor" value="${esc(state.me.supervisor || "")}">
-        <p class="field-hint">主管须为中文</p></div>
-      <div class="form-item"><label>二层部门 *</label>
-        <select id="profile-dept-level2"></select></div>
-      <div class="form-item"><label>三层部门</label>
-        <select id="profile-dept-level3"></select></div>
+      ${fieldRows}
       ${showSysRole ? `<div class="form-item"><label>系统角色</label>
         <input value="${esc(ROLE_NAMES[state.me.role] || state.me.role)}" disabled></div>` : ""}
       <div class="form-item"><label>新密码（留空则不修改）</label>
@@ -90,7 +101,7 @@ function openProfileModal() {
     </div>`,
     `<button class="btn" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="profile-save">保存</button>`);
-  renderDeptLevelSelects($("#profile-dept-level2"), $("#profile-dept-level3"), l2, l3);
+  renderDeptLevelSelect($("#profile-dept_level2"), state.me.dept_level2 || "");
   bindPasswordToggles($("#modal-body"));
   $("#profile-save").addEventListener("click", async () => {
     const payload = {

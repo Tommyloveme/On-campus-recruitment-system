@@ -10,14 +10,6 @@
       "pattern": "chinese"
     },
     {
-      "key": "supervisor",
-      "label": "主管",
-      "type": "text",
-      "required": true,
-      "builtin": true,
-      "pattern": "chinese"
-    },
-    {
       "key": "dept_level2",
       "label": "二层部门",
       "type": "select",
