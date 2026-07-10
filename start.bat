@@ -8,9 +8,9 @@ if not exist venv (
     python -m venv venv || (echo 创建虚拟环境失败，请确认已安装 Python 3.9+ && pause && exit /b 1)
 )
 
-echo [2/3] 安装依赖...
+echo [2/3] 检查依赖...
 set "PIP_CONFIG_FILE=%~dp0pip\pip.ini"
-venv\Scripts\python -m pip install -q -r requirements.txt || (echo 依赖安装失败 && pause && exit /b 1)
+venv\Scripts\python scripts\ensure_deps.py || (echo 依赖安装失败 && pause && exit /b 1)
 
 echo [3/3] 启动服务（首次运行会创建默认管理员 admin / admin123）...
 rem 若端口已被旧实例占用，先停止再启动（避免“端口已占用”导致无法启动）

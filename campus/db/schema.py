@@ -155,7 +155,32 @@ CREATE TABLE IF NOT EXISTS feedback (
     reply_at TEXT,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS app_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
+
+
+def _meta_get(db, key, default=None):
+    row = db.execute("SELECT value FROM app_meta WHERE key=?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def _meta_set(db, key, value):
+    db.execute(
+        "INSERT INTO app_meta (key, value) VALUES (?,?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (key, str(value)),
+    )
+
+
+def _migration_done(db, name):
+    return _meta_get(db, f"migration:{name}") == "1"
+
+
+def _migration_mark(db, name):
+    _meta_set(db, f"migration:{name}", "1")
 
 
 def _baseline_module_rows(uid, now):
@@ -274,18 +299,20 @@ def migrate(db):
     cand_cols = {r["name"] for r in db.execute("PRAGMA table_info(candidates)").fetchall()}
     if "phone" not in cand_cols:
         db.execute("ALTER TABLE candidates ADD COLUMN phone TEXT")
-    seen_phones = {}
-    for row in db.execute("SELECT id, data, phone FROM candidates ORDER BY id").fetchall():
-        data = json.loads(row["data"])
-        ph = (row["phone"] or data.get("phone") or "").strip()
-        if not ph:
-            continue
-        if ph in seen_phones:
-            db.execute("UPDATE candidates SET phone=NULL WHERE id=?", (row["id"],))
-            continue
-        seen_phones[ph] = row["id"]
-        if (row["phone"] or "").strip() != ph:
-            db.execute("UPDATE candidates SET phone=? WHERE id=?", (ph, row["id"]))
+    if not _migration_done(db, "phone_dedup"):
+        seen_phones = {}
+        for row in db.execute("SELECT id, data, phone FROM candidates ORDER BY id").fetchall():
+            data = json.loads(row["data"])
+            ph = (row["phone"] or data.get("phone") or "").strip()
+            if not ph:
+                continue
+            if ph in seen_phones:
+                db.execute("UPDATE candidates SET phone=NULL WHERE id=?", (row["id"],))
+                continue
+            seen_phones[ph] = row["id"]
+            if (row["phone"] or "").strip() != ph:
+                db.execute("UPDATE candidates SET phone=? WHERE id=?", (ph, row["id"]))
+        _migration_mark(db, "phone_dedup")
     db.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_candidates_phone_unique
         ON candidates(phone) WHERE phone IS NOT NULL AND phone != ''
@@ -367,6 +394,8 @@ def migrate(db):
 
 def _backfill_process_status(db):
     """为缺少「流程状态」的候选人按规则重算补齐（列表展示用）。"""
+    if _migration_done(db, "process_status"):
+        return
     from campus.db.field_store import field_get
     for row in db.execute("SELECT id, data FROM candidates").fetchall():
         data = json.loads(row["data"])
@@ -375,48 +404,44 @@ def _backfill_process_status(db):
         stage = compute_current_stage(data)
         db.execute("UPDATE candidates SET data=?, current_stage=? WHERE id=?",
                    (json.dumps(data, ensure_ascii=False), stage, row["id"]))
+    _migration_mark(db, "process_status")
 
 
 def _pinyin_reverse_map(db):
     """拼音键 → 中文表头映射。
 
-    反推来源：已上传的主数据 Excel 表头（最完整）、主数据原始表中文列名、
-    data_hub 中文标签。用历史拼音算法对每个中文表头重放，得到 拼音→中文。
+    反推来源：field_mappings 配置、主数据原始表抽样、data_hub 中文标签。
+    不再遍历大体积 Excel（启动时打开 5 万行 xlsx 极慢）。
     """
     from campus.services.master_import import header_to_pinyin_key
     headers = set()
 
-    # 1) 已上传的主数据 Excel 文件表头
-    master_dir = os.path.join(os.path.dirname(DB_PATH), "master_import")
-    if os.path.isdir(master_dir):
-        try:
-            from openpyxl import load_workbook
-            for root, _dirs, files in os.walk(master_dir):
-                for fn in files:
-                    if not fn.lower().endswith(".xlsx"):
-                        continue
-                    try:
-                        wb = load_workbook(os.path.join(root, fn),
-                                           read_only=True, data_only=True)
-                        for ws in wb.worksheets:
-                            first = next(ws.iter_rows(max_row=1, values_only=True), ())
-                            headers.update(str(h).strip() for h in first if h)
-                    except Exception:
-                        continue
-        except ImportError:
-            pass
+    try:
+        from campus.core.master_import_config import load_master_import_config
+        cfg = load_master_import_config("registration")
+        for f in (cfg.get("field_mappings") or {}).get("fields", []):
+            for src in (f.get("sources") or {}).values():
+                col = (src.get("excel_column") or "").strip()
+                if col:
+                    headers.add(col)
+                for alias in src.get("excel_aliases") or []:
+                    a = str(alias).strip()
+                    if a:
+                        headers.add(a)
+    except (ValueError, OSError, ImportError):
+        pass
 
-    # 2) 主数据原始表「字段」命名空间的中文列名
-    for row in db.execute("SELECT data FROM candidates_raw_master").fetchall():
+    # 主数据原始表：抽样一行即可拿到中文列名全集（每行结构相同）
+    row = db.execute("SELECT data FROM candidates_raw_master LIMIT 1").fetchone()
+    if row:
         try:
             d = json.loads(row["data"])
+            labels = d.get("字段")
+            if isinstance(labels, dict):
+                headers.update(k for k in labels if isinstance(k, str))
         except (TypeError, json.JSONDecodeError):
-            continue
-        labels = d.get("字段")
-        if isinstance(labels, dict):
-            headers.update(k for k in labels if isinstance(k, str))
+            pass
 
-    # 3) data_hub 的中文标签
     for row in db.execute(
         "SELECT DISTINCT field_label FROM data_hub WHERE field_label != ''"
     ).fetchall():
@@ -435,8 +460,11 @@ def _pinyin_reverse_map(db):
 
 def _migrate_pinyin_keys(db):
     """历史拼音键（如 nian_ling）→ 中文表头键（如 年龄）。"""
+    if _migration_done(db, "pinyin_keys"):
+        return
     rev = _pinyin_reverse_map(db)
     if not rev:
+        _migration_mark(db, "pinyin_keys")
         return
 
     def _fix(d):
@@ -479,31 +507,36 @@ def _migrate_pinyin_keys(db):
             db.execute("UPDATE candidates_raw_master SET data=? WHERE phone=?",
                        (json.dumps(d, ensure_ascii=False), row["phone"]))
 
-    for py, cn in rev.items():
-        exists = db.execute(
-            "SELECT 1 FROM data_hub WHERE field_key=? LIMIT 1", (py,)).fetchone()
-        if not exists:
-            continue
-        db.execute(
-            "UPDATE data_hub SET field_key=?, field_label=? WHERE field_key=? "
-            "AND NOT EXISTS (SELECT 1 FROM data_hub d2 WHERE d2.source=data_hub.source "
-            "AND d2.tab_key=data_hub.tab_key AND d2.resume_id=data_hub.resume_id AND d2.field_key=?)",
-            (cn, cn, py, cn),
-        )
-        db.execute("DELETE FROM data_hub WHERE field_key=?", (py,))
+    # 仅当 data_hub 仍存在拼音键时才批量改写
+    py_keys = list(rev.keys())
+    if py_keys:
+        placeholders = ",".join("?" * len(py_keys))
+        has_pinyin = db.execute(
+            f"SELECT 1 FROM data_hub WHERE field_key IN ({placeholders}) LIMIT 1",
+            py_keys,
+        ).fetchone()
+        if has_pinyin:
+            for py, cn in rev.items():
+                db.execute(
+                    "UPDATE data_hub SET field_key=?, field_label=? WHERE field_key=? "
+                    "AND NOT EXISTS (SELECT 1 FROM data_hub d2 WHERE d2.source=data_hub.source "
+                    "AND d2.tab_key=data_hub.tab_key AND d2.resume_id=data_hub.resume_id AND d2.field_key=?)",
+                    (cn, cn, py, cn),
+                )
+                db.execute("DELETE FROM data_hub WHERE field_key=?", (py,))
+
+    _migration_mark(db, "pinyin_keys")
 
 
 def _seed_stage_history(db):
     """为无阶段历史的候选人补一条当前阶段的进入记录（停留时长统计基线）。"""
-    for row in db.execute(
-        "SELECT c.id, c.current_stage, c.updated_at, c.created_at FROM candidates c "
+    db.execute(
+        "INSERT INTO candidate_stage_history (candidate_id, stage, entered_at) "
+        "SELECT c.id, COALESCE(NULLIF(c.current_stage, ''), 'registration'), "
+        "COALESCE(c.updated_at, c.created_at) "
+        "FROM candidates c "
         "WHERE NOT EXISTS (SELECT 1 FROM candidate_stage_history h WHERE h.candidate_id=c.id)"
-    ).fetchall():
-        db.execute(
-            "INSERT INTO candidate_stage_history (candidate_id, stage, entered_at) VALUES (?,?,?)",
-            (row["id"], row["current_stage"] or "registration",
-             row["updated_at"] or row["created_at"]),
-        )
+    )
 
 
 def _migrate_chinese_field_keys(db):
@@ -514,9 +547,12 @@ def _migrate_chinese_field_keys(db):
         normalize_record,
         reload_field_registry,
     )
-    # 启动时按最新配置（阶段字段 + 主数据映射）重建注册表，保证新增映射字段立即生效
+    # 启动时按最新配置重建注册表（轻量，保证新增映射立即生效）
     build_field_registry(save=True)
     reload_field_registry()
+
+    if _migration_done(db, "chinese_field_keys"):
+        return
 
     def _migrate_json(raw):
         if not raw:
@@ -539,7 +575,6 @@ def _migrate_chinese_field_keys(db):
             if new_data != row["data"]:
                 db.execute(f"UPDATE {table} SET data=? WHERE {pk}=?", (new_data, row[pk]))
 
-    # 主数据原始表：双命名空间分别规范化（fields → 字段键，内层键转中文）
     for row in db.execute("SELECT phone, data FROM candidates_raw_master").fetchall():
         try:
             d = json.loads(row["data"])
@@ -564,6 +599,8 @@ def _migrate_chinese_field_keys(db):
         if cn and cn != row["field_key"]:
             db.execute("UPDATE data_hub SET field_key=? WHERE id=?", (cn, row["id"]))
 
+    _migration_mark(db, "chinese_field_keys")
+
 
 def _sync_candidate_index_columns(db):
     """回填 candidates 索引列与 candidate_pipeline 表。"""
@@ -577,7 +614,21 @@ def _sync_candidate_index_columns(db):
         db.execute("ALTER TABLE candidates ADD COLUMN current_stage TEXT DEFAULT 'registration'")
 
     now = now_str()
-    for row in db.execute("SELECT id, data, phone, resume_id, current_stage FROM candidates").fetchall():
+    # 增量：仅为尚无 pipeline 记录的候选人补一行（O(缺失数)，日常启动极快）
+    db.execute(
+        "INSERT INTO candidate_pipeline (candidate_id, current_stage, manual_stage, updated_at) "
+        "SELECT c.id, COALESCE(NULLIF(c.current_stage, ''), 'registration'), '', ? "
+        "FROM candidates c "
+        "WHERE NOT EXISTS (SELECT 1 FROM candidate_pipeline p WHERE p.candidate_id=c.id)",
+        (now,),
+    )
+
+    if _migration_done(db, "candidate_index_backfill"):
+        return
+
+    for row in db.execute(
+        "SELECT id, data, phone, resume_id, current_stage FROM candidates"
+    ).fetchall():
         data = json.loads(row["data"])
         rid = (row["resume_id"] or field_get(data, "resume_id") or "").strip()
         stage = (row["current_stage"] or field_get(data, "current_stage") or "registration").strip()
@@ -594,6 +645,7 @@ def _sync_candidate_index_columns(db):
             "updated_at=excluded.updated_at",
             (row["id"], stage or "registration", manual or "", now),
         )
+    _migration_mark(db, "candidate_index_backfill")
 
 
 def _backfill_raw_manual(db):
@@ -691,6 +743,8 @@ def _merge_dept_pl_dict(data):
 
 def _merge_dept_pl_columns(db):
     """历史数据迁移：拓源人/接口人「部门」「PL组」两列合并为信息列（部门/PL）。"""
+    if _migration_done(db, "dept_pl_merge"):
+        return
     for table, key_col in (("candidates", "id"), ("candidates_raw_manual", "phone")):
         for row in db.execute(f"SELECT {key_col}, data FROM {table}").fetchall():
             try:
@@ -702,14 +756,16 @@ def _merge_dept_pl_columns(db):
             if _merge_dept_pl_dict(data):
                 db.execute(f"UPDATE {table} SET data=? WHERE {key_col}=?",
                            (json.dumps(data, ensure_ascii=False), row[key_col]))
-    # 总表中的独立 PL组 行不再有对应列，直接清理
     db.execute(
         "DELETE FROM data_hub WHERE field_key IN "
         "('拓源人PL组', '接口人PL组', 'sourcer_pl_group', 'interface_person_pl_group')")
+    _migration_mark(db, "dept_pl_merge")
 
 
 def _rename_dept_info_keys(db):
     """历史数据：拓源人部门/接口人部门 → 拓源人信息/接口人信息。"""
+    if _migration_done(db, "dept_info_rename"):
+        return
     for table, key_col in (("candidates", "id"), ("candidates_raw_manual", "phone"),
                            ("candidates_raw_master", "phone")):
         for row in db.execute(f"SELECT {key_col}, data FROM {table}").fetchall():
@@ -720,7 +776,6 @@ def _rename_dept_info_keys(db):
             if not isinstance(data, dict):
                 continue
             changed = False
-            # 主数据原始表可能是双命名空间
             payloads = [data]
             for ns in ("字段键", "fields", "字段"):
                 if isinstance(data.get(ns), dict):
@@ -744,10 +799,13 @@ def _rename_dept_info_keys(db):
             (new_k, new_k, old_k, new_k),
         )
         db.execute("DELETE FROM data_hub WHERE field_key=?", (old_k,))
+    _migration_mark(db, "dept_info_rename")
 
 
 def _backfill_candidate_employee_names(db):
     """历史候选人：补全拓源人/接口人中文姓名与部门（列表展示用）。"""
+    if _migration_done(db, "employee_names"):
+        return
     for row in db.execute("SELECT id, data FROM candidates").fetchall():
         data = json.loads(row["data"])
         changed = False
@@ -778,6 +836,7 @@ def _backfill_candidate_employee_names(db):
                 "UPDATE candidates SET data=? WHERE id=?",
                 (json.dumps(data, ensure_ascii=False), row["id"]),
             )
+    _migration_mark(db, "employee_names")
 
 
 def seed_demo(db):
@@ -845,14 +904,19 @@ def seed_demo(db):
 
 
 def init_db(demo=False):
+    import time
+    from campus.core.logging_util import log
+
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     os.makedirs(RESUME_DIR, exist_ok=True)
     os.makedirs(FEEDBACK_DIR, exist_ok=True)
+    t0 = time.perf_counter()
     db = sqlite3.connect(DB_PATH)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA journal_mode = WAL")
     db.executescript(SCHEMA)
     migrate(db)
+    log.info("数据库初始化/迁移完成 elapsed=%.2fs", time.perf_counter() - t0)
     if db.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"] == 0:
         db.execute(
             "INSERT INTO users (username, display_name, password_hash, role, supervisor, department, extra, log_level, created_at) "

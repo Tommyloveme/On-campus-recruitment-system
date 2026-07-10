@@ -10,9 +10,9 @@ if [ ! -d venv ]; then
     "$PYTHON" -m venv venv
 fi
 
-echo "[2/3] 安装依赖..."
+echo "[2/3] 检查依赖..."
 export PIP_CONFIG_FILE="$(dirname "$0")/pip/pip.ini"
-venv/bin/python -m pip install -q -r requirements.txt
+venv/bin/python scripts/ensure_deps.py
 
 echo "[3/3] 启动服务（首次运行会创建默认管理员 admin / admin123）..."
 # 若端口已被旧实例占用，先停止再启动
