@@ -38,8 +38,8 @@
         { "key": "major", "label": "专业" },
         { "key": "registration_source", "label": "来源渠道" },
         { "key": "delivery_time", "label": "投递时间" },
-        { "key": "registration_status", "label": "登记状态" },
         { "source": "computed", "key": "current_stage_label", "label": "当前流程" },
+        { "key": "stage_action_status", "label": "环节状态" },
         { "source": "hub", "hub_source": "master_import", "field": "当前环节", "label": "主数据-当前环节" },
         { "source": "hub", "hub_source": "master_import", "field": "应聘状态", "label": "主数据-应聘状态" }
       ]

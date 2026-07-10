@@ -22,15 +22,21 @@
       "importable": false
     },
     {
-      "key": "registration_status",
-      "label": "登记状态",
-      "excel_column": "登记状态",
+      "key": "stage_action_status",
+      "label": "环节状态",
+      "excel_column": "环节状态",
       "type": "select",
-      "options": ["待投递", "已投递", "已放弃"],
-      "colors": { "待投递": "blue", "已投递": "green", "已放弃": "red" },
-      "visible": true,
-      "editable": true,
-      "importable": true
+      "options": ["待处理", "处理中", "通过", "未通过", "放弃"],
+      "colors": {
+        "待处理": "gray",
+        "处理中": "blue",
+        "通过": "green",
+        "未通过": "red",
+        "放弃": "yellow"
+      },
+      "visible": false,
+      "editable": false,
+      "importable": false
     },
     {
       "key": "registration_time",

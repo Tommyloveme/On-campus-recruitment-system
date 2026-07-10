@@ -13,7 +13,6 @@
     "school",
     "major",
     "registration_source",
-    "registration_status",
     "registration_remark"
   ],
   "frozen_column_count": 6,
@@ -45,7 +44,6 @@
     "school": true,
     "major": true,
     "registration_source": true,
-    "registration_status": true,
     "registration_remark": true,
     "work_location": false,
     "graduation_time": false,
@@ -57,7 +55,6 @@
     "phone": true,
     "registration_source": true,
     "registration_source_custom": true,
-    "registration_status": true,
     "registration_time": true,
     "delivery_time": false,
     "registration_remark": true,

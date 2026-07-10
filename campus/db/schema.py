@@ -414,15 +414,17 @@ def _ensure_guest_user(db):
 
 
 def _backfill_process_status(db):
-    """为缺少「流程状态」的候选人按规则重算补齐（列表展示用）。"""
+    """为缺少环节状态的候选人按规则重算补齐。"""
     if _migration_done(db, "process_status"):
         return
     from campus.db.field_store import field_get
+    from campus.domain.stage_routing import sync_stage_action_status
     for row in db.execute("SELECT id, data FROM candidates").fetchall():
         data = json.loads(row["data"])
-        if str(field_get(data, "process_status") or "").strip():
+        if str(field_get(data, "stage_action_status") or "").strip():
             continue
         stage = compute_current_stage(data)
+        sync_stage_action_status(data)
         db.execute("UPDATE candidates SET data=?, current_stage=? WHERE id=?",
                    (json.dumps(data, ensure_ascii=False), stage, row["id"]))
     _migration_mark(db, "process_status")
@@ -878,7 +880,7 @@ def seed_demo(db):
         )
     samples = [
         {"name": "张伟", "phone": "13800000001", "interface_person": "刘洋",
-              "dept_level3": "存储部", "registration_status": "已登记", "registration_source": "校园宣讲",
+              "dept_level3": "存储部", "registration_source": "校园宣讲",
               "resume_screening_status": "通过", "qualification_status": "通过", "written_test_status": "已完成", "written_test_score": "85",
               "tech_interview_status": "已完成", "tech_interview_result": "通过",
               "manager_interview_status": "已完成", "manager_interview_result": "通过",
@@ -888,7 +890,7 @@ def seed_demo(db):
               "physical_exam_time": "2026-06-20", "physical_exam_done": "否", "onboard_booked": "是",
               "onboard_booked_time": "2026-07-15", "onboarded": "否", "onboard_risk": "低"},
         {"name": "李娜", "phone": "13800000002", "interface_person": "刘洋",
-              "dept_level3": "计算部", "registration_status": "已登记",
+              "dept_level3": "计算部",
               "qualification_status": "通过", "written_test_status": "已完成",
               "tech_interview_status": "已完成", "tech_interview_result": "通过",
               "manager_interview_status": "已完成", "manager_interview_result": "通过",
@@ -897,7 +899,7 @@ def seed_demo(db):
               "work_location": "杭州", "graduation_time": "2026-06-30", "expected_onboard_time": "2026-08-01",
               "physical_exam_done": "否", "onboard_booked": "否", "onboarded": "否", "onboard_risk": "中"},
         {"name": "陈强", "phone": "13800000003", "interface_person": "孙敏",
-              "dept_level3": "软件部", "registration_status": "已登记",
+              "dept_level3": "软件部",
               "qualification_status": "通过", "written_test_status": "已预约",
               "tech_interview_status": "待预约",
               "work_location": "上海", "graduation_time": "2026-07-01",

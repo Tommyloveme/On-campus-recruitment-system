@@ -28,6 +28,18 @@ COMMON_STAGE = "_common"
 _STAGES_META_CACHE = {"stamp": None, "stages": None}
 
 
+def _apply_flow_numbering(stage):
+    """为流程阶段生成带编号的展示标签（供侧栏、列表、导出等使用）。"""
+    code = str(stage.get("flow_code") or "").strip()
+    if not code:
+        return stage
+    short = stage.get("short_label") or stage.get("label") or stage["key"]
+    label = stage.get("label") or short
+    stage["numbered_short_label"] = f"{code}-{short}"
+    stage["numbered_label"] = f"{code}-{label}"
+    return stage
+
+
 def load_stages_meta():
     """读取阶段元数据列表（按 order 排序，带 mtime 缓存）。"""
     try:
@@ -37,9 +49,42 @@ def load_stages_meta():
     if _STAGES_META_CACHE["stages"] is None or _STAGES_META_CACHE["stamp"] != stamp:
         with open(STAGES_PATH, encoding="utf-8") as f:
             stages = json.load(f)["stages"]
-        _STAGES_META_CACHE["stages"] = sorted(stages, key=lambda s: s["order"])
+        enriched = [_apply_flow_numbering(dict(s)) for s in stages]
+        _STAGES_META_CACHE["stages"] = sorted(enriched, key=lambda s: s["order"])
         _STAGES_META_CACHE["stamp"] = stamp
     return [dict(s) for s in _STAGES_META_CACHE["stages"]]
+
+
+def stage_numbered_label_map():
+    """stage_key -> numbered_short_label（无 flow_code 时回退 short_label）。"""
+    out = {}
+    for s in load_stages_meta():
+        out[s["key"]] = s.get("numbered_short_label") or s.get("short_label") or s.get("label") or s["key"]
+    return out
+
+
+def stage_numbered_full_label_map():
+    """stage_key -> numbered_label（页面标题等完整名称）。"""
+    out = {}
+    for s in load_stages_meta():
+        out[s["key"]] = s.get("numbered_label") or s.get("label") or s["key"]
+    return out
+
+
+def nav_label_for_module(key, base_label):
+    """侧栏导航标签：流程阶段带编号，看板/反馈等保持原名。"""
+    skip = {
+        "data_board", "admin_board", "feedback",
+        "overview", "charts", "permissions", "op_logs", "backups",
+        "recruit_flow", "offer_strategy",
+    }
+    if key in skip:
+        return base_label
+    full = stage_numbered_full_label_map().get(key)
+    if full:
+        return full
+    numbered = stage_numbered_label_map().get(key)
+    return numbered or base_label
 
 
 def stage_keys():
@@ -126,7 +171,7 @@ def _registration_hidden_field_keys(display=None):
     keep_visible = set(display.get("keep_visible_in_range") or [])
     keep_visible.update({
         "sourcer", "sourcer_dept", "interface_person", "interface_dept",
-        "registration_source", "registration_status",
+        "registration_source", "registration_source_custom",
     })
     extra_hidden = set(display.get("hidden_keys") or [])
     extra_hidden.update({

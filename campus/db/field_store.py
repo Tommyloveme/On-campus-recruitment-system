@@ -337,7 +337,7 @@ def build_field_registry(save: bool = False) -> dict:
     # 注：拓源人/接口人 PL 已合并进「部门」列（部门/PL），不再单列
     for k, label, cat in (("sourcer_name", "拓源人姓名", "登记拓源"),
                           ("interface_person_name", "接口人姓名", "登记拓源"),
-                          ("process_status", "流程状态", "流程状态"),
+                          ("stage_action_status", "环节状态", "流程状态"),
                           ("process_terminated", "流程终止", "流程状态")):
         if k not in fields and label not in used_storage:
             used_storage.add(label)

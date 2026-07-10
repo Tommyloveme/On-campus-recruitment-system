@@ -140,8 +140,8 @@ def api_candidate_create():
     if stage == "registration":
         if not field_get(data, "registration_time"):
             field_set(data, "registration_time", today)
-        if not field_get(data, "registration_status"):
-            field_set(data, "registration_status", "待投递")
+        if not field_get(data, "stage_action_status"):
+            field_set(data, "stage_action_status", "待处理")
         data = apply_registration_candidate_defaults(data, g.user)
         missing = validate_registration_manual_create(data)
         if missing:
@@ -256,6 +256,10 @@ def api_candidate_update(cid):
         log.info("电话合并 %s keep=%d drop=%d phone=%s", who(g.user), merged_id, cid, phone)
         return jsonify({"ok": True, "merged": True, "id": merged_id})
     if stage == "registration":
+        from campus.services.users import validate_registration_source_custom
+        src_err = validate_registration_source_custom(new)
+        if src_err:
+            return jsonify({"error": src_err}), 400
         ref_err = validate_registration_user_refs(
             db, field_get(new, "sourcer"), field_get(new, "interface_person"))
         if ref_err:

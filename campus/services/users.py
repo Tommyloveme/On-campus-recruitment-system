@@ -436,6 +436,15 @@ def apply_registration_candidate_defaults(data, user):
     return data
 
 
+def validate_registration_source_custom(data):
+    """来源渠道为「其他」时须填写具体来源。"""
+    from campus.db.field_store import field_get
+    if field_get(data, "registration_source") == "其他":
+        if not str(field_get(data, "registration_source_custom") or "").strip():
+            return "来源渠道为「其他」时须填写具体来源"
+    return None
+
+
 def validate_registration_manual_create(data):
     """登记阶段手动新增：除登记备注外必填；来源为「其他」须填自定义来源。"""
     from campus.db.field_store import field_get
@@ -446,9 +455,9 @@ def validate_registration_manual_create(data):
         "registration_source": "来源渠道",
     }
     missing = [v for k, v in labels.items() if not str(field_get(data, k) or "").strip()]
-    if field_get(data, "registration_source") == "其他":
-        if not str(field_get(data, "registration_source_custom") or "").strip():
-            missing.append("自定义简历来源")
+    src_err = validate_registration_source_custom(data)
+    if src_err:
+        missing.append("具体来源")
     return missing
 
 

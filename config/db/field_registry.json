@@ -171,14 +171,14 @@
         "registration"
       ]
     },
-    "registration_status": {
-      "legacy_key": "registration_status",
-      "storage_key": "登记状态",
-      "label": "登记状态",
+    "stage_action_status": {
+      "legacy_key": "stage_action_status",
+      "storage_key": "环节状态",
+      "label": "环节状态",
       "path": [
         "候选人",
         "流程状态",
-        "登记状态"
+        "环节状态"
       ],
       "stages": [
         "registration"
@@ -1315,19 +1315,6 @@
         "registration"
       ]
     },
-    "process_status": {
-      "legacy_key": "process_status",
-      "storage_key": "流程状态",
-      "label": "流程状态",
-      "path": [
-        "候选人",
-        "流程状态",
-        "流程状态"
-      ],
-      "stages": [
-        "registration"
-      ]
-    },
     "process_terminated": {
       "legacy_key": "process_terminated",
       "storage_key": "流程终止",
@@ -1356,7 +1343,7 @@
     "候选人.流程状态.当前流程": "当前流程",
     "候选人.登记拓源.来源渠道": "来源渠道",
     "候选人.登记拓源.自定义简历来源": "自定义简历来源",
-    "候选人.流程状态.登记状态": "登记状态",
+    "候选人.流程状态.环节状态": "环节状态",
     "候选人.登记拓源.登记时间": "登记时间",
     "候选人.登记拓源.投递时间": "投递时间",
     "候选人.登记拓源.登记备注": "登记备注",
@@ -1444,7 +1431,6 @@
     "候选人.流程状态.应聘状态": "应聘状态",
     "候选人.登记拓源.拓源人姓名": "拓源人姓名",
     "候选人.登记拓源.接口人姓名": "接口人姓名",
-    "候选人.流程状态.流程状态": "流程状态",
     "候选人.流程状态.流程终止": "流程终止"
   },
   "legacy_index": {
@@ -1461,7 +1447,7 @@
     "当前流程": "current_stage",
     "来源渠道": "registration_source",
     "自定义简历来源": "registration_source_custom",
-    "登记状态": "registration_status",
+    "环节状态": "stage_action_status",
     "登记时间": "registration_time",
     "投递时间": "delivery_time",
     "登记备注": "registration_remark",
@@ -1549,7 +1535,6 @@
     "应聘状态": "application_status",
     "拓源人姓名": "sourcer_name",
     "接口人姓名": "interface_person_name",
-    "流程状态": "process_status",
     "流程终止": "process_terminated"
   },
   "extras_bucket": "扩展字段",

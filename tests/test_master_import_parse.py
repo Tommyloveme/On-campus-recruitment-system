@@ -93,7 +93,7 @@ class TestMasterImportParse(unittest.TestCase):
             self.assertIn(name, by_name)
             row = by_name[name]
             self.assertEqual(compute_current_stage(row, cfg=self.cfg), case["expected_stage"], name)
-            self.assertEqual(field_get(row, "process_status"), case["expected_status"], name)
+            self.assertEqual(field_get(row, "stage_action_status"), "处理中" if case["current_step"] else "待处理", name)
 
 
 if __name__ == "__main__":

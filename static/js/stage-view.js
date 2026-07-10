@@ -171,7 +171,7 @@ async function renderStageView(stageKey) {
     <div class="page-wrap">
       <div class="card pagehead">
         <div class="pagehead-text">
-          <div class="pagehead-title">${esc(meta.label)}</div>
+          <div class="pagehead-title">${esc(meta.numbered_label || meta.label)}</div>
           ${meta.description ? `<div class="pagehead-sub">${esc(meta.description)}</div>` : ""}
         </div>
         <div class="iv-subnav pagehead-tabs">
@@ -199,26 +199,82 @@ function stageUiColumns(stageKey) {
   return stageTableCfg(stageKey).ui_columns || [];
 }
 
-/** 列表展示字段：注入「流程状态」列（由规则匹配生成，存于 data.流程状态）。 */
+/** 列表展示字段：登记页注入「流程状态」「环节状态」列。 */
+function stageFlowLabel(c) {
+  const key = c.current_stage || c.data.current_stage || c.data["当前流程阶段"] || "registration";
+  const s = state.stages.find(x => x.key === key);
+  return s ? (s.numbered_short_label || s.short_label || s.label) : (key || "—");
+}
+
+function registrationSourceDisplay(c) {
+  const src = c.data.registration_source || c.data["来源渠道"] || "";
+  if (src === "其他") {
+    const custom = (c.data.registration_source_custom || c.data["自定义简历来源"] || "").trim();
+    return custom ? `其他：${custom}` : "其他";
+  }
+  return src;
+}
+
+const STAGE_ACTION_CANONICAL = new Set(["待处理", "处理中", "通过", "未通过", "放弃"]);
+const STAGE_ACTION_ALIASES = {
+  待办: "待处理", 未开始: "待处理",
+  进行中: "处理中", 进行: "处理中",
+  已通过: "通过", 合格: "通过",
+  不通过: "未通过", 淘汰: "未通过", 失败: "未通过",
+  已放弃: "放弃",
+};
+
+function normalizeStageActionStatus(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "待处理";
+  if (STAGE_ACTION_CANONICAL.has(s)) return s;
+  return STAGE_ACTION_ALIASES[s] || s;
+}
+
+function stageActionStatusValue(c) {
+  const raw = c.data.stage_action_status || c.data["环节状态"]
+    || c.data.current_step_status || c.data["当前环节状态"] || "";
+  return normalizeStageActionStatus(raw);
+}
+
 function stageListFields(stageKey) {
   const cfg = stageTableCfg(stageKey);
   const preResumeKeys = new Set(cfg.pre_resume_columns || []);
   let fields = visibleFields(stageKey).filter(
     f => !preResumeKeys.has(f.key) && !preResumeKeys.has(f.legacy_key)
   );
-  if (!fields.some(f => f.key === "流程状态" || f.legacy_key === "process_status")) {
-    const procCol = {
-      key: "流程状态", legacy_key: "process_status", label: "流程状态", type: "text",
-    };
-    if (stageKey === "registration") {
+  if (stageKey === "registration") {
+    const injectCols = [];
+    if (!fields.some(f => f.key === "current_stage_flow" || f.label === "流程状态")) {
+      const stageOpts = (state.stages || []).map(s => s.key);
+      const stageOptLabels = Object.fromEntries(
+        (state.stages || []).map(s => [s.key, s.numbered_short_label || s.short_label || s.label])
+      );
+      injectCols.push({
+        key: "current_stage_flow", legacy_key: "current_stage", label: "流程状态", type: "select",
+        options: stageOpts, option_labels: stageOptLabels,
+      });
+    }
+    if (!fields.some(f => f.key === "stage_action_status" || f.label === "环节状态")) {
+      injectCols.push({
+        key: "stage_action_status", legacy_key: "stage_action_status", label: "环节状态",
+        type: "select",
+        options: ["待处理", "处理中", "通过", "未通过", "放弃"],
+        colors: { 待处理: "gray", 处理中: "blue", 通过: "green", 未通过: "red", 放弃: "yellow" },
+      });
+    }
+    if (injectCols.length) {
       const idx = fields.findIndex(
         f => f.key === "应聘档案编号" || f.legacy_key === "application_archive_id"
       );
-      fields.splice(idx >= 0 ? idx + 1 : fields.length, 0, procCol);
-    } else {
-      const idx = fields.findIndex(f => f.legacy_key === "name" || f.key === "候选人");
-      fields.splice(idx >= 0 ? idx : 0, 0, procCol);
+      fields.splice(idx >= 0 ? idx + 1 : fields.length, 0, ...injectCols);
     }
+  } else if (!fields.some(f => f.key === "流程状态" || f.legacy_key === "process_status")) {
+    const procCol = {
+      key: "流程状态", legacy_key: "process_status", label: "流程状态", type: "text",
+    };
+    const idx = fields.findIndex(f => f.legacy_key === "name" || f.key === "候选人");
+    fields.splice(idx >= 0 ? idx : 0, 0, procCol);
   }
   return fields;
 }
@@ -241,16 +297,24 @@ function candidateFieldCellHtml(f, c, stageKey, ss) {
     return inner;
   }
   if (isRegistrationRemarkField(f)) return multilineCellHtml(registrationRemarkValue(c));
-  if (f.key === "registration_source" && c.data.registration_source === "其他") {
-    const custom = (c.data.registration_source_custom || "").trim();
-    return cellHtml(f, custom ? `其他：${custom}` : "其他");
+  if (f.key === "registration_source") {
+    return cellHtml(f, registrationSourceDisplay(c));
+  }
+  if (f.key === "current_stage_flow") {
+    if (candTerminated(c)) {
+      return `<span class="badge badge-red" title="已流程终止，可在候选人登记页恢复">流程终止</span>`;
+    }
+    return cellHtml(f, stageFlowLabel(c));
+  }
+  if (f.key === "stage_action_status") {
+    return cellHtml(f, stageActionStatusValue(c));
+  }
+  if (f.key === "流程状态" && candTerminated(c)) {
+    return `<span class="badge badge-red" title="已流程终止，可在候选人登记页恢复">流程终止</span>`;
   }
   if (f.key === "phone" && stageKey === "registration" && ss.duplicatePhones &&
     ss.duplicatePhones.has(normalizeCandidatePhone(c.data.phone))) {
     return `<span class="cell-phone-dup">${esc(candidateCellValue(c, f) || "")}</span>`;
-  }
-  if (f.key === "流程状态" && candTerminated(c)) {
-    return `<span class="badge badge-red" title="已流程终止，可在候选人登记页恢复">流程终止</span>`;
   }
   return cellHtml(f, candidateCellValue(c, f));
 }
@@ -288,13 +352,19 @@ async function renderStageList(stageKey) {
   ).join("");
   const filterCells = fields.map(f => {
     if (f.type === "select") {
-      const opts = (f.options || []).map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join("");
+      const opts = (f.options || []).map(o => {
+        const display = (f.option_labels && f.option_labels[o]) ? f.option_labels[o] : o;
+        return `<option value="${esc(o)}">${esc(display)}</option>`;
+      }).join("");
       return `<th><select data-filter="${f.key}"><option value="">全部</option>${opts}</select></th>`;
     }
     return `<th><input type="text" data-filter="${f.key}" placeholder="筛选"></th>`;
   }).join("") + uiCols.map(() => "<th></th>").join("") + preResumeFields.map(f => {
     if (f.type === "select") {
-      const opts = (f.options || []).map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join("");
+      const opts = (f.options || []).map(o => {
+        const display = (f.option_labels && f.option_labels[o]) ? f.option_labels[o] : o;
+        return `<option value="${esc(o)}">${esc(display)}</option>`;
+      }).join("");
       return `<th><select data-filter="${f.key}"><option value="">全部</option>${opts}</select></th>`;
     }
     return `<th><input type="text" data-filter="${f.key}" placeholder="筛选"></th>`;
@@ -515,6 +585,8 @@ function candidateCellValue(c, f) {
       || f.key === "接口人信息" || f.key === "接口人部门") {
     return candidateDeptInfoValue(c, false);
   }
+  if (f.key === "current_stage_flow") return stageFlowLabel(c);
+  if (f.key === "stage_action_status") return stageActionStatusValue(c);
   return c.data[f.key];
 }
 
@@ -531,6 +603,12 @@ function candidateFilterValue(c, key) {
   }
   if (key === "interface_dept" || key === "接口人信息" || key === "接口人部门") {
     return candidateDeptInfoValue(c, false);
+  }
+  if (key === "current_stage_flow") {
+    return c.current_stage || c.data.current_stage || c.data["当前流程阶段"] || "registration";
+  }
+  if (key === "registration_source") {
+    return c.data.registration_source || c.data["来源渠道"] || "";
   }
   return c.data[key] || "";
 }
@@ -682,7 +760,7 @@ function renderCandidateRows(stageKey) {
     try {
       const r = await api(`/api/candidates/${id}/terminate`, { method: "POST", json: { action } });
       toast(action === "terminate" ? "已终止流程（可随时恢复）"
-        : `已恢复到终止前状态（${(state.stages.find(s => s.key === r.current_stage) || {}).label || r.current_stage}）`);
+        : `已恢复到终止前状态（${(state.stages.find(s => s.key === r.current_stage) || {}).numbered_short_label || (state.stages.find(s => s.key === r.current_stage) || {}).label || r.current_stage}）`);
       invalidateCandidateCaches();
       await loadCandidateTable(stageKey, { force: true });
     } catch (e) { toast(e.message, true); }
@@ -713,10 +791,7 @@ function candFieldDisplayText(c, f, stageKey, ss) {
   if (isRegistrationRemarkField(f)) {
     return ((registrationRemarkValue(c) || "").split("\n")[0] || "").trim();
   }
-  if (f.key === "registration_source" && c.data.registration_source === "其他") {
-    const custom = (c.data.registration_source_custom || "").trim();
-    return custom ? `其他：${custom}` : "其他";
-  }
+  if (f.key === "registration_source") return registrationSourceDisplay(c);
   if (f.key === "phone" && stageKey === "registration" && ss.duplicatePhones &&
     ss.duplicatePhones.has(normalizeCandidatePhone(c.data.phone))) {
     return String(candidateCellValue(c, f) || "");
@@ -899,9 +974,9 @@ function enableColumnResize(stageKey) {
 
 function registrationCreateHiddenKeys() {
   return new Set([
-    "registration_time", "registration_status", "delivery_time",
+    "registration_time", "delivery_time",
     "resume_id", "work_location", "sourcer_dept", "graduation_time", "interface_dept",
-    "registration_source_custom",
+    "registration_source_custom", "stage_action_status",
   ]);
 }
 
@@ -1246,10 +1321,10 @@ function collectCandidateFormData(fields) {
   return data;
 }
 
-function validateRegistrationCreateForm(fields, data) {
+function validateRegistrationForm(fields, data) {
   const missing = fields.filter(f => f.required && !(data[f.key] || "").trim());
   if (data.registration_source === "其他" && !(data.registration_source_custom || "").trim()) {
-    missing.push({ label: "自定义简历来源" });
+    missing.push({ label: "具体来源" });
   }
   if (missing.length) {
     toast(`请填写：${missing.map(f => f.label).join("、")}`, true);
@@ -1353,6 +1428,7 @@ function stageEditFields(stageKey) {
 function openCandidateModal(cand, stageKey) {
   const isNew = !cand;
   const isRegCreate = isNew && stageKey === "registration";
+  const isRegForm = stageKey === "registration";
   const fields = isRegCreate
     ? registrationCreateFields(stageKey).map(f => ({
       ...f,
@@ -1362,19 +1438,20 @@ function openCandidateModal(cand, stageKey) {
   const meta = state.stages.find(s => s.key === stageKey);
   const lockedFields = new Set(cand?.data?._master_locked_fields || []);
 
-  const sourceCustomField = isRegCreate ? `
+  const sourceCustomValue = esc(cand?.data?.registration_source_custom || cand?.data?.["自定义简历来源"] || "");
+  const sourceCustomField = isRegForm ? `
     <div id="reg-source-custom-wrap" class="form-item form-item-full hidden">
-      <label>自定义简历来源 *</label>
+      <label>具体来源 *</label>
       <input type="text" id="reg-source-custom" data-field="registration_source_custom"
-             placeholder="请填写具体简历来源">
+             value="${sourceCustomValue}" placeholder="请填写具体来源渠道">
     </div>` : "";
 
-  openModal(isNew ? `新增候选人 - ${meta.label}` : `编辑 - ${esc(cand.data.name || "")}（${meta.label}）`, `
+  openModal(isNew ? `新增候选人 - ${meta.numbered_label || meta.label}` : `编辑 - ${esc(cand.data.name || "")}（${meta.numbered_label || meta.label}）`, `
     <div class="registration-modal-body">
       <div class="form-grid registration-form-grid">
         ${fields.map(f => {
           let html = registrationFormFieldHtml(f, cand, stageKey, isRegCreate, lockedFields);
-          if (isRegCreate && f.key === "registration_source") html += sourceCustomField;
+          if (isRegForm && f.key === "registration_source") html += sourceCustomField;
           return html;
         }).join("")}
       </div>
@@ -1382,7 +1459,7 @@ function openCandidateModal(cand, stageKey) {
     `<button class="btn" onclick="closeModal()">取消</button>
      <button class="btn btn-primary" id="cand-save">保存</button>`);
 
-  if (isRegCreate) bindRegistrationSourceCustom();
+  if (isRegForm) bindRegistrationSourceCustom();
   if (stageKey === "registration") {
     bindRegistrationEmployeeLookup();
     bindRegistrationPhoneDuplicateCheck(cand, stageKey);
@@ -1395,9 +1472,9 @@ function openCandidateModal(cand, stageKey) {
       const rk = "registration_remark" in data ? "registration_remark" : "登记备注";
       data[rk] = normalizeRegistrationRemark(data[rk]);
     }
-    if (isRegCreate && !validateRegistrationCreateForm(fields, data)) return;
+    if (stageKey === "registration" && !validateRegistrationForm(fields, data)) return;
     const missing = fields.filter(f => f.required && !(data[f.key] || "").trim());
-    if (!isRegCreate && missing.length) {
+    if (!isRegForm && missing.length) {
       toast(`请填写：${missing.map(f => f.label).join("、")}`, true);
       return;
     }

@@ -229,7 +229,7 @@ call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 call("DELETE", f"/api/candidates/{auto_id}")
 call("POST", "/api/login", {"username": "admin", "password": "admin123"})
 s, cands = call("GET", "/api/candidates?q=" + quote("测试员"))
-check("手动登记默认待投递", cands[0]["data"]["registration_status"] == "待投递"
+check("手动登记默认环节状态待处理", cands[0]["data"]["stage_action_status"] == "待处理"
       and cands[0]["data"].get("registration_time"))
 # 电话重复须拒绝录入
 dup_status, dup_body = call("POST", "/api/candidates", {

@@ -1,10 +1,11 @@
 {
-  "comment": "校招全流程阶段定义。字段可见/可编辑见各阶段 display.json（未列出=不可见、不可编辑）",
+  "comment": "校招全流程阶段定义。flow_code 用于界面编号展示（1-登记、2.1-简历筛选、3.x-Offer策略子流程）；数据看板/管理看板/问题反馈不使用编号。字段可见/可编辑见各阶段 display.json",
   "stages": [
     {
       "key": "registration",
       "label": "候选人登记",
       "short_label": "登记",
+      "flow_code": "1",
       "order": 1,
       "can_create": true,
       "description": "校招候选人信息登记与简历收集"
@@ -13,6 +14,7 @@
       "key": "resume_screening",
       "label": "简历筛选",
       "short_label": "简历筛选",
+      "flow_code": "2.1",
       "order": 2,
       "can_create": false,
       "description": "简历初筛与筛选结果记录"
@@ -21,30 +23,34 @@
       "key": "qualification",
       "label": "资格审查",
       "short_label": "资审",
+      "flow_code": "2.2",
       "order": 3,
       "can_create": false,
       "description": "候选人学历、院校等资格审查"
     },
     {
-      "key": "written_test",
-      "label": "笔试预约",
-      "short_label": "笔试",
-      "order": 5,
-      "can_create": false,
-      "description": "笔试时间与地点预约安排"
-    },
-    {
       "key": "commercial_secret",
       "label": "商业秘密签署",
       "short_label": "商业秘密签署",
+      "flow_code": "2.3",
       "order": 4,
       "can_create": false,
       "description": "商业秘密协议签署状态跟踪"
     },
     {
+      "key": "written_test",
+      "label": "笔试预约",
+      "short_label": "笔试",
+      "flow_code": "2.4",
+      "order": 5,
+      "can_create": false,
+      "description": "笔试时间与地点预约安排"
+    },
+    {
       "key": "personality_test",
       "label": "性格测评",
       "short_label": "性格测评",
+      "flow_code": "2.5",
       "order": 6,
       "can_create": false,
       "description": "性格测评安排与结果记录"
@@ -53,6 +59,7 @@
       "key": "qualification_interview",
       "label": "资格面试",
       "short_label": "资格面",
+      "flow_code": "2.6",
       "order": 7,
       "can_create": false,
       "description": "资格面试预约与结果记录"
@@ -61,6 +68,7 @@
       "key": "tech_interview",
       "label": "技术面试预约",
       "short_label": "技术面",
+      "flow_code": "2.7",
       "order": 8,
       "can_create": false,
       "has_interview_calendar": true,
@@ -70,6 +78,7 @@
       "key": "manager_interview",
       "label": "主管面试预约",
       "short_label": "主管面",
+      "flow_code": "2.8",
       "order": 9,
       "can_create": false,
       "has_interview_calendar": true,
@@ -79,6 +88,7 @@
       "key": "approval",
       "label": "报批",
       "short_label": "报批",
+      "flow_code": "3.1",
       "order": 10,
       "can_create": false,
       "description": "录用报批流程跟踪"
@@ -87,6 +97,7 @@
       "key": "salary",
       "label": "谈薪",
       "short_label": "谈薪",
+      "flow_code": "3.2",
       "order": 11,
       "can_create": false,
       "description": "薪资谈判与意向确认"
@@ -95,6 +106,7 @@
       "key": "offer",
       "label": "Offer发放",
       "short_label": "Offer",
+      "flow_code": "3.3",
       "order": 12,
       "can_create": false,
       "description": "Offer 发放与接受状态跟踪"
@@ -103,6 +115,7 @@
       "key": "contract_signing",
       "label": "签约情况",
       "short_label": "签约",
+      "flow_code": "3.4",
       "order": 13,
       "can_create": false,
       "description": "三方签约与签约状态跟踪"
@@ -111,6 +124,7 @@
       "key": "onboarding",
       "label": "入职管理",
       "short_label": "入职",
+      "flow_code": "3.5",
       "order": 14,
       "can_create": false,
       "description": "体检、入职预约到正式入职"

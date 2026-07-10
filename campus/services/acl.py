@@ -258,6 +258,7 @@ def manual_transition_allowed(user):
 
 def module_registry_payload(user=None):
     """模块注册表 + 当前用户对各模块的有效权限与细粒度特性（供前端渲染）。"""
+    from campus.core.stage_config import nav_label_for_module
     db = get_db()
 
     def decorate(e, key):
@@ -272,13 +273,21 @@ def module_registry_payload(user=None):
 
     out = []
     for entry in MODULE_REGISTRY:
-        e = {"key": entry["key"], "label": entry["label"], "type": entry["type"]}
+        e = {
+            "key": entry["key"],
+            "label": nav_label_for_module(entry["key"], entry["label"]),
+            "type": entry["type"],
+        }
         if user is not None:
             decorate(e, entry["key"])
         if "items" in entry:
             e["items"] = []
             for child in entry["items"]:
-                ci = {"key": child["key"], "label": child["label"], "type": child["type"]}
+                ci = {
+                    "key": child["key"],
+                    "label": nav_label_for_module(child["key"], child["label"]),
+                    "type": child["type"],
+                }
                 if user is not None:
                     decorate(ci, child["key"])
                 e["items"].append(ci)

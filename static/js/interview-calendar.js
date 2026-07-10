@@ -228,7 +228,7 @@ async function renderInterviewCalendar(stageKey) {
       <div class="page-wrap">
         <div class="card pagehead">
           <div class="pagehead-text">
-            <div class="pagehead-title">${esc(meta.label)} · 面试日程</div>
+            <div class="pagehead-title">${esc(meta.numbered_label || meta.label)} · 面试日程</div>
             <div class="pagehead-sub">面试官 × 日期矩阵，支持岗位、部门筛选</div>
           </div>
         </div>

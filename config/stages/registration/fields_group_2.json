@@ -16,7 +16,6 @@
     "graduation_time": false,
     "current_stage": false,
     "registration_source": true,
-    "registration_status": true,
     "registration_time": true,
     "delivery_time": true,
     "registration_remark": true

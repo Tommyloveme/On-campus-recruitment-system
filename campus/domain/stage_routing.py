@@ -52,7 +52,37 @@ def is_terminated(data):
 OFFER_STRATEGY_STAGES = frozenset({"approval", "salary", "offer", "contract_signing", "onboarding"})
 
 
-# 当前流程状态先使用稳定的序号 + 阶段名，实际阶段仍由规则条件组合判定。
+#: 环节状态（当前流程环节的处理情况，来自主数据「当前环节状态」）
+STAGE_ACTION_STATUSES = ("待处理", "处理中", "通过", "未通过", "放弃")
+
+_STAGE_ACTION_ALIASES = {
+    "待处理": "待处理", "待办": "待处理", "未开始": "待处理",
+    "处理中": "处理中", "进行中": "处理中", "进行": "处理中",
+    "通过": "通过", "已通过": "通过", "合格": "通过",
+    "未通过": "未通过", "不通过": "未通过", "淘汰": "未通过", "失败": "未通过",
+    "放弃": "放弃", "已放弃": "放弃",
+}
+
+
+def normalize_stage_action_status(raw):
+    """将主数据「当前环节状态」规范为五类环节状态。"""
+    s = str(raw or "").strip()
+    if not s:
+        return "待处理"
+    if s in STAGE_ACTION_STATUSES:
+        return s
+    return _STAGE_ACTION_ALIASES.get(s, s)
+
+
+def sync_stage_action_status(data):
+    """从 current_step_status 同步环节状态到 stage_action_status。"""
+    raw = field_get(data, "current_step_status")
+    if not str(raw or "").strip():
+        raw = field_get(data, "stage_action_status")
+    field_set(data, "stage_action_status", normalize_stage_action_status(raw))
+
+
+# 历史流程状态序号标签（已弃用：列表改由 current_stage 对应侧栏流程展示）
 STAGE_STATUS_LABELS = {
     "registration": "01-投递",
     "resume_screening": "02-简历筛选",
@@ -180,14 +210,14 @@ def compute_current_stage(data, cfg=None, tables=None):
     if is_terminated(data):
         stage = str(field_get(data, field_key) or "registration").strip() or "registration"
         field_set(data, field_key, stage)
-        field_set(data, "process_status", "流程终止")
+        sync_stage_action_status(data)
         return stage
 
     known_stages = {s["key"] for s in load_stages_meta()}
     manual = str(field_get(data, MANUAL_STAGE_KEY) or field_get(data, "_手动流程阶段") or "").strip()
     if manual in known_stages:
         field_set(data, field_key, manual)
-        field_set(data, "process_status", stage_status_label(manual, data))
+        sync_stage_action_status(data)
         return manual
 
     ctx_tables = {
@@ -208,16 +238,15 @@ def compute_current_stage(data, cfg=None, tables=None):
         if _rule_matches(data, rule, resolver):
             stage = apply_offer_strategy_gate(rule["stage"], data)
             field_set(data, field_key, stage)
-            # 流程状态：简单显示“序号 + 当前流程”，实际 stage 仍由规则条件组合判定。
-            field_set(data, "process_status", stage_status_label(stage, data))
+            sync_stage_action_status(data)
             return stage
     field_set(data, field_key, "registration")
-    field_set(data, "process_status", stage_status_label("registration", data))
+    sync_stage_action_status(data)
     return "registration"
 
 
 def stage_label_map():
-    return {s["key"]: s.get("short_label") or s["label"] for s in load_stages_meta()}
+    return stage_numbered_label_map()
 
 
 def stage_order_map():

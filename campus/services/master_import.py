@@ -371,7 +371,8 @@ def merge_master_import_data(old, incoming, cfg=None):
         or field_get(merged, "resume_id") or field_get(incoming, "resume_id"))
     if delivery:
         field_set(merged, "delivery_time", delivery)
-    field_set(merged, "registration_status", "已投递")
+    from campus.domain.stage_routing import sync_stage_action_status
+    sync_stage_action_status(merged)
     return merged
 
 
