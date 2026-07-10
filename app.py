@@ -11,6 +11,7 @@ import threading
 
 from campus import create_app
 from campus.core.logging_util import log
+from campus.core.net_util import patch_waitress_trigger, port_is_open, resolve_access_url, serve_waitress
 from campus.core.settings import APP_CONFIG
 from campus.db.schema import init_db
 from campus.services.backups import backup_scheduler
@@ -18,19 +19,11 @@ from campus.services.backups import backup_scheduler
 app = create_app()
 
 
-def port_in_use(port):
-    """Windows 下多个进程可同时绑定同一端口导致请求被旧实例接管，启动前先探测。"""
-    import socket
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(1)
-        return s.connect_ex(("127.0.0.1", port)) == 0
-
-
 if __name__ == "__main__":
     init_db(demo="--demo" in sys.argv)
     port = int(os.environ.get("PORT", APP_CONFIG["server"]["port"]))
     threads = int(os.environ.get("THREADS", APP_CONFIG["server"]["threads"]))
-    if port_in_use(port):
+    if port_is_open(port):
         log.error("端口 %d 已被占用，启动中止", port)
         print(f"错误：端口 {port} 已有服务在运行，请先停止旧实例（或修改 config/app_config.json 中的端口）。")
         sys.exit(1)
@@ -44,7 +37,8 @@ if __name__ == "__main__":
              ("unlimited" if not APP_CONFIG.get("server", {}).get("max_upload_mb")
               else f"{APP_CONFIG.get('server', {}).get('max_upload_mb')}MB"),
              channel_timeout)
-    print(f"校招全流程管理系统已启动: http://127.0.0.1:{port} （waitress，{threads} 工作线程）")
-    from waitress import serve
-    serve(app, host="0.0.0.0", port=port, threads=threads,
-          connection_limit=1024, channel_timeout=channel_timeout)
+    access_url = resolve_access_url(port)
+    patch_waitress_trigger()
+    print(f"校招全流程管理系统已启动: {access_url} （waitress，{threads} 工作线程）")
+    serve_waitress(app, host="0.0.0.0", port=port, threads=threads,
+                   connection_limit=1024, channel_timeout=channel_timeout)

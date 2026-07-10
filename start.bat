@@ -9,6 +9,7 @@ if not exist venv (
 )
 
 echo [2/3] 安装依赖...
+set "PIP_CONFIG_FILE=%~dp0pip\pip.ini"
 venv\Scripts\python -m pip install -q -r requirements.txt || (echo 依赖安装失败 && pause && exit /b 1)
 
 echo [3/3] 启动服务（首次运行会创建默认管理员 admin / admin123）...

@@ -25,6 +25,10 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 IS_WIN = os.name == "nt"
 LOG_PATH = os.path.join(BASE_DIR, "data", "server.log")
 
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+from campus.core.net_util import port_is_open, resolve_access_url
+
 
 def get_port():
     if os.environ.get("PORT"):
@@ -34,9 +38,7 @@ def get_port():
 
 
 def port_open(port):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(1)
-        return s.connect_ex(("127.0.0.1", port)) == 0
+    return port_is_open(port)
 
 
 def listening_pids(port):
@@ -179,7 +181,7 @@ def cmd_start():
     proc = subprocess.Popen([venv_python(), os.path.join(BASE_DIR, "app.py")], **kwargs)
     for _ in range(20):
         if port_open(port):
-            print(f"服务已启动：http://127.0.0.1:{port} （PID {proc.pid}，日志 data/server.log）")
+            print(f"服务已启动：{resolve_access_url(port)} （PID {proc.pid}，日志 data/server.log）")
             return 0
         if proc.poll() is not None:
             break

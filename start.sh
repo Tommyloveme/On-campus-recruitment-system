@@ -11,6 +11,7 @@ if [ ! -d venv ]; then
 fi
 
 echo "[2/3] 安装依赖..."
+export PIP_CONFIG_FILE="$(dirname "$0")/pip/pip.ini"
 venv/bin/python -m pip install -q -r requirements.txt
 
 echo "[3/3] 启动服务（首次运行会创建默认管理员 admin / admin123）..."

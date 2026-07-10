@@ -1,3 +1,6 @@
+# Windows 批处理脚本强制 CRLF，避免 cmd 解析异常
+*.bat text eol=crlf
+
 # 二进制文件不做换行符转换
 *.pdf -text
 *.xlsx -text
