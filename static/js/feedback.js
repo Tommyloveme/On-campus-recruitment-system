@@ -4,7 +4,14 @@ let _fbEditorSel = null;
 const FB_PRIORITY_LABELS = { low: "低", normal: "中", high: "高", urgent: "紧急" };
 const FB_PRIORITY_CLASS = { low: "gray", normal: "blue", high: "yellow", urgent: "red" };
 
-const fbState = { items: [], filters: {}, isAdmin: false };
+const fbState = {
+  items: [],
+  filters: {},
+  isAdmin: false,
+  page: 1,
+  pageSize: defaultPageSize(),
+  total: 0,
+};
 
 function fbPlainText(html) {
   const d = document.createElement("div");
@@ -161,11 +168,16 @@ function renderFeedbackRows() {
   if (!tbody) return;
   const list = filteredFeedbackItems();
   const admin = fbIsAdmin();
+  fbState.page = paginateMeta(list.length, fbState.page, fbState.pageSize).page;
+  const pg = paginateSlice(list, fbState.page, fbState.pageSize);
+  const pageList = pg.items;
+
   if (!list.length) {
     tbody.innerHTML = `<tr><td colspan="7" class="empty">没有符合条件的反馈</td></tr>`;
+    renderFeedbackPager(0);
     return;
   }
-  tbody.innerHTML = list.map(item => {
+  tbody.innerHTML = pageList.map(item => {
     const replyPreview = item.reply_html
       ? esc(fbPlainText(item.reply_html).slice(0, 40) + (fbPlainText(item.reply_html).length > 40 ? "…" : ""))
       : `<span class="muted">—</span>`;
@@ -220,6 +232,31 @@ function renderFeedbackRows() {
         toast("优先级已更新");
       } catch (e) { toast(e.message, true); }
     }));
+  renderFeedbackPager(list.length);
+}
+
+function renderFeedbackPager(total) {
+  let el = $("#fb-pager");
+  if (!el) {
+    const wrap = document.querySelector(".fb-table-wrap");
+    if (!wrap) return;
+    el = document.createElement("div");
+    el.id = "fb-pager";
+    el.className = "pager-bar";
+    wrap.insertAdjacentElement("afterend", el);
+  }
+  mountPagerBar(el, {
+    total,
+    page: fbState.page,
+    pageSize: fbState.pageSize,
+    unit: "条",
+    idPrefix: "fb",
+    onChange: ({ page, pageSize }) => {
+      fbState.page = page;
+      fbState.pageSize = pageSize;
+      renderFeedbackRows();
+    },
+  });
 }
 
 function confirmDeleteFeedback(id) {
@@ -374,6 +411,7 @@ async function renderFeedback() {
     const key = el.dataset.fbFilter;
     const run = () => {
       fbState.filters[key] = el.value.trim();
+      fbState.page = 1;
       renderFeedbackRows();
       const countEl = $("#fb-count");
       if (countEl) countEl.textContent = `${filteredFeedbackItems().length} / ${fbState.items.length} 条`;

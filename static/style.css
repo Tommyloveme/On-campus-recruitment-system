@@ -949,7 +949,7 @@ th.sortable:hover { color: var(--primary); }
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   margin-top: 6px; font-size: 11px; color: #64748b;
 }
-.log-foot .log-pager { margin: 0; padding: 0; }
+.log-foot .log-pager-wrap { margin: 0; padding: 0; border: none; }
 .log-foot .btn-sm { padding: 2px 8px; font-size: 11px; }
 .pager .btn[disabled] { opacity: .5; cursor: not-allowed; }
 /* ---------- 数据备份（紧凑表格） ---------- */

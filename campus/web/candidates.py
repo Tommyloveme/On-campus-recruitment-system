@@ -15,6 +15,8 @@ from datetime import datetime
 
 from flask import Blueprint, g, jsonify, request
 
+from campus.core.settings import load_app_config
+
 from campus.core.logging_util import log, who
 from campus.core.stage_config import editable_fields, field_labels, get_stage_meta, validate_stage
 from campus.db.connection import get_db
@@ -95,7 +97,15 @@ def api_candidates():
         result = [c for c in result if any(q in str(v) for v in c["data"].values())]
     log.debug("候选人列表 %s 返回%d条 q=%s stage=%s mode=%s",
               who(g.user), len(result), q or "-", stage_filter or "-", mode)
-    return jsonify(result)
+    warn_th = int(load_app_config().get("ui", {}).get("large_data_warn", 5000))
+    if len(result) >= warn_th:
+        log.warning("候选人列表大数据量 %d 条（阈值 %d）stage=%s mode=%s %s",
+                    len(result), warn_th, stage_filter or "-", mode, who(g.user))
+    resp = jsonify(result)
+    resp.headers["X-Total-Count"] = str(len(result))
+    if len(result) >= warn_th:
+        resp.headers["X-Large-Data-Warn"] = "1"
+    return resp
 
 
 @bp.post("/api/candidates")

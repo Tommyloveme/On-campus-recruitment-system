@@ -25,7 +25,7 @@ async function renderLogs() {
         <div id="log-view-purge" class="hidden"></div>
       </div>
     </div>`;
-  renderLogPanel($("#log-panel-root"), { pageSize: state.app?.logs_page_size || 30 });
+  renderLogPanel($("#log-panel-root"), { pageSize: defaultLogPageSize() });
 
   $("#main").querySelectorAll("[data-lg-view]").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -127,7 +127,7 @@ async function renderLogPurgePanel(rootEl) {
       if (after) body.after = after;
       const r = await api("/api/logs", { method: "DELETE", json: body });
       toast(`已清理 ${r.deleted} 条日志`);
-      renderLogPanel($("#log-panel-root"), { pageSize: state.app?.logs_page_size || 30 });
+      renderLogPanel($("#log-panel-root"), { pageSize: defaultLogPageSize() });
     } catch (e) { toast(e.message, true); }
   });
 }
@@ -142,13 +142,19 @@ async function renderLogLevelSettings(rootEl) {
     rootEl.innerHTML = `<div class="log-empty">加载失败：${esc(e.message)}</div>`;
     return;
   }
-  rootEl.innerHTML = `
+  let page = 1;
+  let pageSize = defaultPageSize();
+  const draw = () => {
+    const pg = paginateSlice(users, page, pageSize);
+    page = pg.page;
+    pageSize = pg.pageSize;
+    rootEl.innerHTML = `
     <p class="muted" style="font-size:12px;margin:8px 0">
       数字 1-10：1 最高（可见全部日志），10 最低（仅常规业务日志）。管理员默认 1，普通用户默认 10。</p>
     <div class="table-wrap"><table>
       <thead><tr><th>工号</th><th>姓名</th><th>角色</th><th style="width:140px">日志权限</th></tr></thead>
       <tbody>
-        ${users.map(u => `
+        ${pg.items.map(u => `
           <tr>
             <td>${esc(u.username)}</td>
             <td>${esc(u.display_name)}</td>
@@ -157,17 +163,28 @@ async function renderLogLevelSettings(rootEl) {
                        data-loglv-uid="${u.id}" style="width:80px"></td>
           </tr>`).join("")}
       </tbody>
-    </table></div>`;
-  rootEl.querySelectorAll("[data-loglv-uid]").forEach(inp => {
-    inp.addEventListener("change", async () => {
-      const v = parseInt(inp.value, 10);
-      if (!(v >= 1 && v <= 10)) { toast("日志权限须为 1-10", true); return; }
-      try {
-        await api(`/api/logs/levels/${inp.dataset.loglvUid}`, { method: "PUT", json: { log_level: v } });
-        toast("已保存");
-      } catch (e) { toast(e.message, true); }
+    </table></div>
+    <div class="pager-bar" data-loglv-pager></div>`;
+    mountPagerBar(rootEl.querySelector("[data-loglv-pager]"), {
+      total: users.length,
+      page,
+      pageSize,
+      unit: "人",
+      idPrefix: "loglv",
+      onChange: ({ page: p, pageSize: s }) => { page = p; pageSize = s; draw(); },
     });
-  });
+    rootEl.querySelectorAll("[data-loglv-uid]").forEach(inp => {
+      inp.addEventListener("change", async () => {
+        const v = parseInt(inp.value, 10);
+        if (!(v >= 1 && v <= 10)) { toast("日志权限须为 1-10", true); return; }
+        try {
+          await api(`/api/logs/levels/${inp.dataset.loglvUid}`, { method: "PUT", json: { log_level: v } });
+          toast("已保存");
+        } catch (e) { toast(e.message, true); }
+      });
+    });
+  };
+  draw();
 }
 
 /* ---------- 数据备份 ---------- */
@@ -215,20 +232,26 @@ async function renderBackups() {
       $("#bk-view-logs").classList.toggle("hidden", !logs);
       if (logs && !bkLogsInit) { bkLogsInit = true; renderLogPanel($("#bk-view-logs"), { module: "backups" }); }
     }));
+  let bkPage = 1;
+  let bkPageSize = defaultPageSize();
+  let bkBackups = [];
+
   const list = $("#bk-list");
-  const load = async () => {
-    try {
-      const backups = await api("/api/backups");
-      list.innerHTML = backups.length
-        ? backups.map(b => `
+  const renderBkRows = () => {
+    const pg = paginateSlice(bkBackups, bkPage, bkPageSize);
+    bkPage = pg.page;
+    bkPageSize = pg.pageSize;
+    if (!bkBackups.length) {
+      list.innerHTML = `<tr><td colspan="5" class="bk-empty">暂无备份</td></tr>`;
+    } else {
+      list.innerHTML = pg.items.map(b => `
           <tr>
             <td class="mono" title="${esc(b.name)}">${esc(b.name)}</td>
             <td class="bk-time">${esc(b.time)}</td>
             <td class="bk-size">${b.size_kb} KB</td>
             <td><span class="badge badge-${b.manual ? "gray" : "blue"}">${b.manual ? "手动" : "自动"}</span></td>
             <td class="bk-act"><button class="btn btn-sm btn-danger" data-restore="${esc(b.name)}">恢复</button></td>
-          </tr>`).join("")
-        : `<tr><td colspan="5" class="bk-empty">暂无备份</td></tr>`;
+          </tr>`).join("");
       list.closest(".bk-table-wrap")?.querySelectorAll("[data-restore]").forEach(b =>
         b.addEventListener("click", async () => {
           if (!confirm(`确定恢复到备份「${b.dataset.restore}」？当前数据将被覆盖。`)) return;
@@ -237,6 +260,33 @@ async function renderBackups() {
             toast("备份已恢复，请刷新页面");
           } catch (e) { toast(e.message, true); }
         }));
+    }
+    let pager = $("#bk-pager");
+    if (!pager) {
+      pager = document.createElement("div");
+      pager.id = "bk-pager";
+      pager.className = "pager-bar";
+      list.closest(".bk-card")?.appendChild(pager);
+    }
+    mountPagerBar(pager, {
+      total: bkBackups.length,
+      page: bkPage,
+      pageSize: bkPageSize,
+      unit: "条",
+      idPrefix: "bk",
+      onChange: ({ page, pageSize }) => {
+        bkPage = page;
+        bkPageSize = pageSize;
+        renderBkRows();
+      },
+    });
+  };
+
+  const load = async () => {
+    try {
+      bkBackups = await api("/api/backups");
+      bkPage = 1;
+      renderBkRows();
     } catch (e) { list.innerHTML = `<tr><td colspan="5" class="bk-empty">备份加载失败：${esc(e.message)}</td></tr>`; }
   };
   await load();

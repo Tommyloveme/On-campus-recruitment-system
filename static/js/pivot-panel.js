@@ -98,6 +98,8 @@ async function renderPivotPanel(rootEl, opts = {}) {
     pct: "none",
     filters: [],
     list: [], chart: null,
+    tablePage: 1,
+    tablePageSize: defaultPageSize(),
   };
   if (!st.rows.length) st.rows = [dimFields[0].key];
 
@@ -142,7 +144,7 @@ async function renderPivotPanel(rootEl, opts = {}) {
           <span class="pv-cap">Top</span>
           <select data-pv="topN">
             <option value="10">10</option><option value="20" selected>20</option>
-            <option value="50">50</option><option value="0">全部</option>
+            <option value="50">50</option><option value="100">100</option>
           </select>
         </div>
         <div class="pv-group">
@@ -299,7 +301,7 @@ async function renderPivotPanel(rootEl, opts = {}) {
           `<option value="${v}"${flt.op === v ? " selected" : ""}>${l}</option>`).join("")}</select>
         ${valDisabled ? "" : `
         <input list="pv-vals-${i}" data-fpart="val" value="${esc(flt.val)}" placeholder="值">
-        <datalist id="pv-vals-${i}">${vals.slice(0, 60).map(v =>
+        <datalist id="pv-vals-${i}">${vals.slice(0, filterValueSampleMax()).map(v =>
           `<option value="${esc(v)}">`).join("")}</datalist>`}
         <button class="pv-filter-del" data-fdel="${i}" title="删除条件">×</button>
       </span>`;
@@ -425,6 +427,7 @@ async function renderPivotPanel(rootEl, opts = {}) {
     $$('[data-pv="gran"]').classList.toggle("hidden", !st.rows.some(isDateField));
     $$('[data-pv="aggField"]').classList.toggle("hidden", st.agg === "count");
 
+    st.tablePage = 1;
     const grid = buildGrid();
     lastGrid = grid;
     $$("[data-pv-count]").textContent = `${grid.total} 人`;
@@ -512,6 +515,12 @@ async function renderPivotPanel(rootEl, opts = {}) {
 
   function drawTable(grid) {
     const heads = grid.cols || [aggName()];
+    const pg = paginateSlice(grid.rows, st.tablePage, st.tablePageSize);
+    st.tablePage = pg.page;
+    st.tablePageSize = pg.pageSize;
+    const pageRows = pg.items;
+    const rowIndexMap = new Map(grid.rows.map((r, i) => [r, i]));
+
     $$("[data-pv-table]").innerHTML = `
       <div class="table-wrap"><table class="pv-table" style="min-width:0">
         <thead><tr>
@@ -520,14 +529,17 @@ async function renderPivotPanel(rootEl, opts = {}) {
           ${grid.cols ? `<th>合计</th>` : ""}
         </tr></thead>
         <tbody>
-          ${grid.rows.map((r, ri) => `<tr>
+          ${pageRows.map(r => {
+            const ri = rowIndexMap.get(r);
+            return `<tr>
             <td>${esc(r)}</td>
             ${heads.map((_, ci) => {
               const v = grid.matrix[ci][ri] || 0;
               return `<td>${v}${pctCell(v, ri, ci, grid)}</td>`;
             }).join("")}
             ${grid.cols ? `<td><b>${grid.rowTotals[ri]}</b></td>` : ""}
-          </tr>`).join("")}
+          </tr>`;
+          }).join("")}
           <tr class="pv-total-row">
             <td><b>合计</b></td>
             ${grid.colTotals.slice(0, heads.length).map(t => `<td><b>${t}</b></td>`).join("")}
@@ -535,7 +547,23 @@ async function renderPivotPanel(rootEl, opts = {}) {
           </tr>
         </tbody>
       </table></div>
-      ${grid.truncated ? `<p class="muted" style="font-size:12px;margin:6px 0 0">已按 Top ${st.topN} 截断，其余 ${grid.truncated} 项未显示（选择 Top「全部」可展开）。</p>` : ""}`;
+      <div class="pager-bar" data-pv-pager></div>`;
+
+    const pagerEl = $$("[data-pv-pager]");
+    if (pagerEl) {
+      mountPagerBar(pagerEl, {
+        total: grid.rows.length,
+        page: st.tablePage,
+        pageSize: st.tablePageSize,
+        unit: "行",
+        idPrefix: "pv",
+        onChange: ({ page, pageSize }) => {
+          st.tablePage = page;
+          st.tablePageSize = pageSize;
+          drawTable(lastGrid);
+        },
+      });
+    }
   }
 
   function exportCsv() {

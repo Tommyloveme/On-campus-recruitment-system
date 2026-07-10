@@ -55,8 +55,12 @@ def api_logs():
         return jsonify({"error": "仅系统管理员可查看全量日志"}), 403
 
     page = max(1, request.args.get("page", 1, type=int))
-    size = request.args.get("size", type=int) or APP_CONFIG["logs"]["page_size"]
-    size = min(200, max(1, size))
+    allowed = APP_CONFIG.get("logs", {}).get("page_size_options") or [15, 30, 50, 100]
+    default_size = APP_CONFIG["logs"].get("page_size", 15)
+    size = request.args.get("size", type=int) or default_size
+    if size not in allowed:
+        size = default_size if default_size in allowed else max(allowed)
+    size = min(100, max(1, size))
     total, items = query_logs(get_db(), page, size, module=module,
                               viewer_level=viewer_log_level(g.user))
     return jsonify({"total": total, "page": page, "size": size, "items": items})

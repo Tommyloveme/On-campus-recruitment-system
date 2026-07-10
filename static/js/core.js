@@ -333,6 +333,87 @@ function formatRefreshTime(ts) {
     + `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+/** 全站表格分页：可选 15 / 30 / 50 / 100（来自 config/ui.page_size_options） */
+function pageSizeOptions() {
+  const raw = state.app?.page_size_options || [15, 30, 50, 100];
+  return raw.map(Number).filter(n => n > 0);
+}
+
+function defaultPageSize() {
+  const opts = pageSizeOptions();
+  const pref = Number(state.app?.page_size ?? 15);
+  return opts.includes(pref) ? pref : (opts[0] || 15);
+}
+
+function logPageSizeOptions() {
+  const raw = state.app?.logs_page_size_options || pageSizeOptions();
+  return raw.map(Number).filter(n => n > 0);
+}
+
+function defaultLogPageSize() {
+  const opts = logPageSizeOptions();
+  const pref = Number(state.app?.logs_page_size ?? defaultPageSize());
+  return opts.includes(pref) ? pref : (opts[0] || defaultPageSize());
+}
+
+function paginateMeta(total, page, pageSize) {
+  const size = Math.max(1, Number(pageSize) || defaultPageSize());
+  const pages = Math.max(1, Math.ceil(Math.max(0, total) / size));
+  const safePage = Math.min(Math.max(1, Number(page) || 1), pages);
+  return {
+    total: Math.max(0, total),
+    page: safePage,
+    pages,
+    pageSize: size,
+    offset: (safePage - 1) * size,
+  };
+}
+
+function paginateSlice(list, page, pageSize) {
+  const meta = paginateMeta((list || []).length, page, pageSize);
+  return { ...meta, items: (list || []).slice(meta.offset, meta.offset + meta.pageSize) };
+}
+
+function filterValueSampleMax() {
+  return Number(state.app?.filter_value_sample_max ?? 60);
+}
+
+/**
+ * 渲染标准分页条。onChange({ page, pageSize }) 在翻页或改每页条数时触发。
+ */
+function mountPagerBar(el, opts = {}) {
+  if (!el) return paginateMeta(0, 1, defaultPageSize());
+  const unit = opts.unit || "条";
+  const sizes = opts.sizes || pageSizeOptions();
+  let pageSize = Number(opts.pageSize) || defaultPageSize();
+  if (!sizes.includes(pageSize)) pageSize = sizes[0] || defaultPageSize();
+  const meta = paginateMeta(opts.total || 0, opts.page || 1, pageSize);
+  const prefix = opts.idPrefix || "pg";
+  el.className = (opts.className || "pager-bar") + (opts.extraClass ? ` ${opts.extraClass}` : "");
+  el.innerHTML = `
+    <span>共 ${meta.total} ${unit}</span>
+    <label>每页
+      <select data-pg-size="${prefix}">
+        ${sizes.map(s => `<option value="${s}"${s === meta.pageSize ? " selected" : ""}>${s}</option>`).join("")}
+      </select>
+    </label>
+    <button class="btn btn-sm" data-pg-prev="${prefix}" ${meta.page <= 1 ? "disabled" : ""}>上一页</button>
+    <span>第 ${meta.page} / ${meta.pages} 页</span>
+    <button class="btn btn-sm" data-pg-next="${prefix}" ${meta.page >= meta.pages ? "disabled" : ""}>下一页</button>`;
+  const notify = (page, size) => {
+    const next = paginateMeta(opts.total || 0, page, size);
+    if (typeof opts.onChange === "function") opts.onChange({ page: next.page, pageSize: next.pageSize });
+  };
+  el.querySelector(`[data-pg-size="${prefix}"]`)?.addEventListener("change", e => notify(1, +e.target.value));
+  el.querySelector(`[data-pg-prev="${prefix}"]`)?.addEventListener("click", () => {
+    if (meta.page > 1) notify(meta.page - 1, meta.pageSize);
+  });
+  el.querySelector(`[data-pg-next="${prefix}"]`)?.addEventListener("click", () => {
+    if (meta.page < meta.pages) notify(meta.page + 1, meta.pageSize);
+  });
+  return meta;
+}
+
 function showLogin() {
   state.me = null;
   $("#app-view").classList.add("hidden");

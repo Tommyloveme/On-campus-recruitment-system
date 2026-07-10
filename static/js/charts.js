@@ -1,7 +1,7 @@
 "use strict";
 
 /* 数据图表页 */
-const charts = { list: [], instance: null };
+const charts = { list: [], instance: null, pivotPage: 1, pivotPageSize: defaultPageSize() };
 const CHART_COLORS = [
   "#2563eb", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6",
   "#ec4899", "#84cc16", "#0ea5e9", "#f97316", "#14b8a6", "#64748b",
@@ -157,6 +157,7 @@ function orderedValues(list, key, gran) {
 }
 
 function drawChart() {
+  charts.pivotPage = 1;
   const dimKey = $("#ch-dim").value;
   let serKey = $("#ch-ser").value;
   const type = $("#ch-type").value;
@@ -299,6 +300,11 @@ function renderPivotTable(dims, sers, matrix, dimKey, serKey) {
   const colTotals = colHeads.map((_, si) => matrix[si].reduce((a, b) => a + b, 0));
   const grand = colTotals.reduce((a, b) => a + b, 0);
   const pctOf = (v) => grand ? `${(v * 100 / grand).toFixed(1)}%` : "—";
+  const pg = paginateSlice(dims, charts.pivotPage, charts.pivotPageSize);
+  charts.pivotPage = pg.page;
+  charts.pivotPageSize = pg.pageSize;
+  const pageDims = pg.items;
+
   $("#ch-pivot").innerHTML = `
     <div class="table-wrap"><table style="min-width:0">
       <thead><tr>
@@ -308,7 +314,8 @@ function renderPivotTable(dims, sers, matrix, dimKey, serKey) {
         <th>占比</th>
       </tr></thead>
       <tbody>
-        ${dims.map((d, di) => {
+        ${pageDims.map(d => {
+          const di = dims.indexOf(d);
           const rowTotal = colHeads.reduce((acc, _, si) => acc + matrix[si][di], 0);
           return `<tr>
             <td>${esc(d)}</td>
@@ -324,5 +331,19 @@ function renderPivotTable(dims, sers, matrix, dimKey, serKey) {
           <td class="muted">100%</td>
         </tr>
       </tbody>
-    </table></div>`;
+    </table></div>
+    <div class="pager-bar" id="ch-pivot-pager"></div>`;
+
+  mountPagerBar($("#ch-pivot-pager"), {
+    total: dims.length,
+    page: charts.pivotPage,
+    pageSize: charts.pivotPageSize,
+    unit: "行",
+    idPrefix: "chp",
+    onChange: ({ page, pageSize }) => {
+      charts.pivotPage = page;
+      charts.pivotPageSize = pageSize;
+      renderPivotTable(dims, sers, matrix, dimKey, serKey);
+    },
+  });
 }

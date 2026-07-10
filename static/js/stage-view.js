@@ -19,7 +19,7 @@ function getStageState(stageKey) {
     stageStates.set(stageKey, {
       list: [], sort: defaultStageSort(stageKey), selected: new Set(),
       uploadTarget: null, page: 1,
-      pageSize: state.app.page_size ?? 15,
+      pageSize: defaultPageSize(),
       duplicatePhones: null,
       colWidths: {},
       colWidthsTouched: false,
@@ -52,6 +52,7 @@ function cacheIsFresh(ss) {
 function applyFetchedList(stageKey, list) {
   const ss = getStageState(stageKey);
   ss.list = list;
+  ss.page = 1;
   ss.loadedAt = Date.now();
   ss.stale = false;
   if (stageKey === "registration") {
@@ -523,11 +524,10 @@ function renderCandidateRows(stageKey) {
     featureAllowed(stageKey, "btn_terminate");
 
   const total = list.length;
-  const pages = ss.pageSize > 0 ? Math.max(1, Math.ceil(total / ss.pageSize)) : 1;
-  ss.page = Math.min(Math.max(1, ss.page), pages);
-  const pageList = ss.pageSize > 0
-    ? list.slice((ss.page - 1) * ss.pageSize, ss.page * ss.pageSize)
-    : list;
+  const pg = paginateSlice(list, ss.page, ss.pageSize);
+  ss.page = pg.page;
+  ss.pageSize = pg.pageSize;
+  const pageList = pg.items;
 
   if (!pageList.length) {
     tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty">没有符合条件的候选人</td></tr>`;
@@ -552,13 +552,6 @@ function renderCandidateRows(stageKey) {
             inner = `<span class="cell-phone-dup">${esc(candidateCellValue(c, f) || "")}</span>`;
           } else if (f.key === "流程状态" && candTerminated(c)) {
             inner = `<span class="badge badge-red" title="已流程终止，可在候选人登记页恢复">流程终止</span>`;
-          } else if ((f.legacy_key === "name" || f.key === "候选人" || f.key === "姓名")
-              && stageKey !== "registration"
-              && c.current_stage && c.current_stage !== stageKey) {
-            const curLabel = (state.stages.find(s => s.key === c.current_stage) || {}).label
-              || c.current_stage;
-            const name = candidateCellValue(c, f) || "";
-            inner = `${esc(name)} <span class="badge badge-passed" title="已进入后续环节：${esc(curLabel)}">已流转</span>`;
           } else {
             inner = cellHtml(f, candidateCellValue(c, f));
           }
@@ -670,7 +663,7 @@ function renderCandidateRows(stageKey) {
   tbody.querySelectorAll("[data-term-restore]").forEach(b =>
     b.addEventListener("click", () => doTerminate(+b.dataset.termRestore, "restore")));
 
-  renderPager(stageKey, total, pages);
+  renderPager(stageKey, total);
   updateSelectionUI(stageKey, list);
   applyCandColWidths(getStageState(stageKey));
 }
@@ -749,27 +742,22 @@ function autoFitCandColumns(stageKey) {
   applyCandColWidths(ss);
 }
 
-function renderPager(stageKey, total, pages) {
+function renderPager(stageKey, total) {
   const ss = getStageState(stageKey);
-  const sizes = state.app.page_size_options || [15, 30, 50, 100, 0];
-  if (!sizes.includes(ss.pageSize)) sizes.unshift(ss.pageSize);
-  $("#cand-pager").innerHTML = `
-    <span>共 ${total} 人</span>
-    <label>每页
-      <select id="page-size">
-        ${sizes.map(s => `<option value="${s}" ${s === ss.pageSize ? "selected" : ""}>${s === 0 ? "全部" : s}</option>`).join("")}
-      </select>
-    </label>
-    <button class="btn btn-sm" id="page-prev" ${ss.page <= 1 ? "disabled" : ""}>上一页</button>
-    <span>第 ${ss.page} / ${pages} 页</span>
-    <button class="btn btn-sm" id="page-next" ${ss.page >= pages ? "disabled" : ""}>下一页</button>`;
-  $("#page-size").addEventListener("change", e => {
-    ss.pageSize = +e.target.value;
-    ss.page = 1;
-    renderCandidateRows(stageKey);
+  const pager = $("#cand-pager");
+  if (!pager) return;
+  mountPagerBar(pager, {
+    total,
+    page: ss.page,
+    pageSize: ss.pageSize,
+    unit: "人",
+    idPrefix: "cand",
+    onChange: ({ page, pageSize }) => {
+      ss.page = page;
+      ss.pageSize = pageSize;
+      renderCandidateRows(stageKey);
+    },
   });
-  $("#page-prev").addEventListener("click", () => { ss.page--; renderCandidateRows(stageKey); });
-  $("#page-next").addEventListener("click", () => { ss.page++; renderCandidateRows(stageKey); });
 }
 
 function updateSelectionUI(stageKey, list) {

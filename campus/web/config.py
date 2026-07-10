@@ -53,10 +53,15 @@ def api_config():
                     "user_profile": load_app_config().get("user_profile", {})},
         }
     else:
+        cfg = load_app_config()
         resp = build_config_response()
-        resp["app"] = load_app_config().get("ui", {})
-        resp["app"]["interview"] = load_app_config().get("interview", {})
-        resp["app"]["user_profile"] = load_app_config().get("user_profile", {})
+        resp["app"] = {**cfg.get("ui", {})}
+        resp["app"]["interview"] = cfg.get("interview", {})
+        resp["app"]["user_profile"] = cfg.get("user_profile", {})
+        logs_cfg = cfg.get("logs", {})
+        resp["app"]["logs_page_size"] = logs_cfg.get("page_size", resp["app"].get("page_size", 15))
+        resp["app"]["logs_page_size_options"] = logs_cfg.get(
+            "page_size_options", resp["app"].get("page_size_options", [15, 30, 50, 100]))
         from campus.core.stage_flow import load_stage_flow
         from campus.services.acl import manual_transition_allowed
         flow = load_stage_flow()

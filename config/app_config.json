@@ -9,8 +9,11 @@
   },
   "ui": {
     "page_size": 15,
-    "page_size_options": [15, 30, 50, 100, 0],
-    "clip_max_width": 320
+    "page_size_options": [15, 30, 50, 100],
+    "large_data_warn": 5000,
+    "filter_value_sample_max": 60,
+    "clip_max_width": 320,
+    "comment": "page_size_options 为全站表格分页可选条数；large_data_warn 超过后显示性能提示"
   },
   "backup": {
     "interval_hours": 1,
@@ -47,7 +50,8 @@
     "allowed_ext": [".pdf", ".docx"]
   },
   "logs": {
-    "page_size": 50
+    "page_size": 15,
+    "page_size_options": [15, 30, 50, 100]
   },
   "interview": {
     "slot_minutes": 45,

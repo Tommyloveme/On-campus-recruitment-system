@@ -14,6 +14,8 @@ const ovState = {
   stageFilter: "",    // 流程快捷筛选（漏斗行点击 / 下拉）
   sortKey: "stay_days",
   sortDir: "desc",
+  page: 1,
+  pageSize: defaultPageSize(),
 };
 
 function ovFields() {
@@ -246,7 +248,7 @@ function ovRenderFilters() {
         `<option value="${v}"${flt.op === v ? " selected" : ""}>${l}</option>`).join("")}</select>
       ${noVal ? "" : `
       <input list="ov-vals-${i}" data-fpart="val" value="${esc(flt.val)}" placeholder="值">
-      <datalist id="ov-vals-${i}">${vals.slice(0, 60).map(v => `<option value="${esc(v)}">`).join("")}</datalist>`}
+      <datalist id="ov-vals-${i}">${vals.slice(0, filterValueSampleMax()).map(v => `<option value="${esc(v)}">`).join("")}</datalist>`}
       <button class="pv-filter-del" data-fdel="${i}" title="删除条件">×</button>
     </span>`;
   }).join("");
@@ -276,6 +278,7 @@ function ovRenderFilters() {
 function ovRefresh() {
   const list = ovFilteredCandidates();
   const all = ovState.grp.candidates || [];
+  ovState.page = 1;
 
   const countEl = document.querySelector("[data-ov-listcount]");
   if (countEl) countEl.textContent = `${list.length} / ${all.length} 人`;
@@ -406,9 +409,7 @@ function ovDrawPassRate(list) {
     </div>` : `<div class="empty">暂无数据</div>`;
 }
 
-/* 明细表分片渲染：万级数据一次性拼全部 <tr> 会长时间阻塞页面 */
-const OV_TABLE_CHUNK = 300;
-
+/* 明细表分页渲染：仅绘制当前页 DOM，避免万级数据卡死页面 */
 function ovRowHtml(c) {
   return `
           <tr>
@@ -438,6 +439,11 @@ function ovDrawTable(list) {
     return String(av).localeCompare(String(bv), "zh") * dir;
   });
 
+  const pg = paginateSlice(list, ovState.page, ovState.pageSize);
+  ovState.page = pg.page;
+  ovState.pageSize = pg.pageSize;
+  const pageList = pg.items;
+
   const cols = [
     ["候选人", "候选人"], ["电话", "电话"], ["current_stage", "当前流程"],
     ["stay_days", "停留时长"], ["学历", "学历"], ["毕业院校", "毕业院校"],
@@ -454,39 +460,34 @@ function ovDrawTable(list) {
           <th>最新进展</th>
         </tr></thead>
         <tbody data-ov-tbody>
-          ${list.slice(0, OV_TABLE_CHUNK).map(ovRowHtml).join("")}
+          ${pageList.map(ovRowHtml).join("")}
         </tbody>
       </table>
     </div>
-    ${list.length > OV_TABLE_CHUNK ? `
-    <div class="pager-bar">
-      <span data-ov-shown>已显示前 ${OV_TABLE_CHUNK} / ${list.length} 条</span>
-      <button class="btn btn-sm" data-ov-more>加载更多</button>
-      <button class="btn btn-sm" data-ov-all>显示全部</button>
-    </div>` : ""}` : `<div class="empty">没有符合条件的候选人</div>`;
+    <div class="pager-bar" data-ov-pager></div>` : `<div class="empty">没有符合条件的候选人</div>`;
 
-  let shown = Math.min(OV_TABLE_CHUNK, list.length);
-  const appendRows = count => {
-    const next = Math.min(list.length, shown + count);
-    if (next <= shown) return;
-    el.querySelector("[data-ov-tbody]")
-      .insertAdjacentHTML("beforeend", list.slice(shown, next).map(ovRowHtml).join(""));
-    shown = next;
-    const bar = el.querySelector("[data-ov-shown]")?.parentElement;
-    if (shown >= list.length) {
-      if (bar) bar.remove();
-    } else {
-      el.querySelector("[data-ov-shown]").textContent = `已显示前 ${shown} / ${list.length} 条`;
-    }
-  };
-  el.querySelector("[data-ov-more]")?.addEventListener("click", () => appendRows(OV_TABLE_CHUNK * 4));
-  el.querySelector("[data-ov-all]")?.addEventListener("click", () => appendRows(list.length));
+  const pagerEl = el.querySelector("[data-ov-pager]");
+  if (pagerEl) {
+    mountPagerBar(pagerEl, {
+      total: list.length,
+      page: ovState.page,
+      pageSize: ovState.pageSize,
+      unit: "人",
+      idPrefix: "ov",
+      onChange: ({ page, pageSize }) => {
+        ovState.page = page;
+        ovState.pageSize = pageSize;
+        ovDrawTable(ovFilteredCandidates());
+      },
+    });
+  }
 
   el.querySelectorAll("[data-ov-sort]").forEach(th =>
     th.addEventListener("click", () => {
       const k = th.dataset.ovSort;
       if (ovState.sortKey === k) ovState.sortDir = ovState.sortDir === "asc" ? "desc" : "asc";
       else { ovState.sortKey = k; ovState.sortDir = k === "stay_days" ? "desc" : "asc"; }
+      ovState.page = 1;
       ovDrawTable(ovFilteredCandidates());
     }));
 }

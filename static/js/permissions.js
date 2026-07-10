@@ -11,6 +11,10 @@ let permModuleCols = [];    // 扁平化的模块列 [{key,label,type}]
 let permUsersCache = [];    // 用户列表
 let permFilters = {};       // 列 id -> 过滤值（文本模糊 / 模块权限状态）
 let permFeatureRegistry = {}; // moduleKey -> [{key,label,kind}] 可配置的细粒度特性
+let permGridPage = 1;
+let permGridPageSize = defaultPageSize();
+let roleGridPage = 1;
+let roleGridPageSize = defaultPageSize();
 
 const PERM_FLAGS = [
   ["v", "perm_visibility", "可见", "#2563eb"],
@@ -85,6 +89,7 @@ async function renderPermissions() {
           <div class="perm-grid-left-wrap"><table id="perm-grid-left" class="perm-grid perm-grid-left"></table></div>
           <div class="perm-grid-right-wrap"><table id="perm-grid-right" class="perm-grid perm-grid-right"></table></div>
         </div>
+        <div class="pager-bar" id="perm-pager"></div>
       </section>
 
       <section class="card perm-section" id="perm-roles">
@@ -111,6 +116,7 @@ async function renderPermissions() {
           <div class="perm-grid-left-wrap"><table id="role-grid-left" class="perm-grid perm-grid-left"></table></div>
           <div class="perm-grid-right-wrap"><table id="role-grid-right" class="perm-grid perm-grid-right"></table></div>
         </div>
+        <div class="pager-bar" id="role-pager"></div>
       </section>
 
       <section class="card perm-section">
@@ -545,7 +551,7 @@ function permBuildThead(cols) {
 function bindPermColFilters(cols) {
   document.querySelectorAll("#perm-grid-left .perm-col-filter, #perm-grid-right .perm-col-filter").forEach(el => {
     const col = el.dataset.col;
-    const handler = () => { permFilters[col] = el.value; renderPermGridBody(cols); };
+    const handler = () => { permFilters[col] = el.value; permGridPage = 1; renderPermGridBody(cols); };
     el.addEventListener("input", handler);
     el.addEventListener("change", handler);
   });
@@ -586,19 +592,37 @@ function renderPermGrid() {
 
 function renderPermGridBody(cols) {
   const { frozen, scroll } = permSplitCols(cols);
-  const users = permUsersCache.filter(u => rowPassesFilter(u, cols));
+  const usersAll = permUsersCache.filter(u => rowPassesFilter(u, cols));
+  permGridPage = paginateMeta(usersAll.length, permGridPage, permGridPageSize).page;
+  const pg = paginateSlice(usersAll, permGridPage, permGridPageSize);
+  const users = pg.items;
   const leftTb = $("#perm-grid-left tbody");
   const rightTb = $("#perm-grid-right tbody");
   if (!leftTb || !rightTb) return;
-  if (!users.length) {
+  if (!usersAll.length) {
     leftTb.innerHTML = `<tr><td colspan="${frozen.length}" class="empty" style="padding:24px">没有符合筛选条件的用户</td></tr>`;
     rightTb.innerHTML = `<tr><td colspan="${scroll.length}"></td></tr>`;
     $("#perm-row-count") && ($("#perm-row-count").textContent = "0 / " + permUsersCache.length + " 人");
+    mountPagerBar($("#perm-pager"), { total: 0, page: 1, pageSize: permGridPageSize, unit: "人", idPrefix: "perm",
+      onChange: ({ page, pageSize }) => { permGridPage = page; permGridPageSize = pageSize; renderPermGridBody(cols); } });
     return;
   }
   leftTb.innerHTML = users.map(u => `<tr>${permRowCells(u, frozen)}</tr>`).join("");
   rightTb.innerHTML = users.map(u => `<tr>${permRowCells(u, scroll)}</tr>`).join("");
-  $("#perm-row-count") && ($("#perm-row-count").textContent = `${users.length} / ${permUsersCache.length} 人`);
+  $("#perm-row-count") && ($("#perm-row-count").textContent = `${usersAll.length} / ${permUsersCache.length} 人`);
+
+  mountPagerBar($("#perm-pager"), {
+    total: usersAll.length,
+    page: permGridPage,
+    pageSize: permGridPageSize,
+    unit: "人",
+    idPrefix: "perm",
+    onChange: ({ page, pageSize }) => {
+      permGridPage = page;
+      permGridPageSize = pageSize;
+      renderPermGridBody(cols);
+    },
+  });
 
   leftTb.querySelectorAll(".perm-row-check").forEach(cb => cb.addEventListener("change", refreshPermBatchBtn));
   rightTb.querySelectorAll(".perm-flag-cb").forEach(cb =>
@@ -1172,7 +1196,7 @@ function roleBuildThead(cols) {
 function bindRoleColFilters(cols) {
   document.querySelectorAll("#role-grid-left .role-col-filter, #role-grid-right .role-col-filter").forEach(el => {
     const col = el.dataset.col;
-    const handler = () => { roleFilters[col] = el.value; renderRoleGridBody(cols); };
+    const handler = () => { roleFilters[col] = el.value; roleGridPage = 1; renderRoleGridBody(cols); };
     el.addEventListener("input", handler);
     el.addEventListener("change", handler);
   });
@@ -1213,19 +1237,37 @@ function renderRoleGrid() {
 
 function renderRoleGridBody(cols) {
   const { frozen, scroll } = roleSplitCols(cols);
-  const roles = rolesCache().filter(r => rowPassesRoleFilter(r, cols));
+  const rolesAll = rolesCache().filter(r => rowPassesRoleFilter(r, cols));
+  roleGridPage = paginateMeta(rolesAll.length, roleGridPage, roleGridPageSize).page;
+  const pg = paginateSlice(rolesAll, roleGridPage, roleGridPageSize);
+  const roles = pg.items;
   const leftTb = $("#role-grid-left tbody");
   const rightTb = $("#role-grid-right tbody");
   if (!leftTb || !rightTb) return;
-  if (!roles.length) {
+  if (!rolesAll.length) {
     leftTb.innerHTML = `<tr><td colspan="${frozen.length}" class="empty" style="padding:24px">没有符合筛选条件的角色</td></tr>`;
     rightTb.innerHTML = `<tr><td colspan="${scroll.length}"></td></tr>`;
     $("#role-row-count") && ($("#role-row-count").textContent = "0 / " + rolesCache().length + " 个");
+    mountPagerBar($("#role-pager"), { total: 0, page: 1, pageSize: roleGridPageSize, unit: "个", idPrefix: "role",
+      onChange: ({ page, pageSize }) => { roleGridPage = page; roleGridPageSize = pageSize; renderRoleGridBody(cols); } });
     return;
   }
   leftTb.innerHTML = roles.map(r => `<tr>${roleRowCells(r, frozen)}</tr>`).join("");
   rightTb.innerHTML = roles.map(r => `<tr>${roleRowCells(r, scroll)}</tr>`).join("");
-  $("#role-row-count") && ($("#role-row-count").textContent = `${roles.length} / ${rolesCache().length} 个`);
+  $("#role-row-count") && ($("#role-row-count").textContent = `${rolesAll.length} / ${rolesCache().length} 个`);
+
+  mountPagerBar($("#role-pager"), {
+    total: rolesAll.length,
+    page: roleGridPage,
+    pageSize: roleGridPageSize,
+    unit: "个",
+    idPrefix: "role",
+    onChange: ({ page, pageSize }) => {
+      roleGridPage = page;
+      roleGridPageSize = pageSize;
+      renderRoleGridBody(cols);
+    },
+  });
 
   rightTb.querySelectorAll(".role-flag-cb").forEach(cb =>
     cb.addEventListener("change", () => onRoleFlagToggle(cb.dataset.rkey, cb.dataset.mk, cb.dataset.flag, cb.checked)));

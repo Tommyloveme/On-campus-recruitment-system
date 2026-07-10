@@ -35,7 +35,7 @@ function logPanelLegendHtml() {
 function renderLogPanel(rootEl, opts = {}) {
   if (!rootEl) return null;
   const module = opts.module || null;
-  const pageSize = opts.pageSize || 15;
+  let pageSize = Number(opts.pageSize) || defaultLogPageSize();
   let page = 1;
 
   rootEl.innerHTML = `
@@ -58,6 +58,23 @@ function renderLogPanel(rootEl, opts = {}) {
   const body = rootEl.querySelector("[data-lp-body]");
   const foot = rootEl.querySelector("[data-lp-foot]");
 
+  const renderFoot = total => {
+    mountPagerBar(foot, {
+      total,
+      page,
+      pageSize,
+      unit: "条",
+      sizes: logPageSizeOptions(),
+      idPrefix: "lp",
+      extraClass: "log-pager-wrap",
+      onChange: ({ page: p, pageSize: s }) => {
+        page = p;
+        pageSize = s;
+        load();
+      },
+    });
+  };
+
   const load = async () => {
     try {
       const q = `page=${page}&size=${pageSize}` + (module ? `&module=${encodeURIComponent(module)}` : "");
@@ -69,15 +86,9 @@ function renderLogPanel(rootEl, opts = {}) {
           <td class="log-user" title="${esc(l.user_name)}">${esc(l.user_name)}</td>
           <td class="log-msg" title="${esc(l.message)}">${esc(l.message)}</td>
         </tr>`).join("") : `<tr><td colspan="4" class="log-empty">暂无日志</td></tr>`;
-      const pages = Math.max(1, Math.ceil(r.total / r.size));
-      foot.innerHTML = `
-        <span class="log-count">${r.total} 条 · ${page}/${pages} 页</span>
-        <div class="pager log-pager">
-          <button class="btn btn-sm" data-lp-prev ${page <= 1 ? "disabled" : ""}>上一页</button>
-          <button class="btn btn-sm" data-lp-next ${page >= pages ? "disabled" : ""}>下一页</button>
-        </div>`;
-      foot.querySelector("[data-lp-prev]")?.addEventListener("click", () => { page--; load(); });
-      foot.querySelector("[data-lp-next]")?.addEventListener("click", () => { page++; load(); });
+      page = r.page || page;
+      pageSize = r.size || pageSize;
+      renderFoot(r.total || 0);
     } catch (e) {
       body.innerHTML = `<tr><td colspan="4" class="log-empty">日志加载失败：${esc(e.message)}</td></tr>`;
       foot.innerHTML = "";
