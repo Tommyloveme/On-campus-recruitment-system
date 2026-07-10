@@ -139,10 +139,12 @@ check("登记阶段不含三层部门至入职风险", "三层部门" not in reg
       and "dept_level3" not in reg_leg_keys and "onboard_risk" not in reg_leg_keys
       and "work_location" not in reg_leg_keys and "offer_status" not in reg_leg_keys)
 check("登记阶段表格列顺序配置",
-      cfg.get("stage_table", {}).get("registration", {}).get("column_order")[:2]
-      == ["登记时间", "投递时间"])
+      cfg.get("stage_table", {}).get("registration", {}).get("column_order")[:5]
+      == ["登记时间", "候选人", "电话", "拓源人", "接口人"])
 check("登记阶段默认冻结列数可配置",
-      cfg.get("stage_table", {}).get("registration", {}).get("frozen_column_count") == 5)
+      cfg.get("stage_table", {}).get("registration", {}).get("frozen_column_count") == 6)
+check("登记阶段投递时间在简历列前",
+      cfg.get("stage_table", {}).get("registration", {}).get("pre_resume_columns") == ["投递时间"])
 onb_fields = cfg["stage_fields"]["onboarding"]
 check("入职阶段含三层部门", any((f.get("legacy_key") or f["key"]) == "dept_level3" and f["visible"] for f in onb_fields))
 from openpyxl import load_workbook

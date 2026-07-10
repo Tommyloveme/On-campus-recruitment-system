@@ -1,27 +1,24 @@
 {
-  "comment": "候选人登记界面：列顺序、冻结列、默认排序、字段可见性（未列出的字段默认不可见）",
+  "comment": "候选人登记界面：列顺序、冻结列数（自左含勾选列，按序号不绑字段名）、简历前附加列、默认排序、可见性",
   "column_order": [
     "registration_time",
-    "delivery_time",
-    "application_archive_id",
     "name",
     "phone",
     "sourcer",
-    "sourcer_dept",
     "interface_person",
+    "sourcer_dept",
     "interface_dept",
+    "application_archive_id",
     "education",
     "school",
     "major",
     "registration_source",
     "registration_status",
-    "current_stage",
     "registration_remark"
   ],
-  "frozen_column_count": 5,
-  "keep_visible_in_range": [
-    "delivery_time"
-  ],
+  "frozen_column_count": 6,
+  "pre_resume_columns": ["delivery_time"],
+  "keep_visible_in_range": [],
   "default_sort": {
     "key": "registration_time",
     "dir": "desc"

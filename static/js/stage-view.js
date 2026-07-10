@@ -199,16 +199,60 @@ function stageUiColumns(stageKey) {
   return stageTableCfg(stageKey).ui_columns || [];
 }
 
-/** 列表展示字段：在「候选人」列前注入“流程状态”列（由规则匹配生成，存于 data.流程状态）。 */
+/** 列表展示字段：注入「流程状态」列（由规则匹配生成，存于 data.流程状态）。 */
 function stageListFields(stageKey) {
-  const fields = visibleFields(stageKey).slice();
+  const cfg = stageTableCfg(stageKey);
+  const preResumeKeys = new Set(cfg.pre_resume_columns || []);
+  let fields = visibleFields(stageKey).filter(
+    f => !preResumeKeys.has(f.key) && !preResumeKeys.has(f.legacy_key)
+  );
   if (!fields.some(f => f.key === "流程状态" || f.legacy_key === "process_status")) {
-    const idx = fields.findIndex(f => f.legacy_key === "name" || f.key === "候选人");
-    fields.splice(idx >= 0 ? idx : 0, 0, {
+    const procCol = {
       key: "流程状态", legacy_key: "process_status", label: "流程状态", type: "text",
-    });
+    };
+    if (stageKey === "registration") {
+      const idx = fields.findIndex(
+        f => f.key === "应聘档案编号" || f.legacy_key === "application_archive_id"
+      );
+      fields.splice(idx >= 0 ? idx + 1 : fields.length, 0, procCol);
+    } else {
+      const idx = fields.findIndex(f => f.legacy_key === "name" || f.key === "候选人");
+      fields.splice(idx >= 0 ? idx : 0, 0, procCol);
+    }
   }
   return fields;
+}
+
+/** 简历列前的附加数据列（配置驱动，如登记页「投递时间」）。 */
+function stagePreResumeFields(stageKey) {
+  const keys = stageTableCfg(stageKey).pre_resume_columns || [];
+  if (!keys.length) return [];
+  const pool = fieldsForStage(stageKey);
+  const byKey = Object.fromEntries(pool.map(f => [f.key, f]));
+  const byLeg = Object.fromEntries(pool.map(f => [(f.legacy_key || f.key), f]));
+  return keys.map(k => byKey[k] || byLeg[k]).filter(f => f && f.visible !== false);
+}
+
+function candidateFieldCellHtml(f, c, stageKey, ss) {
+  if (f.key === "progress") {
+    const full = c.data.progress || "";
+    let inner = multilineCellHtml(full);
+    if (canEdit()) inner += ` <button class="btn btn-sm" data-prog="${c.id}" title="更新进展">更新</button>`;
+    return inner;
+  }
+  if (isRegistrationRemarkField(f)) return multilineCellHtml(registrationRemarkValue(c));
+  if (f.key === "registration_source" && c.data.registration_source === "其他") {
+    const custom = (c.data.registration_source_custom || "").trim();
+    return cellHtml(f, custom ? `其他：${custom}` : "其他");
+  }
+  if (f.key === "phone" && stageKey === "registration" && ss.duplicatePhones &&
+    ss.duplicatePhones.has(normalizeCandidatePhone(c.data.phone))) {
+    return `<span class="cell-phone-dup">${esc(candidateCellValue(c, f) || "")}</span>`;
+  }
+  if (f.key === "流程状态" && candTerminated(c)) {
+    return `<span class="badge badge-red" title="已流程终止，可在候选人登记页恢复">流程终止</span>`;
+  }
+  return cellHtml(f, candidateCellValue(c, f));
 }
 
 function candHubKey(c) {
@@ -227,6 +271,7 @@ async function renderStageList(stageKey) {
   const fields = stageListFields(stageKey);
   const uiCols = stageUiColumns(stageKey);
   const showResume = stageKey === "registration";
+  const preResumeFields = showResume ? stagePreResumeFields(stageKey) : [];
   const canAdd = typeof moduleWritable === "function" && moduleWritable(stageKey) && meta.can_create
     && featureAllowed(stageKey, "btn_add");
   const showMasterImport = stageKey === "registration" && canAdd && featureAllowed(stageKey, "btn_master_import");
@@ -238,6 +283,8 @@ async function renderStageList(stageKey) {
     `<th class="sortable" data-sortkey="${f.key}" title="点击排序">${esc(f.label)}<span class="sort-arrow" data-arrow="${f.key}"></span></th>`
   ).join("") + uiCols.map(c =>
     `<th title="界面专属列（存于汇总总表）">${esc(c.label)} <span class="ui-col-mark">UI</span></th>`
+  ).join("") + preResumeFields.map(f =>
+    `<th class="sortable" data-sortkey="${f.key}" title="点击排序">${esc(f.label)}<span class="sort-arrow" data-arrow="${f.key}"></span></th>`
   ).join("");
   const filterCells = fields.map(f => {
     if (f.type === "select") {
@@ -245,7 +292,13 @@ async function renderStageList(stageKey) {
       return `<th><select data-filter="${f.key}"><option value="">全部</option>${opts}</select></th>`;
     }
     return `<th><input type="text" data-filter="${f.key}" placeholder="筛选"></th>`;
-  }).join("") + uiCols.map(() => "<th></th>").join("");
+  }).join("") + uiCols.map(() => "<th></th>").join("") + preResumeFields.map(f => {
+    if (f.type === "select") {
+      const opts = (f.options || []).map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join("");
+      return `<th><select data-filter="${f.key}"><option value="">全部</option>${opts}</select></th>`;
+    }
+    return `<th><input type="text" data-filter="${f.key}" placeholder="筛选"></th>`;
+  }).join("");
 
   const root = $("#stage-content") || $("#main");
   root.innerHTML = `
@@ -515,8 +568,9 @@ function renderCandidateRows(stageKey) {
   const fields = stageListFields(stageKey);
   const uiCols = stageUiColumns(stageKey);
   const showResume = stageKey === "registration";
+  const preResumeFields = showResume ? stagePreResumeFields(stageKey) : [];
   const list = filteredCandidates(stageKey);
-  const colCount = 3 + fields.length + uiCols.length + (showResume ? 1 : 0);
+  const colCount = 2 + fields.length + uiCols.length + preResumeFields.length + (showResume ? 1 : 0);
   const uiEditable = uiCols.length && moduleWritable(stageKey);
   const canFlow = (state.stageFlow?.stages || []).includes(stageKey) &&
     state.stageFlow?.can_transition && featureAllowed(stageKey, "btn_stage_transition");
@@ -535,28 +589,7 @@ function renderCandidateRows(stageKey) {
     tbody.innerHTML = pageList.map(c => `
       <tr>
         <td class="col-check"><input type="checkbox" data-sel="${c.id}" ${ss.selected.has(c.id) ? "checked" : ""}></td>
-        ${fields.map(f => {
-          let inner;
-          if (f.key === "progress") {
-            const full = c.data.progress || "";
-            inner = multilineCellHtml(full);
-            if (canEdit())
-              inner += ` <button class="btn btn-sm" data-prog="${c.id}" title="更新进展">更新</button>`;
-          } else if (isRegistrationRemarkField(f)) {
-            inner = multilineCellHtml(registrationRemarkValue(c));
-          } else if (f.key === "registration_source" && c.data.registration_source === "其他") {
-            const custom = (c.data.registration_source_custom || "").trim();
-            inner = cellHtml(f, custom ? `其他：${custom}` : "其他");
-          } else if (f.key === "phone" && stageKey === "registration" && ss.duplicatePhones &&
-            ss.duplicatePhones.has(normalizeCandidatePhone(c.data.phone))) {
-            inner = `<span class="cell-phone-dup">${esc(candidateCellValue(c, f) || "")}</span>`;
-          } else if (f.key === "流程状态" && candTerminated(c)) {
-            inner = `<span class="badge badge-red" title="已流程终止，可在候选人登记页恢复">流程终止</span>`;
-          } else {
-            inner = cellHtml(f, candidateCellValue(c, f));
-          }
-          return `<td>${inner}</td>`;
-        }).join("")}
+        ${fields.map(f => `<td>${candidateFieldCellHtml(f, c, stageKey, ss)}</td>`).join("")}
         ${uiCols.map(col => {
           const hk = candHubKey(c);
           const val = hk ? ((ss.uiValues || {})[hk] || {})[col.key] ?? "" : "";
@@ -564,6 +597,7 @@ function renderCandidateRows(stageKey) {
           const itype = col.format === "date" ? "date" : (col.format === "number" ? "number" : "text");
           return `<td><input type="${itype}" class="ui-col-input" data-uicol="${col.key}" data-uikey="${esc(hk)}" value="${esc(val)}"></td>`;
         }).join("")}
+        ${preResumeFields.map(f => `<td>${candidateFieldCellHtml(f, c, stageKey, ss)}</td>`).join("")}
         ${showResume ? `<td>${resumeCellHtml(c)}</td>` : ""}
         <td>
           ${canEdit()
@@ -718,6 +752,7 @@ function autoFitCandColumns(stageKey) {
     return;
   }
   const fields = stageListFields(stageKey);
+  const preResumeFields = stageKey === "registration" ? stagePreResumeFields(stageKey) : [];
   const showResume = stageKey === "registration";
   // 自适应列宽只需抽样测量：万级数据逐行 measureText 会卡住页面
   const full = ss.list || [];
@@ -734,6 +769,14 @@ function autoFitCandColumns(stageKey) {
     colIdx++;
   });
   stageUiColumns(stageKey).forEach(() => { widths[colIdx++] = 150; });
+  preResumeFields.forEach(f => {
+    let maxW = measureTextWidth(f.label) + 44;
+    list.forEach(c => {
+      maxW = Math.max(maxW, measureTextWidth(candFieldDisplayText(c, f, stageKey, ss), "13px system-ui, sans-serif") + 28);
+    });
+    widths[colIdx] = Math.min(480, Math.max(64, Math.ceil(maxW)));
+    colIdx++;
+  });
   if (showResume) widths[colIdx++] = 148;
   const hasFlow = (state.stageFlow?.stages || []).includes(stageKey) && state.stageFlow?.can_transition;
   const hasTerm = stageKey === "registration" && canEdit() && featureAllowed(stageKey, "btn_terminate");

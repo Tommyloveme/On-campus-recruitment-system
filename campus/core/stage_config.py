@@ -108,6 +108,7 @@ def load_stage_table_config(stage_key):
     return {
         "column_order": [legacy_to_storage(k) for k in (display.get("column_order") or [])],
         "frozen_column_count": int(display.get("frozen_column_count") or 0),
+        "pre_resume_columns": [legacy_to_storage(k) for k in (display.get("pre_resume_columns") or [])],
         "ui_columns": ui_columns,
         "default_sort": {
             "key": legacy_to_storage(default_sort.get("key", "")),
